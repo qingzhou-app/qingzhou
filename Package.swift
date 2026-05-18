@@ -15,6 +15,7 @@ let package = Package(
         .library(name: "VPNSpeedTest",    targets: ["VPNSpeedTest"]),
         .library(name: "VPNLogging",      targets: ["VPNLogging"]),
         .library(name: "VPNApp",          targets: ["VPNApp"]),
+        .library(name: "XrayConfig",      targets: ["XrayConfig"]),
         .library(name: "XrayCore",        targets: ["XrayCore"])
     ],
     dependencies: [
@@ -46,6 +47,11 @@ let package = Package(
             ]
         ),
 
+        // XrayConfig: 把 Node 转成 xray-core 的 outbound JSON，再加上 inbound / routing / dns
+        // 包装成完整 xray 配置。**不依赖 LibXray**（纯 Swift），所以可以在主 App 和单测里用，
+        // 不会拖进 85 MB Go runtime。
+        .target(name: "XrayConfig", dependencies: ["VPNCore"]),
+
         .testTarget(name: "VPNCoreTests",         dependencies: ["VPNCore"]),
         .testTarget(name: "VPNProtocolsTests",    dependencies: ["VPNProtocols"]),
         .testTarget(name: "VPNSubscriptionTests", dependencies: ["VPNSubscription"]),
@@ -53,6 +59,7 @@ let package = Package(
         .testTarget(name: "VPNSpeedTestTests",    dependencies: ["VPNSpeedTest"]),
         .testTarget(name: "VPNLoggingTests",      dependencies: ["VPNLogging"]),
         .testTarget(name: "VPNAppTests",          dependencies: ["VPNApp"]),
+        .testTarget(name: "XrayConfigTests",      dependencies: ["XrayConfig"]),
 
         // ─────────────────────────────────────────────────────────────────────
         // XrayCore：Swift 包装 LibXray.xcframework（xray-core 的 MIT 移动端 binding）。
@@ -65,7 +72,7 @@ let package = Package(
         ),
         .target(
             name: "XrayCore",
-            dependencies: ["LibXray", "VPNCore", "VPNLogging"],
+            dependencies: ["LibXray", "VPNCore", "VPNLogging", "XrayConfig"],
             linkerSettings: [
                 // libXray 内部用 res_9_* DNS resolver API（Darwin libresolv）
                 .linkedLibrary("resolv")

@@ -155,6 +155,9 @@ targets:
       # Extension 里要用 VPNCore.ProxyMode（share link → xray 配置转换在这里做）。
       - package: VPN
         product: VPNCore
+      # XrayConfigComposer 现在住在 XrayConfig（纯 Swift，不拖 LibXray）。
+      - package: VPN
+        product: XrayConfig
 
   VPN-Tunnel-macOS:
     type: app-extension
@@ -191,6 +194,9 @@ targets:
       # Extension 里要用 VPNCore.ProxyMode（share link → xray 配置转换在这里做）。
       - package: VPN
         product: VPNCore
+      # XrayConfigComposer 现在住在 XrayConfig（纯 Swift，不拖 LibXray）。
+      - package: VPN
+        product: XrayConfig
 
 schemes:
   VPN-iOS:

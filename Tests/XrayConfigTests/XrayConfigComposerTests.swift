@@ -1,35 +1,47 @@
 import XCTest
 import VPNCore
-@testable import XrayCore
+@testable import XrayConfig
 
 final class XrayConfigComposerTests: XCTestCase {
 
-    /// libXray 出来的 trojan outbound 形态（用真实的链接通过 XrayCore 转一次拿到）。
-    private func realTrojanOutbounds() throws -> String {
-        let link = "trojan://pw@example.com:443?sni=example.com#hk"
-        return try XrayCore.convertShareLinks(link)
+    /// 手工写的 trojan outbound（compose 不关心具体协议字段，只把 outbounds 数组裹进完整配置）。
+    /// 不走 libXray —— 这层逻辑就是字典操作，没必要拖 Go runtime 进单测。
+    private let fakeTrojanOutbounds = #"""
+    {
+      "outbounds": [
+        {
+          "protocol": "trojan",
+          "settings": {
+            "servers": [
+              {"address": "example.com", "port": 443, "password": "pw"}
+            ]
+          },
+          "streamSettings": {
+            "network": "tcp",
+            "security": "tls",
+            "tlsSettings": {"serverName": "example.com"}
+          }
+        }
+      ]
     }
+    """#
 
-    // MARK: - 结构性测试（不依赖 xray-core 启动）
+    // MARK: - 结构性测试
 
     func testComposeWrapsOutboundIntoFullConfigGlobal() throws {
-        let outbounds = try realTrojanOutbounds()
-        let composed = try XrayConfigComposer.compose(outboundsJSON: outbounds, mode: .global)
+        let composed = try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global)
 
         let json = try parse(composed)
-        // 顶层 key
         XCTAssertNotNil(json["inbounds"])
         XCTAssertNotNil(json["outbounds"])
         XCTAssertNotNil(json["routing"])
         XCTAssertNotNil(json["dns"])
         XCTAssertNotNil(json["log"])
 
-        // tun inbound 存在
         let inbounds = json["inbounds"] as! [[String: Any]]
         XCTAssertEqual(inbounds.count, 1)
         XCTAssertEqual(inbounds[0]["protocol"] as? String, "tun")
 
-        // outbounds 至少 3 个：proxy / direct / reject
         let outs = json["outbounds"] as! [[String: Any]]
         XCTAssertGreaterThanOrEqual(outs.count, 3)
         let tags = outs.compactMap { $0["tag"] as? String }
@@ -37,19 +49,15 @@ final class XrayConfigComposerTests: XCTestCase {
         XCTAssertTrue(tags.contains("direct"))
         XCTAssertTrue(tags.contains("reject"))
 
-        // proxy 是 trojan
         let proxy = outs.first(where: { $0["tag"] as? String == "proxy" })!
         XCTAssertEqual(proxy["protocol"] as? String, "trojan")
     }
 
     func testRoutingRulesGlobalSendsAllToProxy() throws {
-        let outbounds = try realTrojanOutbounds()
-        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: outbounds, mode: .global))
+        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global))
         let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
-        // 最后一条 catch-all 必须指向 proxy
         let last = rules.last!
         XCTAssertEqual(last["outboundTag"] as? String, "proxy")
-        // 至少有一条 RFC1918 / loopback CIDR 标为 direct（不依赖 geoip）
         XCTAssertTrue(rules.contains { r in
             (r["outboundTag"] as? String) == "direct" &&
             ((r["ip"] as? [String])?.contains("10.0.0.0/8") ?? false)
@@ -57,15 +65,12 @@ final class XrayConfigComposerTests: XCTestCase {
     }
 
     func testRoutingRulesRuleModeIncludesGeositeCn() throws {
-        let outbounds = try realTrojanOutbounds()
-        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: outbounds, mode: .rule))
+        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .rule))
         let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
-        // 应当包含 geosite:cn → direct
         XCTAssertTrue(rules.contains { r in
             (r["outboundTag"] as? String) == "direct" &&
             ((r["domain"] as? [String])?.contains("geosite:cn") ?? false)
         })
-        // 应当包含 geoip:cn → direct
         XCTAssertTrue(rules.contains { r in
             (r["outboundTag"] as? String) == "direct" &&
             ((r["ip"] as? [String])?.contains("geoip:cn") ?? false)
@@ -73,8 +78,7 @@ final class XrayConfigComposerTests: XCTestCase {
     }
 
     func testRoutingRulesDirectModeSendsAllToDirect() throws {
-        let outbounds = try realTrojanOutbounds()
-        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: outbounds, mode: .direct))
+        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .direct))
         let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
         for r in rules {
             XCTAssertEqual(r["outboundTag"] as? String, "direct")
@@ -82,51 +86,21 @@ final class XrayConfigComposerTests: XCTestCase {
     }
 
     func testDNSGlobalUsesPublicServers() throws {
-        let outbounds = try realTrojanOutbounds()
-        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: outbounds, mode: .global))
+        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global))
         let dns = json["dns"] as! [String: Any]
         let servers = dns["servers"] as! [Any]
-        // 第一个应当是 8.8.8.8 字符串
         XCTAssertEqual(servers.first as? String, "8.8.8.8")
         XCTAssertEqual(dns["queryStrategy"] as? String, "UseIP")
     }
 
     func testDNSRuleModeIncludesChinaDNS() throws {
-        let outbounds = try realTrojanOutbounds()
-        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: outbounds, mode: .rule))
+        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .rule))
         let dns = json["dns"] as! [String: Any]
         let servers = dns["servers"] as! [Any]
-        // 至少一项是字典且 address = 223.5.5.5
         let alidns = servers.first { entry in
             (entry as? [String: Any])?["address"] as? String == "223.5.5.5"
         }
         XCTAssertNotNil(alidns)
-    }
-
-    // MARK: - 各协议都能跑通 compose
-
-    func testComposeVMess() throws {
-        let json = #"""
-        {"v":"2","ps":"vmess1","add":"v.example.com","port":"443","id":"11111111-2222-3333-4444-555555555555","aid":0,"scy":"auto","net":"ws","path":"/","tls":"tls"}
-        """#
-        let link = "vmess://" + Data(json.utf8).base64EncodedString()
-        let out = try XrayCore.convertShareLinks(link)
-        let composed = try XrayConfigComposer.compose(outboundsJSON: out, mode: .global)
-        XCTAssertTrue(composed.contains("\"protocol\":\"vmess\"") || composed.contains("vmess"))
-    }
-
-    func testComposeShadowsocks() throws {
-        let link = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ=@s.example.com:8388#ss-test"
-        let out = try XrayCore.convertShareLinks(link)
-        let composed = try XrayConfigComposer.compose(outboundsJSON: out, mode: .rule)
-        XCTAssertTrue(composed.contains("shadowsocks") || composed.contains("ss"))
-    }
-
-    func testComposeVLESS() throws {
-        let link = "vless://abcd-1234@vl.example.com:443?encryption=none&security=tls&type=ws#vl"
-        let out = try XrayCore.convertShareLinks(link)
-        let composed = try XrayConfigComposer.compose(outboundsJSON: out, mode: .global)
-        XCTAssertTrue(composed.contains("vless"))
     }
 
     // MARK: - 防御性清理 libXray 错填字段

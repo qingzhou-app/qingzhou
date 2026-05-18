@@ -22,6 +22,7 @@ import Darwin
 import NetworkExtension
 import os.log
 import VPNCore
+import XrayConfig
 import XrayCore
 
 final class PacketTunnelProvider: NEPacketTunnelProvider {
