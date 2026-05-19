@@ -117,6 +117,16 @@ public struct NodesView: View {
                 Text("按延迟").tag(NodeSortOrder.latency)
             }
             .pickerStyle(.segmented)
+            if let mostRecent = state.nodes.compactMap(\.lastTestedAt).max() {
+                Label {
+                    // .relative 会自动随系统时钟刷新文字（"刚刚" / "3 分钟前" / ...）
+                    Text("上次测速 \(mostRecent, format: .relative(presentation: .named))")
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "speedometer").foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
             if let msg = autoSelectMessage {
                 Label(msg, systemImage: "wand.and.stars")
                     .font(.caption)

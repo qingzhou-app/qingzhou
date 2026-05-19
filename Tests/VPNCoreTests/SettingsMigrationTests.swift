@@ -57,4 +57,39 @@ final class SettingsMigrationTests: XCTestCase {
         s.subscriptionRefreshIntervalSeconds = 0
         XCTAssertEqual(s.subscriptionRefreshIntervalSeconds, 0)
     }
+
+    // MARK: - autoMeasureIntervalSeconds (S7 Phase 1)
+
+    /// 新加字段，旧 JSON 里不会有 —— 解码必须给默认值（30 分钟），不能崩。
+    func testDecodeWithoutAutoMeasureUsesDefault() throws {
+        // 上面 testDecodeOldSnapshotWithoutNewFields 那段 JSON 故意没 autoMeasureIntervalSeconds
+        let json = """
+        {
+          "proxyMode": "global",
+          "autoSelectTrigger": "off",
+          "subscriptionRefreshIntervalSeconds": 1800,
+          "nodeSortOrder": "name",
+          "httpPort": 8888,
+          "socksPort": 1080
+        }
+        """
+        let s = try decode(json)
+        XCTAssertEqual(s.autoMeasureIntervalSeconds, 30 * 60)
+    }
+
+    func testAutoMeasureRoundtripsZero() throws {
+        var s = Settings()
+        s.autoMeasureIntervalSeconds = 0
+        let data = try JSONEncoder().encode(s)
+        let reloaded = try JSONDecoder().decode(Settings.self, from: data)
+        XCTAssertEqual(reloaded.autoMeasureIntervalSeconds, 0)
+    }
+
+    func testAutoMeasureRoundtripsCustom() throws {
+        var s = Settings()
+        s.autoMeasureIntervalSeconds = 15 * 60
+        let data = try JSONEncoder().encode(s)
+        let reloaded = try JSONDecoder().decode(Settings.self, from: data)
+        XCTAssertEqual(reloaded.autoMeasureIntervalSeconds, 15 * 60)
+    }
 }

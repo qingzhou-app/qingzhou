@@ -374,6 +374,7 @@ public final class AppState {
             await autoSelectBestNode()
         }
         var lastAutoSelect = Date()
+        var lastMeasure = Date()
         var lastRefresh = Date()
 
         while !Task.isCancelled {
@@ -381,13 +382,26 @@ public final class AppState {
             if Task.isCancelled { break }
 
             let now = Date()
+
+            // 1) 自动测速 —— 周期性刷新延迟列，**不动 currentNodeId**。
+            //    如果 autoSelect 在 interval 模式下也运行了，它已经测过一遍，
+            //    这里 lastMeasure 跟着重置避免立刻重复测。
+            let measureInterval = settings.autoMeasureIntervalSeconds
+            if measureInterval > 0 && now.timeIntervalSince(lastMeasure) >= measureInterval {
+                await measureAllNodes()
+                lastMeasure = Date()
+            }
+
+            // 2) 自动择优 —— 测速 + 主动切到最快节点 (改 currentNodeId)
             let trigger = settings.autoSelectTrigger
             if (trigger == .interval || trigger == .onAppLaunchAndInterval)
                 && now.timeIntervalSince(lastAutoSelect) >= settings.autoSelectIntervalSeconds {
                 await autoSelectBestNode()
                 lastAutoSelect = Date()
+                lastMeasure = Date()  // autoSelectBestNode 内部已经 measure 过，避免立刻再测
             }
 
+            // 3) 自动订阅刷新
             let refreshInterval = settings.subscriptionRefreshIntervalSeconds
             if refreshInterval > 0 && now.timeIntervalSince(lastRefresh) >= refreshInterval {
                 for sub in subscriptions {

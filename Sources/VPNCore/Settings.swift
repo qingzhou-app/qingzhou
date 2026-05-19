@@ -27,6 +27,10 @@ public struct Settings: Codable, Sendable {
     public var proxyMode: ProxyMode
     public var autoSelectTrigger: AutoSelectTrigger
     public var autoSelectIntervalSeconds: TimeInterval   // 仅在 .interval / 组合时有效
+    /// 后台周期性"只测速、不换节点"间隔，秒。0 = 关闭。
+    /// 这跟 autoSelect 是两回事：autoSelect 会偷偷把 currentNodeId 改成最快的那个；
+    /// 这个只刷新延迟列，currentNodeId 不动，让 UI 的延迟数据保持新鲜。
+    public var autoMeasureIntervalSeconds: TimeInterval
     public var subscriptionRefreshIntervalSeconds: TimeInterval  // 订阅自动刷新间隔；0 表示关闭
     public var nodeSortOrder: NodeSortOrder
     public var ruleSourceURL: URL?                       // 远程规则集，可被覆盖
@@ -42,6 +46,7 @@ public struct Settings: Codable, Sendable {
         proxyMode: ProxyMode = .rule,
         autoSelectTrigger: AutoSelectTrigger = .onAppLaunch,
         autoSelectIntervalSeconds: TimeInterval = 30 * 60,
+        autoMeasureIntervalSeconds: TimeInterval = 30 * 60,
         subscriptionRefreshIntervalSeconds: TimeInterval = 3600,
         nodeSortOrder: NodeSortOrder = .latency,
         ruleSourceURL: URL? = URL(string: "https://raw.githubusercontent.com/pexcn/daily/gh-pages/shadowrocket/whitelist.conf"),
@@ -56,6 +61,7 @@ public struct Settings: Codable, Sendable {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
         self.autoSelectIntervalSeconds = autoSelectIntervalSeconds
+        self.autoMeasureIntervalSeconds = autoMeasureIntervalSeconds
         self.subscriptionRefreshIntervalSeconds = subscriptionRefreshIntervalSeconds
         self.nodeSortOrder = nodeSortOrder
         self.ruleSourceURL = ruleSourceURL
@@ -68,9 +74,10 @@ public struct Settings: Codable, Sendable {
         self.language = language
     }
 
-    /// 旧版没有 subscriptionRefreshIntervalSeconds 字段；解码时给个默认值。
+    /// 旧版没有这些 interval 字段；解码时给个默认值。
     enum CodingKeys: String, CodingKey {
         case proxyMode, autoSelectTrigger, autoSelectIntervalSeconds
+        case autoMeasureIntervalSeconds
         case subscriptionRefreshIntervalSeconds
         case nodeSortOrder, ruleSourceURL, systemProxyEnabled, launchAtLogin
         case httpPort, socksPort, logLevel, theme, language
@@ -81,6 +88,7 @@ public struct Settings: Codable, Sendable {
         self.proxyMode = try c.decodeIfPresent(ProxyMode.self, forKey: .proxyMode) ?? .rule
         self.autoSelectTrigger = try c.decodeIfPresent(AutoSelectTrigger.self, forKey: .autoSelectTrigger) ?? .onAppLaunch
         self.autoSelectIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoSelectIntervalSeconds) ?? 30 * 60
+        self.autoMeasureIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoMeasureIntervalSeconds) ?? 30 * 60
         self.subscriptionRefreshIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .subscriptionRefreshIntervalSeconds) ?? 3600
         self.nodeSortOrder = try c.decodeIfPresent(NodeSortOrder.self, forKey: .nodeSortOrder) ?? .latency
         self.ruleSourceURL = try c.decodeIfPresent(URL.self, forKey: .ruleSourceURL)

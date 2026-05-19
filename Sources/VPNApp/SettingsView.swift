@@ -72,6 +72,18 @@ public struct SettingsView: View {
 
     private var autoSelectSection: some View {
         Section("自动化") {
+            // 自动测速：周期性刷延迟列，不改 currentNodeId
+            Picker("自动测速", selection: state.setting(\.autoMeasureIntervalSeconds)) {
+                Text("关闭").tag(TimeInterval(0))
+                Text("15 分钟").tag(TimeInterval(15 * 60))
+                Text("30 分钟").tag(TimeInterval(30 * 60))
+                Text("1 小时").tag(TimeInterval(60 * 60))
+                Text("6 小时").tag(TimeInterval(6 * 60 * 60))
+            }
+            Text("只刷新延迟数据，不会自动切换当前节点。")
+                .font(.caption2).foregroundStyle(.secondary)
+
+            // 自动择优：测速 + 自动切节点
             Picker("自动择优时机", selection: state.setting(\.autoSelectTrigger)) {
                 Text("启动时").tag(AutoSelectTrigger.onAppLaunch)
                 Text("定时").tag(AutoSelectTrigger.interval)
@@ -81,6 +93,9 @@ public struct SettingsView: View {
             Stepper(value: state.setting(\.autoSelectIntervalSeconds), in: 60...86400, step: 60) {
                 LabeledContent("择优间隔", value: "\(Int(state.settings.autoSelectIntervalSeconds / 60)) 分钟")
             }
+            Text("开启后会主动把「当前节点」切到测速最快的那个 —— 如果你手选了节点不想被换，关掉这一项。")
+                .font(.caption2).foregroundStyle(.secondary)
+
             Picker("订阅自动刷新", selection: state.setting(\.subscriptionRefreshIntervalSeconds)) {
                 Text("关闭").tag(TimeInterval(0))
                 Text("15 分钟").tag(TimeInterval(15 * 60))
