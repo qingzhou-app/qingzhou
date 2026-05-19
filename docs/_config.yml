@@ -1,0 +1,35 @@
+# GitHub Pages 的 Jekyll 配置 —— 让 docs/ 目录可以直接当公开站。
+#
+# 启用方式：
+#   GitHub repo → Settings → Pages → Source: Deploy from a branch
+#   Branch: main, folder: /docs → Save
+# 第一次大约等 30 秒~1 分钟,Pages 上线后访问：
+#   https://sbraveyoung.github.io/qingzhou/
+
+title: 轻舟 / Qingzhou
+description: 跨平台 iOS / macOS 网络配置工具 — 节点订阅、路由规则、本机 VPN 客户端
+url: "https://sbraveyoung.github.io"
+baseurl: "/qingzhou"
+
+# Cayman 是 GitHub 原生支持的几款主题之一,简洁、无任何外部依赖、中文渲染没问题
+theme: jekyll-theme-cayman
+
+# 不要把这些工程文件渲染进 site
+exclude:
+  - _config.yml
+  - "*.swift"
+  - "Package.swift"
+  - "project.yml"
+  - "Apps/"
+  - "Sources/"
+  - "Tests/"
+  - "scripts/"
+  - "Frameworks/"
+  - ".build/"
+  - ".swiftpm/"
+
+# Markdown 渲染开启表格 / 删除线 / footnote
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
