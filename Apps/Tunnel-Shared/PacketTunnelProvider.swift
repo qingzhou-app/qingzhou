@@ -164,7 +164,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let cachesURL = FileManager.default
             .urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let mphCache = cachesURL.appendingPathComponent("xray-mph.cache").path
+        // mph 缓存路径**故意留空** —— libXray 的 mph 缓存 build/load 机制对不上
+        //（建好后 run 时报 "matcher not found"）。空路径时 xray 在内存里实时构建
+        // geosite/geoip matcher（rule 模式启动多几百毫秒，可接受），不依赖缓存文件，稳。
+        let mphCache = ""
 
         let fm = FileManager.default
         let geoipPath = geoDir + "/geoip.dat"
@@ -178,23 +181,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                hasGeosite ? "OK" : "MISSING")
         if !hasGeoip || !hasGeosite {
             os_log("WARNING: geo files missing — rule mode 会失败，global mode 应当还能跑（已不依赖 geoip）", log: log, type: .error)
-        }
-
-        // 5.1) 构建 mph 缓存 —— **必须在 run 之前**。
-        //   rule 模式的 routing 用 geosite:cn / geoip:cn，xray router 启动时会去「加载」
-        //   mph 缓存文件，没有就报 "failed to load file: xray-mph.cache: no such file"。
-        //   BuildMphCache 读配置文件、解析其中的 geo 引用、从 .dat 构建缓存。所以先把
-        //   config 写成临时文件再 build。global 模式没有 geo 引用，build 是空操作但无害。
-        //   best-effort：build 失败只记日志不中断 —— global 不需要缓存照样能跑；
-        //   rule 真缺缓存的话，下面 run 会再报一次明确错误。
-        let configFileURL = cachesURL.appendingPathComponent("xray-config.json")
-        do {
-            try configJSON.write(to: configFileURL, atomically: true, encoding: .utf8)
-            try XrayCore.buildMphCache(configPath: configFileURL.path, geoDir: geoDir, mphCachePath: mphCache)
-            os_log("✅ mph cache built at %{public}@", log: log, type: .default, mphCache)
-        } catch {
-            os_log("⚠️ buildMphCache 失败（global 模式可忽略）: %{public}@",
-                   log: log, type: .error, error.localizedDescription)
         }
 
         // 6) 启动 xray-core，给 socketpair 的另一端当 TUN fd
