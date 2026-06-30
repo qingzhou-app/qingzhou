@@ -299,7 +299,11 @@ private struct NodeRow: View {
                     .font(.caption.monospaced()).foregroundStyle(.secondary)
             }
             Spacer()
-            latencyChip(node.lastLatencyMs)
+            if state.measuringNodeIds.contains(node.id) {
+                ProgressView().controlSize(.small)
+            } else {
+                latencyChip(node.lastLatencyMs)
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture { state.select(node) }

@@ -33,12 +33,12 @@ public struct SettingsView: View {
                 Text("HTTP 端口")
                 Spacer()
                 TextField(
-                    "7890",
+                    "",
                     value: state.setting(\.httpPort),
                     format: .number.grouping(.never)
                 )
                 .multilineTextAlignment(.trailing)
-                .frame(width: 100)
+                .frame(width: 80)
                 #if os(iOS)
                 .keyboardType(.numberPad)
                 #endif
@@ -49,12 +49,12 @@ public struct SettingsView: View {
                 Text("SOCKS 端口")
                 Spacer()
                 TextField(
-                    "7891",
+                    "",
                     value: state.setting(\.socksPort),
                     format: .number.grouping(.never)
                 )
                 .multilineTextAlignment(.trailing)
-                .frame(width: 100)
+                .frame(width: 80)
                 #if os(iOS)
                 .keyboardType(.numberPad)
                 #endif

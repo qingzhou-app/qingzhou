@@ -28,6 +28,8 @@ public final class AppState {
     public var connections: [Connection] = []
     public var settings: Settings = Settings()
     public var lastSpeedTestReport: SpeedTestReport?
+    /// 正在测速的节点 id 集合 —— UI 据此在对应行显示旋转 loading。
+    public var measuringNodeIds: Set<UUID> = []
     public var isVPNRunning: Bool = false
     /// VPN 启停最近一次错误（拿不到 entitlement / 配置失败等）。UI 用 alert 展示。
     public var tunnelError: String?
@@ -231,19 +233,12 @@ public final class AppState {
         }
 
         // 本地代理端口：仅 macOS 启用（iOS 连不到 Extension 的 loopback）。
-        // 启动前先探端口占用，被占了立刻给清晰报错，不白白拉起整条隧道。
+        // 端口占用检测放在 Extension 里做 —— xray-core 真正去 bind，被占会报
+        // "address already in use"，PacketTunnelProvider 把它翻译成友好提示传回这里。
+        // （主 App 是沙箱进程，自己 bind/connect 探测都不可靠，所以不在这里预检。）
         var localProxyPorts: (http: Int, socks: Int)?
         #if os(macOS)
-        let http = settings.httpPort
-        let socks = settings.socksPort
-        if let occupied = PortProbe.firstOccupied(among: [http, socks]) {
-            isVPNRunning = false
-            tunnelError = "本地代理端口 \(occupied) 已被其它程序占用（可能是另一个 VPN / 代理软件）。"
-                + "请在「设置 → 端口」里改一个没被占用的端口，或退出占用该端口的程序后重试。"
-            logger.error("local proxy port \(occupied) occupied; aborting tunnel start", category: "tunnel")
-            return
-        }
-        localProxyPorts = (http: http, socks: socks)
+        localProxyPorts = (http: settings.httpPort, socks: settings.socksPort)
         #endif
 
         do {
@@ -286,9 +281,13 @@ public final class AppState {
 
     public func measureAllNodes() async {
         let testedAt = Date()
-        // 渐进式：每测完一个节点立刻刷新它那一行的延迟，不用干等全部测完。
+        // 测速开始：把所有待测（非排除）节点标记为"测速中"，UI 显示旋转 loading。
+        measuringNodeIds = Set(nodes.filter { !$0.isExcluded }.map(\.id))
+        defer { measuringNodeIds = [] }  // 不管正常结束还是取消，都清干净
+        // 渐进式：每测完一个节点立刻刷新它那一行的延迟 + 摘掉它的 loading，不用干等全部测完。
         nodes = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
             guard let self else { return }
+            self.measuringNodeIds.remove(nodeID)
             if let i = self.nodes.firstIndex(where: { $0.id == nodeID }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
                 self.nodes[i].lastTestedAt = testedAt

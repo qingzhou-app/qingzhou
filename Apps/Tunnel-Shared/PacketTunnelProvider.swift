@@ -174,8 +174,25 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             try? configJSON.write(to: dumpURL, atomically: true, encoding: .utf8)
             os_log("dumped failing config to %{public}@", log: log, type: .default, dumpURL.path)
             self.tearDownBridge()
-            completionHandler(error)
+            completionHandler(Self.friendlyError(from: error))
         }
+    }
+
+    /// 把 xray-core 的底层错误翻译成用户能看懂的提示。
+    /// 端口被占用时 xray 报 "address already in use" —— 这是本地 SOCKS/HTTP 代理端口冲突，
+    /// 给出明确的"哪个程序占了、去哪改端口"指引，而不是把 Go 的原始错误甩给用户。
+    private static func friendlyError(from error: Error) -> Error {
+        let msg = error.localizedDescription.lowercased()
+        if msg.contains("address already in use") || msg.contains("bind:") || msg.contains("eaddrinuse") {
+            return NSError(
+                domain: "com.sbraveyoung.vpn.tunnel",
+                code: 1005,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "本地代理端口已被其它程序占用（多半是另一个 VPN / 代理软件，如 Clash / Surge）。"
+                    + "请在「设置 → 端口」里把 HTTP / SOCKS 端口改成没被占用的值，或退出占用端口的程序后重试。"]
+            )
+        }
+        return error
     }
 
     // MARK: - Node → xray outbounds JSON 双路径
