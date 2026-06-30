@@ -39,19 +39,40 @@ public enum RegionDetector {
     ]
 
     /// 从节点名识别地区，返回统一中文地区名；识别不出返回 nil。
+    ///
+    /// 匹配规则按关键词类型分开，避免短国家码误命中：
+    ///   - 中文 / emoji：子串匹配（"美国"、🇭🇰 足够独特）
+    ///   - 长英文名（>3 字符，如 "Singapore"）：子串匹配（够长不会误命中）
+    ///   - 短国家码（≤3，如 US/HK/AU）：必须是独立 token，否则 "US" 会命中 "RUSSIA"、
+    ///     "AU" 命中 "AUSTRALIA"。节点名里地区码几乎总被 `-_ :|·/` 这类分隔符隔开。
     public static func detect(from name: String) -> String? {
-        let upper = name.uppercased()
+        // 把名字里的 ASCII 字母 / 数字段切成 token（"香港-HK-1" → {"HK","1"}）
+        let tokens = Set(
+            name.uppercased()
+                .split(whereSeparator: { !$0.isASCII || !($0.isLetter || $0.isNumber) })
+                .map(String.init)
+        )
         for (region, keywords) in table {
             for kw in keywords {
-                // 中文 / emoji 直接 contains；英文用大写比对避免大小写漏匹配
-                if kw.range(of: "[A-Za-z]", options: .regularExpression) != nil {
-                    if upper.contains(kw.uppercased()) { return region }
-                } else if name.contains(kw) {
-                    return region
+                let isASCII = kw.allSatisfy { $0.isASCII }
+                if !isASCII {
+                    if name.contains(kw) { return region }
+                } else {
+                    let up = kw.uppercased()
+                    if up.count <= 3 {
+                        if tokens.contains(up) { return region }    // 短码：精确 token
+                    } else {
+                        if name.uppercased().contains(up) { return region }  // 长名：子串
+                    }
                 }
             }
         }
         return nil
+    }
+
+    /// 节点的地区名，识别不出归为「其它」。
+    public static func regionOrOther(for name: String) -> String {
+        detect(from: name) ?? unknownDisplayName
     }
 
     /// UI 兜底名：识别不出时显示「其它」。

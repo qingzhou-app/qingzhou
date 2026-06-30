@@ -118,6 +118,64 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(result.target, .proxy)
     }
 
+    // MARK: - 地区排除 / 优先
+
+    private func makeMeasuredNodes() -> [Node] {
+        [
+            Node(name: "香港-HK-1", protocolType: .trojan, host: "hk.com", port: 443, lastLatencyMs: 20),
+            Node(name: "日本-JP-1", protocolType: .trojan, host: "jp.com", port: 443, lastLatencyMs: 80),
+            Node(name: "美国-US-1", protocolType: .trojan, host: "us.com", port: 443, lastLatencyMs: 150),
+        ]
+    }
+
+    func testPickBestSkipsExcludedRegion() {
+        let state = makeState()
+        state.nodes = makeMeasuredNodes()
+        // 排除香港（最快的）→ 应选次快的日本
+        state.settings.excludedRegions = ["香港"]
+        let best = state.pickBestRespectingRegions(from: state.nodes)
+        XCTAssertEqual(best?.region, "日本")
+    }
+
+    func testPreferredRegionWinsEvenIfSlower() {
+        let state = makeState()
+        state.nodes = makeMeasuredNodes()
+        // 优先美国（最慢的）→ 仍应选美国
+        state.settings.preferredRegion = "美国"
+        let best = state.pickBestRespectingRegions(from: state.nodes)
+        XCTAssertEqual(best?.region, "美国")
+    }
+
+    func testPreferredRegionFallsBackWhenEmpty() {
+        let state = makeState()
+        state.nodes = makeMeasuredNodes()
+        // 优先一个没有节点的地区 → 回退全局最快（香港）
+        state.settings.preferredRegion = "德国"
+        let best = state.pickBestRespectingRegions(from: state.nodes)
+        XCTAssertEqual(best?.region, "香港")
+    }
+
+    func testRegionCounts() {
+        let state = makeState()
+        state.nodes = makeMeasuredNodes() + [
+            Node(name: "香港-HK-2", protocolType: .trojan, host: "hk2.com", port: 443)
+        ]
+        let counts = Dictionary(uniqueKeysWithValues: state.regionCounts.map { ($0.region, $0.count) })
+        XCTAssertEqual(counts["香港"], 2)
+        XCTAssertEqual(counts["日本"], 1)
+    }
+
+    func testToggleRegionExclusionClearsCurrentInThatRegion() {
+        let state = makeState()
+        state.nodes = makeMeasuredNodes()
+        let hk = state.nodes.first { $0.region == "香港" }!
+        state.select(hk)
+        XCTAssertEqual(state.currentNodeId, hk.id)
+        state.toggleRegionExclusion("香港")
+        XCTAssertTrue(state.settings.excludedRegions.contains("香港"))
+        XCTAssertNil(state.currentNodeId, "排除当前节点所在地区后应清空当前选择")
+    }
+
     func testSchedulersStartAndCancelCleanly() async {
         let state = makeState()
         state.startSchedulers()

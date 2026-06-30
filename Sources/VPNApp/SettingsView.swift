@@ -10,6 +10,7 @@ public struct SettingsView: View {
         Form {
             proxySection
             autoSelectSection
+            regionSection
             appearanceSection
             ruleSourceSection
             shellSnippetSection
@@ -116,6 +117,50 @@ public struct SettingsView: View {
             Text("当前节点：\(state.currentNode?.name ?? "未选")")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private var regionSection: some View {
+        Section {
+            let regions = state.regionCounts
+            if regions.isEmpty {
+                Text("还没有节点，添加订阅后这里会列出各地区。")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                // 优先地区
+                Picker("优先地区", selection: state.setting(\.preferredRegion)) {
+                    Text("无（只比延迟）").tag(String?.none)
+                    ForEach(regions, id: \.region) { item in
+                        Text(item.region).tag(String?.some(item.region))
+                    }
+                }
+                Text("自动择优时，若优先地区有可用节点，从中选最快的；否则全局选最快。")
+                    .font(.caption2).foregroundStyle(.secondary)
+
+                // 地区排除列表
+                ForEach(regions, id: \.region) { item in
+                    Toggle(isOn: regionExcludedBinding(item.region)) {
+                        HStack {
+                            Text(item.region)
+                            Text("\(item.count) 个节点")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Text("打开开关 = 排除该地区的所有节点（不参与自动择优、不会被自动选中）。"
+                     + "例如排除「香港」以避开 Anthropic / OpenAI 等对香港 IP 的限制。")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("地区")
+        }
+    }
+
+    /// 某地区是否被排除的 Binding（toggle）。
+    private func regionExcludedBinding(_ region: String) -> Binding<Bool> {
+        Binding(
+            get: { state.settings.excludedRegions.contains(region) },
+            set: { _ in state.toggleRegionExclusion(region) }
+        )
     }
 
     private var appearanceSection: some View {

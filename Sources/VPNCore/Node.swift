@@ -62,6 +62,11 @@ extension Node {
         let credential = password ?? uuid ?? ""
         return "\(protocolType.rawValue)://\(credential)@\(host):\(port)"
     }
+
+    /// 从节点名识别出的地区（统一中文名）；识别不出为「其它」。用于地区维度的排除 / 优先。
+    public var region: String {
+        RegionDetector.regionOrOther(for: name)
+    }
 }
 
 public enum NodeSortOrder: String, Codable, Sendable {

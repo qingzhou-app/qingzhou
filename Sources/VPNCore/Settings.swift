@@ -33,6 +33,12 @@ public struct Settings: Codable, Sendable {
     public var autoMeasureIntervalSeconds: TimeInterval
     public var subscriptionRefreshIntervalSeconds: TimeInterval  // 订阅自动刷新间隔；0 表示关闭
     public var nodeSortOrder: NodeSortOrder
+    /// 被排除的地区（如 ["香港"]）。这些地区的所有节点不参与自动择优、不会被自动选中。
+    /// 解决 Anthropic / OpenAI 等对某些地区 IP 不开放的问题。
+    public var excludedRegions: Set<String>
+    /// 优先地区（如 "日本"）。自动择优时若该地区有可用节点，优先从中选最快的；
+    /// 没有则回退到全局最快。nil = 无偏好。
+    public var preferredRegion: String?
     public var ruleSourceURL: URL?                       // 远程规则集，可被覆盖
     public var systemProxyEnabled: Bool                  // macOS：是否设置系统代理
     public var launchAtLogin: Bool                       // macOS：开机自启
@@ -49,6 +55,8 @@ public struct Settings: Codable, Sendable {
         autoMeasureIntervalSeconds: TimeInterval = 30 * 60,
         subscriptionRefreshIntervalSeconds: TimeInterval = 3600,
         nodeSortOrder: NodeSortOrder = .latency,
+        excludedRegions: Set<String> = [],
+        preferredRegion: String? = nil,
         ruleSourceURL: URL? = URL(string: "https://raw.githubusercontent.com/pexcn/daily/gh-pages/shadowrocket/whitelist.conf"),
         systemProxyEnabled: Bool = false,
         launchAtLogin: Bool = false,
@@ -64,6 +72,8 @@ public struct Settings: Codable, Sendable {
         self.autoMeasureIntervalSeconds = autoMeasureIntervalSeconds
         self.subscriptionRefreshIntervalSeconds = subscriptionRefreshIntervalSeconds
         self.nodeSortOrder = nodeSortOrder
+        self.excludedRegions = excludedRegions
+        self.preferredRegion = preferredRegion
         self.ruleSourceURL = ruleSourceURL
         self.systemProxyEnabled = systemProxyEnabled
         self.launchAtLogin = launchAtLogin
@@ -79,7 +89,8 @@ public struct Settings: Codable, Sendable {
         case proxyMode, autoSelectTrigger, autoSelectIntervalSeconds
         case autoMeasureIntervalSeconds
         case subscriptionRefreshIntervalSeconds
-        case nodeSortOrder, ruleSourceURL, systemProxyEnabled, launchAtLogin
+        case nodeSortOrder, excludedRegions, preferredRegion
+        case ruleSourceURL, systemProxyEnabled, launchAtLogin
         case httpPort, socksPort, logLevel, theme, language
     }
 
@@ -91,6 +102,8 @@ public struct Settings: Codable, Sendable {
         self.autoMeasureIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoMeasureIntervalSeconds) ?? 30 * 60
         self.subscriptionRefreshIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .subscriptionRefreshIntervalSeconds) ?? 3600
         self.nodeSortOrder = try c.decodeIfPresent(NodeSortOrder.self, forKey: .nodeSortOrder) ?? .latency
+        self.excludedRegions = try c.decodeIfPresent(Set<String>.self, forKey: .excludedRegions) ?? []
+        self.preferredRegion = try c.decodeIfPresent(String.self, forKey: .preferredRegion)
         self.ruleSourceURL = try c.decodeIfPresent(URL.self, forKey: .ruleSourceURL)
             ?? URL(string: "https://raw.githubusercontent.com/pexcn/daily/gh-pages/shadowrocket/whitelist.conf")
         self.systemProxyEnabled = try c.decodeIfPresent(Bool.self, forKey: .systemProxyEnabled) ?? false

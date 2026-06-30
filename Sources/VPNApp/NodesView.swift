@@ -290,6 +290,8 @@ private struct NodeRow: View {
                     Text(node.name).font(.body)
                     if node.isExcluded {
                         tag("已排除", color: .secondary)
+                    } else if state.settings.excludedRegions.contains(node.region) {
+                        tag("地区已排除", color: .orange)
                     }
                     if node.subscriptionId != nil {
                         tag("订阅", color: .blue)

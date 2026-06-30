@@ -121,6 +121,33 @@ public final class AppState {
     public var sortedNodes: [Node] { nodes.sorted(by: settings.nodeSortOrder) }
     public var currentNode: Node? { nodes.first { $0.id == currentNodeId } }
 
+    // MARK: - 地区
+
+    /// 当前所有节点覆盖的地区 → 节点数，按节点数降序。用于设置页地区列表。
+    public var regionCounts: [(region: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for n in nodes { counts[n.region, default: 0] += 1 }
+        return counts.sorted { $0.value > $1.value || ($0.value == $1.value && $0.key < $1.key) }
+            .map { (region: $0.key, count: $0.value) }
+    }
+
+    /// 节点是否被「有效排除」：手动排除 OR 所在地区被排除。
+    public func isEffectivelyExcluded(_ node: Node) -> Bool {
+        node.isExcluded || settings.excludedRegions.contains(node.region)
+    }
+
+    /// 切换某地区的排除状态。排除时若当前节点在该地区，清空当前选择。
+    public func toggleRegionExclusion(_ region: String) {
+        if settings.excludedRegions.contains(region) {
+            settings.excludedRegions.remove(region)
+        } else {
+            settings.excludedRegions.insert(region)
+            if let cur = currentNode, cur.region == region { currentNodeId = nil }
+        }
+        logger.info("Region \(region) excluded=\(settings.excludedRegions.contains(region))", category: "app")
+        persist()
+    }
+
     public func toggleExclusion(_ node: Node) {
         guard let idx = nodes.firstIndex(where: { $0.id == node.id }) else { return }
         nodes[idx].isExcluded.toggle()
@@ -281,13 +308,29 @@ public final class AppState {
             }
         }
         nodes = measured
-        if let best = await nodeSelector.pickBest(from: measured) {
+        if let best = pickBestRespectingRegions(from: measured) {
             currentNodeId = best.id
-            logger.info("Auto-selected \(best.name) (\(best.lastLatencyMs ?? -1)ms)", category: "app")
+            logger.info("Auto-selected \(best.name) [\(best.region)] (\(best.lastLatencyMs ?? -1)ms)", category: "app")
         } else {
             logger.warn("Auto-select found no viable node", category: "app")
         }
         persist()
+    }
+
+    /// 在测速结果里挑最佳节点，应用「地区排除」+「地区优先」：
+    /// 1. 先剔除有效排除（手动排除 / 地区排除）和测速失败的节点
+    /// 2. 若设了优先地区且该地区有可用节点，从中选延迟最低的
+    /// 3. 否则全局选延迟最低的
+    func pickBestRespectingRegions(from measured: [Node]) -> Node? {
+        let viable = measured.filter { !isEffectivelyExcluded($0) && $0.lastLatencyMs != nil }
+        guard !viable.isEmpty else { return nil }
+        if let pref = settings.preferredRegion {
+            let inPref = viable.filter { $0.region == pref }
+            if let best = inPref.min(by: { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }) {
+                return best
+            }
+        }
+        return viable.min(by: { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) })
     }
 
     public func measureAllNodes() async {
