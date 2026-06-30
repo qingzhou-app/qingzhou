@@ -40,8 +40,11 @@ extension AppState {
     public func refreshPublicIPInfo() async {
         let svc = NetworkInfoService(logger: logger)
         do {
-            publicIPInfo = try await svc.fetchPublicIPInfo()
-            logger.info("Public IP: \(publicIPInfo?.ip ?? "?")", category: "network")
+            let info = try await svc.fetchPublicIPInfo()
+            publicIPInfo = info
+            // VPN 开着查到的是节点出口 IP，关着是本机直连 IP。分别缓存，首页并排对比。
+            if isVPNRunning { proxyIPInfo = info } else { directIPInfo = info }
+            logger.info("Public IP (\(isVPNRunning ? "proxy" : "direct")): \(info.ip)", category: "network")
         } catch {
             logger.warn("Fetch public IP failed: \(error)", category: "network")
         }

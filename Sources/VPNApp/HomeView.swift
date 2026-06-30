@@ -152,22 +152,9 @@ public struct HomeView: View {
 
     private var networkCard: some View {
         Card(title: "公网 IP", systemImage: "globe") {
-            if let info = state.publicIPInfo {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(info.ip).font(.headline.monospaced())
-                    if let country = info.country {
-                        Text([info.city, info.region, country].compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    if let isp = info.isp {
-                        Text(isp).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    Text("更新于 \(info.fetchedAt.formatted(.relative(presentation: .named)))")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-            } else {
-                Text(isRefreshingIP ? "查询中…" : "尚未获取").foregroundStyle(.secondary)
-            }
+            ipRow(title: "节点出口", info: state.proxyIPInfo, tint: .blue)
+            Divider().padding(.vertical, 4)
+            ipRow(title: "直连（不走节点）", info: state.directIPInfo, tint: .green)
             HStack {
                 Spacer()
                 Button {
@@ -183,6 +170,28 @@ public struct HomeView: View {
                 .disabled(isRefreshingIP)
             }
         }
+    }
+
+    private func ipRow(title: String, info: PublicIPInfo?, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Circle().fill(tint).frame(width: 7, height: 7)
+                Text(title).font(.caption).foregroundStyle(.secondary)
+            }
+            if let info {
+                Text(info.ip).font(.callout.monospaced())
+                let loc = [info.city, info.region, info.country].compactMap { $0 }.joined(separator: " · ")
+                if !loc.isEmpty {
+                    Text(loc).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Text("更新于 \(info.fetchedAt.formatted(.relative(presentation: .named)))")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            } else {
+                Text(isRefreshingIP ? "查询中…" : "尚未获取")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var trafficCard: some View {

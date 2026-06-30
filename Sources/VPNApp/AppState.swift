@@ -41,6 +41,10 @@ public final class AppState {
 
     /// 公网 IP / 地理信息，由 NetworkInfoService 异步填充。
     public var publicIPInfo: PublicIPInfo?
+    /// 不走 VPN 的出口 IP（VPN 关闭时查询到，缓存展示）。
+    public var directIPInfo: PublicIPInfo?
+    /// 走 VPN / 节点出口的 IP（VPN 开启时查询到）。
+    public var proxyIPInfo: PublicIPInfo?
     /// 远程规则源最近一次拉取时间 / 错误。
     public var remoteRulesStatus: RemoteFetchStatus = .idle
     /// 订阅最近一次刷新错误（按 id 索引），仅保留最近一条错误信息。
