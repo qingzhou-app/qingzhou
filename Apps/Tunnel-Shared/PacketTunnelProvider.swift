@@ -180,6 +180,16 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             os_log("WARNING: geo files missing — rule mode 会失败，global mode 应当还能跑（已不依赖 geoip）", log: log, type: .error)
         }
 
+        // 5.1) 每次启动前删掉 mph 缓存。
+        //   关 VPN 时 Extension 进程被 launchd 直接杀掉，如果上次 xray 正在写这个缓存，
+        //   会留下一个损坏的缓存文件。之后 libXray 启动时（不论 rule 还是 global 模式都会读它）
+        //   加载到坏 geo 数据 → 需代理的域名被错误分流到直连 → 访问不到，且重启也救不回。
+        //   删掉强制用 .dat 重建，代价是 rule 模式每次启动多几百毫秒（global 不加载 geo，无感）。
+        if fm.fileExists(atPath: mphCache) {
+            try? fm.removeItem(atPath: mphCache)
+            os_log("cleared stale mph cache before start", log: log, type: .default)
+        }
+
         // 6) 启动 xray-core，给 socketpair 的另一端当 TUN fd
         os_log("calling XrayCore.setTunFd + run …", log: log, type: .default)
         XrayCore.setTunFd(pair.xray)
