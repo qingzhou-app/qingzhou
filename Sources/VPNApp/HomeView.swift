@@ -285,7 +285,7 @@ public struct HomeView: View {
                 #else
                 statRow("平台", value: "iOS")
                 #endif
-                statRow("HTTP / SOCKS", value: "\(state.settings.httpPort) / \(state.settings.socksPort)")
+                statRow("模式", value: "TUN（虚拟网卡）")
                 statRow("日志级别", value: state.settings.logLevel)
                 statRow("规则数", value: "\(state.customRules.count + state.remoteRules.count)")
             }

@@ -102,8 +102,7 @@ public final class VPNTunnelManager {
         node: Node,
         mode: ProxyMode,
         shareLink: String,
-        description: String = "VPN",
-        localProxyPorts: (http: Int, socks: Int)? = nil
+        description: String = "VPN"
     ) async throws {
         if manager == nil { try await load() }
         guard let manager = manager else { throw TunnelError.managerNotLoaded }
@@ -130,19 +129,13 @@ public final class VPNTunnelManager {
         // 把启动信息塞进 providerConfiguration —— 系统保存在 VPN preferences 里，
         // Extension 启动时通过 protocolConfiguration.providerConfiguration 读出来。
         // 不再需要 App Group 共享存储，因此不会触发「访问其他 App 数据」隐私弹窗。
-        var providerConfig: [String: Any] = [
+        proto.providerConfiguration = [
             "nodeJSON": nodeJSON,
             "shareLink": shareLink,  // fallback 通道
             "nodeId": node.id.uuidString,
             "nodeName": node.name,
             "proxyMode": mode.rawValue
         ]
-        // 本地代理端口仅 macOS 传 —— 调用方（AppState）按平台决定是否传入。
-        if let lp = localProxyPorts {
-            providerConfig["localProxyHttpPort"] = NSNumber(value: lp.http)
-            providerConfig["localProxySocksPort"] = NSNumber(value: lp.socks)
-        }
-        proto.providerConfiguration = providerConfig
 
         manager.protocolConfiguration = proto
         manager.localizedDescription = description

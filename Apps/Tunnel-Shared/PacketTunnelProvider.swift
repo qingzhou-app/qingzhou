@@ -69,32 +69,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let modeRaw = (providerConfig?["proxyMode"] as? String) ?? ProxyMode.global.rawValue
         let mode = ProxyMode(rawValue: modeRaw) ?? .global
 
-        // 本地代理端口：仅 macOS 会塞这两个值（iOS 用不上 loopback 代理 + 省内存）。
-        // 关键：逐个探端口占用，被占的跳过 —— 附属的本地代理绝不能拖垮 TUN 主通道。
-        // Extension 有 network.server entitlement，所以这里 bind 探测是有效的（主 App 沙箱里则不行）。
-        var localHTTP: Int?
-        var localSOCKS: Int?
-        if let http = (providerConfig?["localProxyHttpPort"] as? NSNumber)?.intValue {
-            if Self.portIsBindable(http) {
-                localHTTP = http
-            } else {
-                os_log("⚠️ 本地 HTTP 端口 %d 被占用，跳过该 inbound（TUN 不受影响）",
-                       log: log, type: .error, http)
-            }
-        }
-        if let socks = (providerConfig?["localProxySocksPort"] as? NSNumber)?.intValue {
-            if Self.portIsBindable(socks) {
-                localSOCKS = socks
-            } else {
-                os_log("⚠️ 本地 SOCKS 端口 %d 被占用，跳过该 inbound（TUN 不受影响）",
-                       log: log, type: .error, socks)
-            }
-        }
-        os_log("local proxy inbounds: http=%{public}@ socks=%{public}@",
-               log: log, type: .default,
-               localHTTP.map(String.init) ?? "skip",
-               localSOCKS.map(String.init) ?? "skip")
-
         os_log("starting tunnel for node: %{public}@ mode=%{public}@",
                log: log, type: .default, nodeName, mode.rawValue)
 
@@ -102,9 +76,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let xrayJSON: String
         do {
             let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
-            xrayJSON = try XrayConfigComposer.compose(
-                outboundsJSON: outboundsJSON, mode: mode,
-                localHTTPPort: localHTTP, localSOCKSPort: localSOCKS)
+            xrayJSON = try XrayConfigComposer.compose(outboundsJSON: outboundsJSON, mode: mode)
         } catch {
             os_log("share link → xray config 转换失败: %{public}@",
                    log: log, type: .error, error.localizedDescription)
@@ -196,45 +168,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             try? configJSON.write(to: dumpURL, atomically: true, encoding: .utf8)
             os_log("dumped failing config to %{public}@", log: log, type: .default, dumpURL.path)
             self.tearDownBridge()
-            completionHandler(Self.friendlyError(from: error))
+            completionHandler(error)
         }
-    }
-
-    /// 探测一个本地端口能否绑定（Extension 有 network.server，bind 在这里是有效的）。
-    /// 用 bind() 测试：能绑上=空闲（随即 close 释放），EADDRINUSE=被占。
-    /// 加 SO_REUSEADDR=0 的语义靠默认，确保探测真实占用。
-    private static func portIsBindable(_ port: Int, host: String = "127.0.0.1") -> Bool {
-        guard (1...65535).contains(port) else { return false }
-        let fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        var addr = sockaddr_in()
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = in_port_t(UInt16(port)).bigEndian
-        addr.sin_addr.s_addr = inet_addr(host)
-        let r = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-                Darwin.bind(fd, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        return r == 0
-    }
-
-    /// 把 xray-core 的底层错误翻译成用户能看懂的提示。
-    /// 端口被占用时 xray 报 "address already in use" —— 这是本地 SOCKS/HTTP 代理端口冲突，
-    /// 给出明确的"哪个程序占了、去哪改端口"指引，而不是把 Go 的原始错误甩给用户。
-    private static func friendlyError(from error: Error) -> Error {
-        let msg = error.localizedDescription.lowercased()
-        if msg.contains("address already in use") || msg.contains("bind:") || msg.contains("eaddrinuse") {
-            return NSError(
-                domain: "com.sbraveyoung.vpn.tunnel",
-                code: 1005,
-                userInfo: [NSLocalizedDescriptionKey:
-                    "本地代理端口已被其它程序占用（多半是另一个 VPN / 代理软件，如 Clash / Surge）。"
-                    + "请在「设置 → 端口」里把 HTTP / SOCKS 端口改成没被占用的值，或退出占用端口的程序后重试。"]
-            )
-        }
-        return error
     }
 
     // MARK: - Node → xray outbounds JSON 双路径

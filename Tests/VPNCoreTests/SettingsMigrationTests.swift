@@ -13,13 +13,13 @@ final class SettingsMigrationTests: XCTestCase {
     func testDecodeEmptyJSONUsesDefaults() throws {
         let s = try decode("{}")
         XCTAssertEqual(s.proxyMode, .rule)
-        XCTAssertEqual(s.httpPort, 7890)
         XCTAssertEqual(s.subscriptionRefreshIntervalSeconds, 3600)
         XCTAssertEqual(s.theme, .system)
     }
 
-    func testDecodeOldSnapshotWithoutNewFields() throws {
-        // 模拟阶段 1.5 之前的 settings.json：没有 subscriptionRefreshIntervalSeconds
+    func testDecodeOldSnapshotWithRemovedFields() throws {
+        // 旧 settings.json 里可能还残留已移除的 httpPort/socksPort/systemProxyEnabled，
+        // 解码应当忽略它们、不崩。
         let json = """
         {
           "proxyMode": "global",
@@ -37,10 +37,8 @@ final class SettingsMigrationTests: XCTestCase {
         """
         let s = try decode(json)
         XCTAssertEqual(s.proxyMode, .global)
-        XCTAssertEqual(s.httpPort, 8888)
         XCTAssertEqual(s.theme, .dark)
         XCTAssertEqual(s.language, .en)
-        // 新字段拿默认值，不应崩
         XCTAssertEqual(s.subscriptionRefreshIntervalSeconds, 3600)
     }
 

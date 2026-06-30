@@ -33,7 +33,7 @@ final class PersistenceTests: XCTestCase {
         let sub = Subscription(name: "s1", url: URL(string: "https://x.com/sub")!)
         var settings = Settings()
         settings.proxyMode = .global
-        settings.httpPort = 9999
+        settings.logLevel = "WARN"
 
         let snap = Persistence.Snapshot(
             subscriptions: [sub],
@@ -50,7 +50,7 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.nodes.first?.name, "n1")
         XCTAssertEqual(loaded.customRules.first?.value, "google.com")
         XCTAssertEqual(loaded.settings.proxyMode, .global)
-        XCTAssertEqual(loaded.settings.httpPort, 9999)
+        XCTAssertEqual(loaded.settings.logLevel, "WARN")
         XCTAssertEqual(loaded.currentNodeId, nodeId)
     }
 

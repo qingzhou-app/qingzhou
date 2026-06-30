@@ -32,21 +32,16 @@ public enum XrayConfigComposer {
         }
     }
 
-    /// 拼装完整 xray 配置。
+    /// 拼装完整 xray 配置。只有一个 `tun` inbound —— 整机流量走 TUN。
+    /// （不再开本地 HTTP/SOCKS inbound：TUN 已接管所有流量，本地代理纯属冗余，
+    /// 还会带来端口冲突。系统代理模式已彻底移除。）
     /// - Parameters:
     ///   - outboundsJSON: libXray.convertShareLinks 的返回（顶层是 {"outbounds":[...]}）
     ///   - mode: 用户选的代理模式（global / rule / direct）
     /// - Returns: 可以直接喂给 `XrayCore.run(configJSON:)` 的完整 xray JSON
-    /// 本地代理监听端口（仅 macOS）。`nil` = 不开这个 inbound。
-    ///
-    /// HTTP 和 SOCKS 是两个独立可选端口 —— 调用方（Extension）会先探端口占用，
-    /// 被占的传 nil 跳过，**但不影响 TUN 主通道**。这样附属的本地代理永远不会拖垮翻墙核心。
-    /// 注意：xray-core 没有 Clash 那种单端口混合（mixed-port），HTTP / SOCKS 各占一个端口。
     public static func compose(
         outboundsJSON: String,
-        mode: ProxyMode,
-        localHTTPPort: Int? = nil,
-        localSOCKSPort: Int? = nil
+        mode: ProxyMode
     ) throws -> String {
         guard let data = outboundsJSON.data(using: .utf8),
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -71,7 +66,7 @@ public enum XrayConfigComposer {
 
         // tun inbound：MTU 跟 PacketTunnelProvider 里 setTunnelNetworkSettings 保持一致。
         // sniffing 开启：让 xray 从 TLS SNI / HTTP Host 提取真实域名，便于按域名路由。
-        var inbounds: [[String: Any]] = [[
+        let inbounds: [[String: Any]] = [[
             "tag": "tun-in",
             "protocol": "tun",
             "settings": [
@@ -84,38 +79,6 @@ public enum XrayConfigComposer {
                 "routeOnly": false
             ]
         ]]
-
-        // macOS：额外开本地 SOCKS5 / HTTP inbound，让系统代理 / 终端 env var 能用。
-        // 都绑在 127.0.0.1，不对外暴露。loopback 不走 TUN，所以不会形成回环。
-        // 端口被占的传 nil 跳过 —— 附属功能缺失，但 TUN 主通道照常。
-        if let socks = localSOCKSPort {
-            inbounds.append([
-                "tag": "socks-in",
-                "protocol": "socks",
-                "listen": "127.0.0.1",
-                "port": socks,
-                "settings": [
-                    "udp": true,
-                    "auth": "noauth"
-                ],
-                "sniffing": [
-                    "enabled": true,
-                    "destOverride": ["http", "tls", "quic"]
-                ]
-            ])
-        }
-        if let http = localHTTPPort {
-            inbounds.append([
-                "tag": "http-in",
-                "protocol": "http",
-                "listen": "127.0.0.1",
-                "port": http,
-                "sniffing": [
-                    "enabled": true,
-                    "destOverride": ["http", "tls"]
-                ]
-            ])
-        }
 
         let config: [String: Any] = [
             "log": ["loglevel": "warning"],

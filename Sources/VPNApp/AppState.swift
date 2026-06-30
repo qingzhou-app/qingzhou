@@ -259,23 +259,13 @@ public final class AppState {
             return
         }
 
-        // 本地代理端口：仅 macOS 启用（iOS 连不到 Extension 的 loopback）。
-        // 端口占用检测放在 Extension 里做 —— xray-core 真正去 bind，被占会报
-        // "address already in use"，PacketTunnelProvider 把它翻译成友好提示传回这里。
-        // （主 App 是沙箱进程，自己 bind/connect 探测都不可靠，所以不在这里预检。）
-        var localProxyPorts: (http: Int, socks: Int)?
-        #if os(macOS)
-        localProxyPorts = (http: settings.httpPort, socks: settings.socksPort)
-        #endif
-
         do {
             // description 带节点名，方便用户在「系统设置 → 网络 → VPN」里识别
             try await tunnelManager.configure(
                 node: node,
                 mode: settings.proxyMode,
                 shareLink: shareLink,
-                description: "轻舟 · \(node.name)",
-                localProxyPorts: localProxyPorts
+                description: "轻舟 · \(node.name)"
             )
             try await tunnelManager.start()
             isVPNRunning = true

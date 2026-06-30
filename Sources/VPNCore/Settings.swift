@@ -40,10 +40,7 @@ public struct Settings: Codable, Sendable {
     /// 没有则回退到全局最快。nil = 无偏好。
     public var preferredRegion: String?
     public var ruleSourceURL: URL?                       // 远程规则集，可被覆盖
-    public var systemProxyEnabled: Bool                  // macOS：是否设置系统代理
     public var launchAtLogin: Bool                       // macOS：开机自启
-    public var httpPort: Int
-    public var socksPort: Int
     public var logLevel: String                          // 用字符串以解耦 VPNLogging
     public var theme: AppearanceTheme
     public var language: AppLanguage
@@ -58,10 +55,7 @@ public struct Settings: Codable, Sendable {
         excludedRegions: Set<String> = [],
         preferredRegion: String? = nil,
         ruleSourceURL: URL? = URL(string: "https://raw.githubusercontent.com/pexcn/daily/gh-pages/shadowrocket/whitelist.conf"),
-        systemProxyEnabled: Bool = false,
         launchAtLogin: Bool = false,
-        httpPort: Int = 7890,
-        socksPort: Int = 7891,
         logLevel: String = "INFO",
         theme: AppearanceTheme = .system,
         language: AppLanguage = .system
@@ -75,10 +69,7 @@ public struct Settings: Codable, Sendable {
         self.excludedRegions = excludedRegions
         self.preferredRegion = preferredRegion
         self.ruleSourceURL = ruleSourceURL
-        self.systemProxyEnabled = systemProxyEnabled
         self.launchAtLogin = launchAtLogin
-        self.httpPort = httpPort
-        self.socksPort = socksPort
         self.logLevel = logLevel
         self.theme = theme
         self.language = language
@@ -90,8 +81,8 @@ public struct Settings: Codable, Sendable {
         case autoMeasureIntervalSeconds
         case subscriptionRefreshIntervalSeconds
         case nodeSortOrder, excludedRegions, preferredRegion
-        case ruleSourceURL, systemProxyEnabled, launchAtLogin
-        case httpPort, socksPort, logLevel, theme, language
+        case ruleSourceURL, launchAtLogin
+        case logLevel, theme, language
     }
 
     public init(from decoder: Decoder) throws {
@@ -106,10 +97,7 @@ public struct Settings: Codable, Sendable {
         self.preferredRegion = try c.decodeIfPresent(String.self, forKey: .preferredRegion)
         self.ruleSourceURL = try c.decodeIfPresent(URL.self, forKey: .ruleSourceURL)
             ?? URL(string: "https://raw.githubusercontent.com/pexcn/daily/gh-pages/shadowrocket/whitelist.conf")
-        self.systemProxyEnabled = try c.decodeIfPresent(Bool.self, forKey: .systemProxyEnabled) ?? false
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
-        self.httpPort = try c.decodeIfPresent(Int.self, forKey: .httpPort) ?? 7890
-        self.socksPort = try c.decodeIfPresent(Int.self, forKey: .socksPort) ?? 7891
         self.logLevel = try c.decodeIfPresent(String.self, forKey: .logLevel) ?? "INFO"
         self.theme = try c.decodeIfPresent(AppearanceTheme.self, forKey: .theme) ?? .system
         self.language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
