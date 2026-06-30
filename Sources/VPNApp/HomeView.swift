@@ -193,6 +193,9 @@ public struct HomeView: View {
             let curUp = state.connections.filter { $0.isActive }.reduce(0) { $0 + $1.uploadSpeedBps }
             let curDown = state.connections.filter { $0.isActive }.reduce(0) { $0 + $1.downloadSpeedBps }
             VStack(alignment: .leading, spacing: 8) {
+                TrafficWaveform(history: state.trafficHistory)
+                    .frame(height: 56)
+                    .padding(.bottom, 2)
                 statRow("活跃连接", value: "\(active)")
                 statRow("总上行", value: ByteFormatter.format(totalUp))
                 statRow("总下行", value: ByteFormatter.format(totalDown))
@@ -379,5 +382,47 @@ struct Card<Content: View>: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// 实时流量波形：下行（蓝）/上行（绿）两条速率曲线，最新样本贴右端滚入。
+/// 纵轴按窗口峰值归一化。数据来自 `AppState.trafficHistory`（真隧道上报或采样驱动）。
+struct TrafficWaveform: View {
+    let history: TrafficHistory
+
+    var body: some View {
+        Canvas { ctx, size in
+            let samples = history.samples
+            guard samples.count > 1 else { return }
+            let peak = CGFloat(max(history.peakSpeed, 1))
+            let stepX = size.width / CGFloat(max(history.capacity - 1, 1))
+            let n = samples.count
+
+            func line(_ keyPath: (TrafficStats) -> Int64) -> Path {
+                var p = Path()
+                for (i, s) in samples.enumerated() {
+                    let x = size.width - CGFloat(n - 1 - i) * stepX
+                    let y = size.height - CGFloat(keyPath(s)) / peak * size.height
+                    if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
+                    else { p.addLine(to: CGPoint(x: x, y: y)) }
+                }
+                return p
+            }
+            ctx.stroke(line(\.downloadSpeedBps), with: .color(.blue), lineWidth: 1.6)
+            ctx.stroke(line(\.uploadSpeedBps), with: .color(.green), lineWidth: 1.6)
+        }
+        .overlay(alignment: .topLeading) {
+            if history.samples.count <= 1 {
+                Text("等待流量…").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 8) {
+                Label("下行", systemImage: "circle.fill").foregroundStyle(.blue)
+                Label("上行", systemImage: "circle.fill").foregroundStyle(.green)
+            }
+            .font(.system(size: 9)).labelStyle(.titleAndIcon)
+        }
+        .background(.background.tertiary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

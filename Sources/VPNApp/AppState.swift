@@ -26,6 +26,9 @@ public final class AppState {
     public var customRules: [Rule] = []
     public var remoteRules: [Rule] = []
     public var connections: [Connection] = []
+    /// 实时流量波形数据（滑动窗口）。真隧道经 App Group 上报 `TrafficStats` 后喂进来；
+    /// 接入前由 sampleConnectionsLoop 用聚合速率驱动，让波形 UI 先跑起来。
+    public var trafficHistory = TrafficHistory(capacity: 60)
     public var settings: Settings = Settings()
     public var lastSpeedTestReport: SpeedTestReport?
     /// 正在测速的节点 id 集合 —— UI 据此在对应行显示旋转 loading。
@@ -579,7 +582,26 @@ public final class AppState {
             if connections.count > 50 {
                 connections.removeLast(connections.count - 50)
             }
+            ingestTrafficStats(currentTrafficSnapshot())
         }
+    }
+
+    /// 真隧道接入前：把当前活跃连接聚合成一个流量样本（接入后由 appex 上报取代）。
+    private func currentTrafficSnapshot() -> TrafficStats {
+        let active = connections.filter(\.isActive)
+        return TrafficStats(
+            uploadBytes: connections.reduce(0) { $0 + $1.uploadBytes },
+            downloadBytes: connections.reduce(0) { $0 + $1.downloadBytes },
+            uploadSpeedBps: active.reduce(0) { $0 + $1.uploadSpeedBps },
+            downloadSpeedBps: active.reduce(0) { $0 + $1.downloadSpeedBps },
+            activeConnections: active.count
+        )
+    }
+
+    /// 统一的流量上报入口：appex 经 App Group 上报的 `TrafficStats`、或采样循环喂入，都走这里
+    /// → 记进波形窗口。UI 观察 `trafficHistory` 自动重绘。
+    public func ingestTrafficStats(_ stats: TrafficStats) {
+        trafficHistory.record(stats)
     }
 }
 
