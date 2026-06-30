@@ -49,6 +49,8 @@ public final class AppState {
     public var remoteRulesStatus: RemoteFetchStatus = .idle
     /// 订阅最近一次刷新错误（按 id 索引），仅保留最近一条错误信息。
     public var subscriptionErrors: [UUID: String] = [:]
+    /// 轻量 toast 文案（自动择优、订阅添加等非阻塞反馈）。UI 浮层显示，几秒自动消失。
+    public var toast: String?
 
     public let logger: Logger
     public let subscriptionFetcher: SubscriptionFetcher
@@ -60,6 +62,7 @@ public final class AppState {
     private var schedulerTask: Task<Void, Never>?
     private var sampleConnectionsTask: Task<Void, Never>?
     private var trafficPollingTask: Task<Void, Never>?
+    private var toastTask: Task<Void, Never>?
 
     public init(
         logger: Logger = Logger(),
@@ -409,9 +412,22 @@ public final class AppState {
         subscriptions.append(sub)
         persist()
         await refreshSubscription(sub)
-        // 首次拉到节点后自动测速一遍，省得用户手动点。渐进式刷新，UI 会逐个显示延迟。
+        // 首次拉到节点后自动测速 + 选延迟最优节点，并 toast 告知用户（不打断操作）。
         if subscriptionErrors[sub.id] == nil, !nodes.isEmpty {
-            await measureAllNodes()
+            await autoSelectBestNode()
+            if let best = currentNode {
+                showToast("已为你选择延迟最优节点：\(best.name)")
+            }
+        }
+    }
+
+    /// 轻量非阻塞反馈：设置 toast 文案，3 秒后自动清空。
+    public func showToast(_ message: String) {
+        toast = message
+        toastTask?.cancel()
+        toastTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { self?.toast = nil }
         }
     }
 
