@@ -63,6 +63,7 @@ public final class AppState {
     private var sampleConnectionsTask: Task<Void, Never>?
     private var trafficPollingTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
+    private var ipRefreshTask: Task<Void, Never>?
 
     public init(
         logger: Logger = Logger(),
@@ -304,6 +305,7 @@ public final class AppState {
             isVPNRunning = true
             tunnelError = nil
             logger.info("Tunnel started for node \(node.name)", category: "tunnel")
+            scheduleIPRefresh()   // 隧道生效后刷新公网 IP → 落到「节点出口」那栏
         } catch {
             isVPNRunning = false
             tunnelError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
@@ -314,6 +316,16 @@ public final class AppState {
     public func stopTunnel() async {
         tunnelManager.stop()
         isVPNRunning = false
+        scheduleIPRefresh()   // 隧道断开后刷新公网 IP → 落回「直连」那栏
+    }
+
+    /// 开关 VPN 后延迟刷新公网 IP：隧道建立/断开要几秒才生效，立即查会拿到旧出口。
+    private func scheduleIPRefresh() {
+        ipRefreshTask?.cancel()
+        ipRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { await self?.refreshPublicIPInfo() }
+        }
     }
 
     /// 当前节点变了、且 VPN 正在运行时，热切换到新节点：重新写配置 + 断开重连。
@@ -622,21 +634,27 @@ public final class AppState {
         trafficHistory.record(stats)
     }
 
-    /// VPN 在跑时每秒读 App Group 里 appex 上报的真实流量统计，喂进波形；
-    /// 没在跑就清空波形 —— 波形只反映真实流量，不再用采样假数据驱动。
+    /// 每秒读 App Group 里 appex 上报的真实流量统计，喂进波形。
+    ///
+    /// **靠数据新鲜度驱动，不靠 isVPNRunning** —— 杀掉 App 重启后 VPN 扩展还在跑、但主 App 的
+    /// isVPNRunning 默认是 false，若用它当闸门波形会一直空。改为：只要读到新鲜样本就画；
+    /// 连续几秒读不到新鲜数据（VPN 停了或没上报）才清空波形。
     private func trafficPollingLoop() async {
+        var staleSeconds = 0
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(1))
             if Task.isCancelled { break }
-            guard isVPNRunning else {
-                if !trafficHistory.samples.isEmpty { trafficHistory.clear() }
-                continue
-            }
             // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）
-            guard let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats") else { continue }
-            // 只接受新鲜样本（≤3s），避免读到上一会话残留的旧文件
-            guard abs(stats.sampledAt.timeIntervalSinceNow) <= 3 else { continue }
-            ingestTrafficStats(stats)
+            if let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats"),
+               abs(stats.sampledAt.timeIntervalSinceNow) <= 3 {   // 只接受新鲜样本，避免旧文件
+                ingestTrafficStats(stats)
+                staleSeconds = 0
+            } else {
+                staleSeconds += 1
+                if staleSeconds >= 5, !trafficHistory.samples.isEmpty {
+                    trafficHistory.clear()   // 连续 5 秒没新数据 → VPN 停了，清空波形
+                }
+            }
         }
     }
 }
