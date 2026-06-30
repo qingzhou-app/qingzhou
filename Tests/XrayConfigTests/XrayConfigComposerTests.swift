@@ -112,10 +112,10 @@ final class XrayConfigComposerTests: XCTestCase {
         XCTAssertEqual(inbounds[0]["protocol"] as? String, "tun")
     }
 
-    func testComposeWithLocalProxyAddsSocksAndHttpInbounds() throws {
-        let lp = XrayConfigComposer.LocalProxyPorts(httpPort: 7890, socksPort: 7891)
+    func testComposeWithBothLocalPortsAddsSocksAndHttpInbounds() throws {
         let json = try parse(try XrayConfigComposer.compose(
-            outboundsJSON: fakeTrojanOutbounds, mode: .global, localProxy: lp))
+            outboundsJSON: fakeTrojanOutbounds, mode: .global,
+            localHTTPPort: 7890, localSOCKSPort: 7891))
         let inbounds = json["inbounds"] as! [[String: Any]]
         XCTAssertEqual(inbounds.count, 3)
 
@@ -130,6 +130,19 @@ final class XrayConfigComposerTests: XCTestCase {
         let http = byProto["http"]!.first!
         XCTAssertEqual(http["listen"] as? String, "127.0.0.1")
         XCTAssertEqual(http["port"] as? Int, 7890)
+    }
+
+    /// 只有一个端口可用时，只加那一个 inbound（另一个被占用 → 传 nil 跳过），TUN 仍在。
+    func testComposeWithOnlyHTTPPortSkipsSocks() throws {
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .global,
+            localHTTPPort: 7890, localSOCKSPort: nil))
+        let inbounds = json["inbounds"] as! [[String: Any]]
+        XCTAssertEqual(inbounds.count, 2)  // tun + http
+        let protos = Set(inbounds.compactMap { $0["protocol"] as? String })
+        XCTAssertTrue(protos.contains("tun"))
+        XCTAssertTrue(protos.contains("http"))
+        XCTAssertFalse(protos.contains("socks"))
     }
 
     // MARK: - 防御性清理 libXray 错填字段
