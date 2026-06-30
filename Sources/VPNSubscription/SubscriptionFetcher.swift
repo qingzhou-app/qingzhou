@@ -11,8 +11,22 @@ public protocol HTTPClient: Sendable {
 public struct URLSessionHTTPClient: HTTPClient {
     private let session: URLSession
 
-    public init(session: URLSession = .shared) {
-        self.session = session
+    /// 默认 session 必须设超时。
+    /// `URLSession.shared` 的 `timeoutIntervalForResource` 默认是 **7 天** ——
+    /// 订阅源连不通时（没开 VPN / 被墙 / DNS 不通），请求不会失败而是挂起到地老天荒，
+    /// 表现为「刷新」按钮永远转圈、整个订阅区像卡死。这里强制一个合理超时：
+    /// 单次请求 20s 无响应、整体 30s 没拿完就报错，让 UI 能恢复并显示错误。
+    public init(session: URLSession? = nil) {
+        if let session {
+            self.session = session
+        } else {
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.timeoutIntervalForRequest = 20
+            cfg.timeoutIntervalForResource = 30
+            cfg.waitsForConnectivity = false
+            cfg.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            self.session = URLSession(configuration: cfg)
+        }
     }
 
     public func get(_ url: URL) async throws -> (Data, [String: String]) {
