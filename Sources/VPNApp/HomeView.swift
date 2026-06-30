@@ -196,19 +196,16 @@ public struct HomeView: View {
 
     private var trafficCard: some View {
         Card(title: "流量统计", systemImage: "chart.bar") {
-            let totalUp = state.connections.reduce(0) { $0 + $1.uploadBytes }
-            let totalDown = state.connections.reduce(0) { $0 + $1.downloadBytes }
-            let active = state.connections.filter { $0.isActive }.count
-            let curUp = state.connections.filter { $0.isActive }.reduce(0) { $0 + $1.uploadSpeedBps }
-            let curDown = state.connections.filter { $0.isActive }.reduce(0) { $0 + $1.downloadSpeedBps }
+            // 文字和波形同源：都读 appex 上报的真实 TrafficStats，不再用示例 connections。
+            // （活跃连接数 appex 在 TUN 层看不到，要等 access log 接入，先不显示。）
+            let latest = state.trafficHistory.latest
             VStack(alignment: .leading, spacing: 8) {
                 TrafficWaveform(history: state.trafficHistory)
                     .frame(height: 56)
                     .padding(.bottom, 2)
-                statRow("活跃连接", value: "\(active)")
-                statRow("总上行", value: ByteFormatter.format(totalUp))
-                statRow("总下行", value: ByteFormatter.format(totalDown))
-                statRow("当前速率", value: "↑ \(ByteFormatter.format(curUp))/s · ↓ \(ByteFormatter.format(curDown))/s")
+                statRow("总上行", value: ByteFormatter.format(latest?.uploadBytes ?? 0))
+                statRow("总下行", value: ByteFormatter.format(latest?.downloadBytes ?? 0))
+                statRow("当前速率", value: "↑ \(ByteFormatter.format(latest?.uploadSpeedBps ?? 0))/s · ↓ \(ByteFormatter.format(latest?.downloadSpeedBps ?? 0))/s")
             }
         }
     }
