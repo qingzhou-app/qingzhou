@@ -83,6 +83,43 @@ final class VPNSpeedTestTests: XCTestCase {
         XCTAssertEqual(best?.name, "ok")
     }
 
+    /// 渐进式回调：每个非排除节点恰好回调一次，且 id/结果对应正确。
+    func testMeasureFiresProgressiveCallbackPerNode() async {
+        let nodes = [
+            Node(name: "a", protocolType: .trojan, host: "a.example", port: 443),
+            Node(name: "ex", protocolType: .trojan, host: "ex.example", port: 443, isExcluded: true),
+            Node(name: "b", protocolType: .trojan, host: "b.example", port: 443)
+        ]
+        let prober = StubProber(mapping: [
+            "a.example:443": 50,
+            "ex.example:443": 10,
+            "b.example:443": 80
+        ])
+        let selector = NodeSelector(prober: prober)
+
+        // 收集回调 —— 用 actor 避免数据竞争
+        actor Collector {
+            var hits: [(UUID, Int?)] = []
+            func add(_ id: UUID, _ ms: Int?) { hits.append((id, ms)) }
+        }
+        let collector = Collector()
+
+        _ = await selector.measure(nodes: nodes) { id, result in
+            // 跳出 MainActor 边界把结果丢进 actor
+            Task { await collector.add(id, result.latencyMs) }
+        }
+        // 给 detached 的回调收尾
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let hits = await collector.hits
+        // 只有 2 个非排除节点应触发回调
+        XCTAssertEqual(hits.count, 2)
+        let ids = Set(hits.map(\.0))
+        XCTAssertTrue(ids.contains(nodes[0].id))
+        XCTAssertTrue(ids.contains(nodes[2].id))
+        XCTAssertFalse(ids.contains(nodes[1].id), "被排除节点不应回调")
+    }
+
     func testNodeSelectorReturnsNilWhenAllFailed() async {
         let nodes = [
             Node(name: "a", protocolType: .trojan, host: "a.example", port: 443),

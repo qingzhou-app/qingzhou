@@ -268,7 +268,15 @@ public final class AppState {
     }
 
     public func measureAllNodes() async {
-        nodes = await nodeSelector.measure(nodes: nodes)
+        let testedAt = Date()
+        // 渐进式：每测完一个节点立刻刷新它那一行的延迟，不用干等全部测完。
+        nodes = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
+            guard let self else { return }
+            if let i = self.nodes.firstIndex(where: { $0.id == nodeID }) {
+                self.nodes[i].lastLatencyMs = result.latencyMs
+                self.nodes[i].lastTestedAt = testedAt
+            }
+        }
         persist()
     }
 

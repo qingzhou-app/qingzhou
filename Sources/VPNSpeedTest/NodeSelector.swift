@@ -25,8 +25,15 @@ public actor NodeSelector {
     }
 
     /// 给每个非排除的节点打分（延迟）。返回更新后的节点列表（保持原顺序，写入测速结果）。
-    public func measure(nodes: [Node], timeout: TimeInterval = 5) async -> [Node] {
-        // 先把要测的节点压成 (索引, URL) 三元组 —— probe URL 算出来不可用的直接跳过。
+    ///
+    /// `onResult` 在每个节点测完时立刻回调（按 node id），让 UI 能逐个刷新延迟、
+    /// 而不是干等所有节点测完一次性更新。回调在 MainActor 上执行。
+    public func measure(
+        nodes: [Node],
+        timeout: TimeInterval = 5,
+        onResult: (@MainActor @Sendable (UUID, LatencyResult) -> Void)? = nil
+    ) async -> [Node] {
+        // 先把要测的节点压成 (索引, URL) 二元组 —— probe URL 算出来不可用的直接跳过。
         let work: [(Int, URL)] = nodes.enumerated().compactMap { (idx, node) in
             guard !node.isExcluded, let url = nodeProbeURL(node) else { return nil }
             return (idx, url)
@@ -50,11 +57,15 @@ public actor NodeSelector {
 
             var collected: [(Int, LatencyResult)] = []
             // 每完成一个就补一个，直到 iter 耗尽且 group 排空
-            while let result = await group.next() {
-                collected.append(result)
-                if let (idx, url) = iter.next() {
+            while let (idx, result) = await group.next() {
+                collected.append((idx, result))
+                // 测完一个立刻回调 UI（用 node id 定位，不依赖 index，调用方可能在重排）
+                if let onResult {
+                    await onResult(nodes[idx].id, result)
+                }
+                if let (nextIdx, nextURL) = iter.next() {
                     group.addTask { [prober] in
-                        (idx, await prober.probe(url, timeout: timeout))
+                        (nextIdx, await prober.probe(nextURL, timeout: timeout))
                     }
                 }
             }
