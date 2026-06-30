@@ -61,7 +61,7 @@ final class NodeConverterTests: XCTestCase {
         XCTAssertEqual(grpc["serviceName"] as? String, "tunnel")
     }
 
-    func testTrojanAllowInsecureAlpnFingerprint() throws {
+    func testTrojanAlpnFingerprintAndNoAllowInsecure() throws {
         let node = Node(
             name: "tr", protocolType: .trojan,
             host: "h", port: 443,
@@ -71,9 +71,10 @@ final class NodeConverterTests: XCTestCase {
         )
         let tls = streamSettings(try NodeConverter.toOutboundDict(node))["tlsSettings"] as! [String: Any]
         XCTAssertEqual(tls["serverName"] as? String, "real.example")
-        XCTAssertEqual(tls["allowInsecure"] as? Bool, true)
         XCTAssertEqual(tls["alpn"] as? [String], ["h2", "http/1.1"])
         XCTAssertEqual(tls["fingerprint"] as? String, "chrome")
+        // 这版 xray-core 移除了 allowInsecure —— 即使链接里带了也绝不能输出，否则 xray 起不来。
+        XCTAssertNil(tls["allowInsecure"], "allowInsecure 必须不出现")
     }
 
     func testTrojanRejectsMissingPassword() {

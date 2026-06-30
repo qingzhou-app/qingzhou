@@ -83,9 +83,10 @@ enum StreamSettingsBuilder {
         var tls: [String: Any] = [:]
         let sni = p["sni"] ?? p["peer"] ?? p["host"] ?? host
         tls["serverName"] = sni
-        if let v = p["allowInsecure"] ?? p["skip-cert-verify"] ?? p["insecure"], boolish(v) {
-            tls["allowInsecure"] = true
-        }
+        // 注意：**不要**写 `allowInsecure`。我们打包的这版 xray-core 已经移除了该字段
+        //（"The feature allowInsecure has been removed and migrated to pinnedPeerCertSha256"），
+        // 写了会导致整个 outbound TLS 解析失败、xray 起不来。绝大多数节点证书合法、不需要它；
+        // 真用自签证书的节点需要 pinnedPeerCertSha256（我们拿不到证书指纹，暂不支持）。
         if let alpnStr = p["alpn"], !alpnStr.isEmpty {
             tls["alpn"] = alpnStr.split(separator: ",").map { String($0) }
         }
@@ -165,11 +166,5 @@ enum StreamSettingsBuilder {
                 "request": req
             ]
         ]
-    }
-
-    /// 容忍 "1" / "true" / "yes" 这种各种"是"的写法。
-    private static func boolish(_ s: String) -> Bool {
-        let lower = s.lowercased()
-        return lower == "1" || lower == "true" || lower == "yes"
     }
 }
