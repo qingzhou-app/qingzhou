@@ -39,6 +39,7 @@ targets:
         NSCameraUsageDescription: 扫描二维码以快速添加节点或订阅
         UILaunchScreen:
           UIColorName: LaunchBackground
+          UIImageName: LaunchLogo
         UIRequiredDeviceCapabilities:
           - arm64
         UISupportedInterfaceOrientations:

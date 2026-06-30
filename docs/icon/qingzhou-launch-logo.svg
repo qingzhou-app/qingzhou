@@ -1,0 +1,8 @@
+<svg width="660" height="840" viewBox="0 0 660 840" xmlns="http://www.w3.org/2000/svg">
+  <line x1="330" y1="188" x2="330" y2="452" stroke="#FFFFFF" stroke-width="15" stroke-linecap="round"/>
+  <path d="M330 204 L330 448 L494 448 Z" fill="#FFFFFF"/>
+  <path d="M330 230 L330 448 L186 448 Z" fill="#FFFFFF" opacity="0.9"/>
+  <path d="M180 454 Q330 506 480 454 L442 532 Q330 560 218 532 Z" fill="#FFFFFF"/>
+  <path d="M196 582 Q268 562 340 582 T484 582" fill="none" stroke="#FFFFFF" stroke-width="9" opacity="0.5" stroke-linecap="round"/>
+  <text x="330" y="726" text-anchor="middle" fill="#FFFFFF" font-family="PingFang SC, Hiragino Sans GB, Helvetica, sans-serif" font-size="138" font-weight="500" letter-spacing="12">轻舟</text>
+</svg>
