@@ -66,6 +66,56 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(state.currentNodeId, "排除当前节点后应当清空 currentNodeId")
     }
 
+    func testSetProxyModeChangesDedupesAndPersists() {
+        let state = makeState()
+        XCTAssertEqual(state.settings.proxyMode, .rule, "默认应为规则模式")
+
+        state.setProxyMode(.global)
+        XCTAssertEqual(state.settings.proxyMode, .global)
+
+        // 相同值是 no-op（不重复持久化 / 不重启），且不崩
+        state.setProxyMode(.global)
+        XCTAssertEqual(state.settings.proxyMode, .global)
+
+        state.persistence.waitForPendingWritesForTesting()
+        let reloaded = makeState()
+        XCTAssertEqual(reloaded.settings.proxyMode, .global, "模式切换必须持久化")
+    }
+
+    func testMergeClearsSelectionWhenSelectedNodeVanishes() {
+        let state = makeState()
+        let subId = UUID()
+        let a = Node(name: "A", protocolType: .trojan, host: "a.com", port: 443,
+                     password: "pw", subscriptionId: subId)
+        let b = Node(name: "B", protocolType: .trojan, host: "b.com", port: 443,
+                     password: "pw", subscriptionId: subId)
+        state.merge(newNodes: [a, b], fromSubscription: subId)
+        state.select(state.nodes.first { $0.name == "A" }!)
+        XCTAssertNotNil(state.currentNodeId)
+
+        // 刷新后上游把 A 删了，只剩 B
+        state.merge(newNodes: [b], fromSubscription: subId)
+        XCTAssertEqual(state.nodes.count, 1)
+        XCTAssertNil(state.currentNodeId, "选中的 A 被订阅刷掉后，currentNodeId 必须清空而不是悬空")
+    }
+
+    func testMergePreservesSelectionWhenSelectedNodeSurvives() {
+        let state = makeState()
+        let subId = UUID()
+        let a = Node(name: "A", protocolType: .trojan, host: "a.com", port: 443,
+                     password: "pw", subscriptionId: subId)
+        state.merge(newNodes: [a], fromSubscription: subId)
+        state.select(state.nodes[0])
+        let selected = state.currentNodeId
+
+        // 刷新，A 仍在（同身份指纹）+ 新增 C
+        let c = Node(name: "C", protocolType: .trojan, host: "c.com", port: 443,
+                     password: "pw", subscriptionId: subId)
+        state.merge(newNodes: [a, c], fromSubscription: subId)
+        XCTAssertEqual(state.nodes.count, 2)
+        XCTAssertEqual(state.currentNodeId, selected, "A 还在就不该动选择")
+    }
+
     func testRemoveSubscriptionAlsoRemovesItsNodes() async {
         let state = makeState()
         let sub = Subscription(name: "sub1", url: URL(string: "https://x/sub")!)

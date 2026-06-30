@@ -18,7 +18,7 @@ public struct StatusBarMenu: View {
 
         Divider()
 
-        Picker("模式", selection: state.setting(\.proxyMode)) {
+        Picker("模式", selection: state.proxyModeBinding) {
             Text("全局").tag(ProxyMode.global)
             Text("规则").tag(ProxyMode.rule)
             Text("直连").tag(ProxyMode.direct)

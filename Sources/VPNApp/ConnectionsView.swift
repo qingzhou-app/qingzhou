@@ -95,8 +95,15 @@ public struct ConnectionsView: View {
                 Text(c.openedAt.formatted(.relative(presentation: .named)))
             }
             .font(.caption2.monospaced()).foregroundStyle(.secondary)
-            Text("\(c.sourceAddress) → \(c.targetAddress)")
-                .font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+            HStack(spacing: 6) {
+                // 来源 app（bundle id）：macOS 上未来可由 content-filter 提供；iOS 拿不到时优雅省略。
+                if let app = c.sourceApp, !app.isEmpty {
+                    Label(app, systemImage: "app.dashed").lineLimit(1)
+                    Text("·")
+                }
+                Text("\(c.sourceAddress) → \(c.targetAddress)").lineLimit(1)
+            }
+            .font(.caption2.monospaced()).foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
     }

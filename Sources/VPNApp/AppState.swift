@@ -108,6 +108,23 @@ public final class AppState {
         )
     }
 
+    /// 代理模式专用 Binding。普通 `setting(\.proxyMode)` 只会改值 + 持久化；这个还会在
+    /// VPN 正在运行时自动重启隧道，让新模式立即生效——对称于切换节点的热切换，用户不用手动关开。
+    public var proxyModeBinding: Binding<ProxyMode> {
+        Binding(get: { self.settings.proxyMode }, set: { self.setProxyMode($0) })
+    }
+
+    /// 切换代理模式。改值 + 副作用 + 持久化；若 VPN 在跑则热重启隧道使新模式即时生效。
+    public func setProxyMode(_ mode: ProxyMode) {
+        guard settings.proxyMode != mode else { return }
+        settings.proxyMode = mode
+        applySettingsSideEffects()
+        persist()
+        logger.info("Proxy mode → \(mode.rawValue)", category: "app")
+        // VPN 在跑才需要重启；没跑时 reapplyRunningTunnel 内部 guard 会直接返回。
+        Task { await reapplyRunningTunnel() }
+    }
+
     /// settings 任意字段变化后调用：把字段的「执行性」副作用真正落地。
     /// 当前涉及：logger 级别。未来可加：macOS 系统代理端口变化时重新应用。
     private func applySettingsSideEffects() {
@@ -428,6 +445,15 @@ public final class AppState {
         }
         nodes.removeAll { $0.subscriptionId == subId }
         nodes.append(contentsOf: preserved)
+
+        // 选中的节点可能被上游删了，或它的 host/port/凭据变了 → identityFingerprint 变了
+        // → 被当成新节点、老 id 丢失。此时 currentNodeId 会悬空指向一个已不存在的节点
+        //（currentNode 变 nil，热切换也察觉不到——id 没"变"，只是指向了空）。
+        // 跟 removeSubscription / toggleExclusion 等所有改动路径保持一致：悬空就清掉。
+        if let id = currentNodeId, !nodes.contains(where: { $0.id == id }) {
+            currentNodeId = nil
+            logger.info("Selected node gone after subscription refresh — cleared selection", category: "subscription")
+        }
     }
 
     // MARK: - 规则

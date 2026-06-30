@@ -82,7 +82,7 @@ public struct HomeView: View {
             HStack {
                 Text("代理模式").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Picker("", selection: state.setting(\.proxyMode)) {
+                Picker("", selection: state.proxyModeBinding) {
                     ForEach(ProxyMode.allCases, id: \.self) { m in
                         Text(label(for: m)).tag(m)
                     }

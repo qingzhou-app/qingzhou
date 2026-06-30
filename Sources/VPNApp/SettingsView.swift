@@ -24,7 +24,7 @@ public struct SettingsView: View {
 
     private var proxySection: some View {
         Section("代理") {
-            Picker("代理模式", selection: state.setting(\.proxyMode)) {
+            Picker("代理模式", selection: state.proxyModeBinding) {
                 ForEach(ProxyMode.allCases, id: \.self) { m in
                     Text(label(for: m)).tag(m)
                 }
