@@ -20,6 +20,7 @@
 
 import Darwin
 import NetworkExtension
+import os
 import os.log
 import VPNCore
 import XrayConfig
@@ -39,6 +40,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// 调试：两个方向各打第一个 packet 的 log，方便确认流量真的在流。
     private var loggedFirstApplePacket = false
     private var loggedFirstXrayPacket = false
+
+    /// 流量统计：两个拷贝循环在不同线程各自累加字节（上行在 readPackets 回调队列、
+    /// 下行在 bridgeQueue），用 unfair lock 保护。定时器每秒算 delta 速率 + 写 App Group，
+    /// 主 App 轮询读出来画波形 / 显示实时速率。
+    private struct ByteCounters { var up: Int64 = 0; var down: Int64 = 0; var lastUp: Int64 = 0; var lastDown: Int64 = 0 }
+    private let byteCounters = OSAllocatedUnfairLock(initialState: ByteCounters())
+    private var statsTimer: DispatchSourceTimer?
 
     override func startTunnel(
         options: [String: NSObject]?,
@@ -161,6 +169,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         do {
             try XrayCore.run(configJSON: configJSON, geoDir: geoDir, mphCachePath: mphCache)
             os_log("✅ xray-core started OK (version %{public}@)", log: log, type: .default, XrayCore.version)
+            startStatsReporting()
             completionHandler(nil)
         } catch {
             os_log("❌ XrayCore.run failed: %{public}@", log: log, type: .error, error.localizedDescription)
@@ -236,6 +245,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private func startReadPacketsToFd(swiftFd: Int32) {
         self.packetFlow.readPackets { [weak self] packets, protocols in
             guard let self else { return }
+            var batchUp = 0
             for i in 0..<packets.count {
                 let proto = UInt32(truncating: protocols[i])
                 var frame = Data(capacity: 4 + packets[i].count)
@@ -245,7 +255,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 _ = frame.withUnsafeBytes { ptr -> Int in
                     write(swiftFd, ptr.baseAddress, ptr.count)
                 }
+                batchUp += packets[i].count
             }
+            self.byteCounters.withLock { $0.up += Int64(batchUp) }
             if !self.loggedFirstApplePacket && !packets.isEmpty {
                 self.loggedFirstApplePacket = true
                 os_log("✅ first Apple→Xray batch: %d packets, first %d bytes, proto=%d",
@@ -280,6 +292,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 (UInt32(buf[2]) << 8) |
                  UInt32(buf[3])
             let packet = Data(buf[4..<Int(n)])
+            self.byteCounters.withLock { $0.down += Int64(n - 4) }
 
             if !loggedFirstXrayPacket {
                 loggedFirstXrayPacket = true
@@ -294,10 +307,47 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     private func tearDownBridge() {
         bridgeActive = false
+        statsTimer?.cancel()
+        statsTimer = nil
         if let pair = tunPair {
             close(pair.swift)
             // xray 端由 XrayCore.stop() 关，避免双 close
             tunPair = nil
+        }
+    }
+
+    // MARK: - 流量统计上报
+
+    /// xray 起来后调：每秒在 bridgeQueue 上算一次 delta 速率并写进 App Group。
+    private func startStatsReporting() {
+        let timer = DispatchSource.makeTimerSource(queue: bridgeQueue)
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler { [weak self] in self?.reportTrafficStats() }
+        timer.resume()
+        statsTimer = timer
+    }
+
+    private func reportTrafficStats() {
+        // delta = 这一秒的字节增量 = 即时速率 byte/s（定时器间隔正好 1s）
+        let snap = byteCounters.withLock { c -> (up: Int64, down: Int64, dUp: Int64, dDown: Int64) in
+            let dUp = c.up - c.lastUp
+            let dDown = c.down - c.lastDown
+            c.lastUp = c.up
+            c.lastDown = c.down
+            return (c.up, c.down, dUp, dDown)
+        }
+        let stats = TrafficStats(
+            uploadBytes: snap.up,
+            downloadBytes: snap.down,
+            uploadSpeedBps: max(0, snap.dUp),
+            downloadSpeedBps: max(0, snap.dDown),
+            activeConnections: 0,   // access log 接入后填真实连接数（a 的下一支线）
+            sampledAt: Date()
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601   // 跟主 App AppGroupStorage.read 的解码策略一致
+        if let data = try? encoder.encode(stats), let json = String(data: data, encoding: .utf8) {
+            TunnelAppGroup.writeTrafficStats(json)
         }
     }
 

@@ -59,4 +59,26 @@ public enum TunnelAppGroup {
     public static func mphCachePath() -> String? {
         ensureWorkingDirectory()?.appendingPathComponent("mph.cache").path
     }
+
+    // MARK: - 流量统计上报（Extension 写、主 App 轮询读）
+
+    /// 共享文件名。主 App 侧用 AppGroupStorage.read(from: "traffic-stats") 同名读取。
+    public static let trafficStatsName = "traffic-stats"
+
+    private static var trafficStatsURL: URL? {
+        containerURL?.appendingPathComponent(trafficStatsName).appendingPathExtension("json")
+    }
+
+    /// Extension 调：把当前流量统计快照（已 encode 成 JSON 串）写进共享容器。
+    /// 主 App 每秒读一次画波形 / 显示实时速率。entitlement 不全时静默失败返回 false。
+    @discardableResult
+    public static func writeTrafficStats(_ json: String) -> Bool {
+        guard let url = trafficStatsURL else { return false }
+        do {
+            try json.write(to: url, atomically: true, encoding: .utf8)
+            return true
+        } catch {
+            return false
+        }
+    }
 }

@@ -55,6 +55,9 @@ public final class AppState {
 
     private var schedulerTask: Task<Void, Never>?
     private var sampleConnectionsTask: Task<Void, Never>?
+    private var trafficPollingTask: Task<Void, Never>?
+    /// 一旦从 App Group 读到 appex 上报的真实流量，就接管波形，采样循环让位。
+    private var usingRealTraffic = false
 
     public init(
         logger: Logger = Logger(),
@@ -489,6 +492,9 @@ public final class AppState {
                 await self?.sampleConnectionsLoop()
             }
         }
+        trafficPollingTask = Task { @MainActor [weak self] in
+            await self?.trafficPollingLoop()
+        }
     }
 
     public func stopSchedulers() {
@@ -496,6 +502,8 @@ public final class AppState {
         schedulerTask = nil
         sampleConnectionsTask?.cancel()
         sampleConnectionsTask = nil
+        trafficPollingTask?.cancel()
+        trafficPollingTask = nil
     }
 
     private func schedulerLoop() async {
@@ -582,7 +590,7 @@ public final class AppState {
             if connections.count > 50 {
                 connections.removeLast(connections.count - 50)
             }
-            ingestTrafficStats(currentTrafficSnapshot())
+            if !usingRealTraffic { ingestTrafficStats(currentTrafficSnapshot()) }
         }
     }
 
@@ -602,6 +610,22 @@ public final class AppState {
     /// → 记进波形窗口。UI 观察 `trafficHistory` 自动重绘。
     public func ingestTrafficStats(_ stats: TrafficStats) {
         trafficHistory.record(stats)
+    }
+
+    /// 真隧道在跑时每秒读 App Group 里 appex 上报的真实流量统计，喂进波形。
+    /// 读到新鲜样本即接管（usingRealTraffic=true），让采样循环让位。
+    private func trafficPollingLoop() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(1))
+            if Task.isCancelled { break }
+            guard isVPNRunning else { usingRealTraffic = false; continue }
+            // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）
+            guard let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats") else { continue }
+            // 只接受新鲜样本（≤3s），避免读到上一会话残留的旧文件
+            guard abs(stats.sampledAt.timeIntervalSinceNow) <= 3 else { continue }
+            usingRealTraffic = true
+            ingestTrafficStats(stats)
+        }
     }
 }
 
