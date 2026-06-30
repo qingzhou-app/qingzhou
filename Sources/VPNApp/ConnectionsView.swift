@@ -33,6 +33,15 @@ public struct ConnectionsView: View {
             }
         }
         .navigationTitle("连接")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink {
+                    DomainAnalysisView(connections: state.connections)
+                } label: {
+                    Label("域名分析", systemImage: "chart.pie")
+                }
+            }
+        }
         .searchable(text: $keyword, prompt: "搜索 host / route / app")
     }
 
