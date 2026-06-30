@@ -56,8 +56,6 @@ public final class AppState {
     private var schedulerTask: Task<Void, Never>?
     private var sampleConnectionsTask: Task<Void, Never>?
     private var trafficPollingTask: Task<Void, Never>?
-    /// 一旦从 App Group 读到 appex 上报的真实流量，就接管波形，采样循环让位。
-    private var usingRealTraffic = false
 
     public init(
         logger: Logger = Logger(),
@@ -594,40 +592,30 @@ public final class AppState {
             if connections.count > 50 {
                 connections.removeLast(connections.count - 50)
             }
-            if !usingRealTraffic { ingestTrafficStats(currentTrafficSnapshot()) }
+            // 注意：**不要**在这里用采样数据驱动波形 —— 否则没开 VPN 也会有"流量"，误导用户。
+            // 波形只由 trafficPollingLoop 读 appex 真实上报来驱动。
         }
     }
 
-    /// 真隧道接入前：把当前活跃连接聚合成一个流量样本（接入后由 appex 上报取代）。
-    private func currentTrafficSnapshot() -> TrafficStats {
-        let active = connections.filter(\.isActive)
-        return TrafficStats(
-            uploadBytes: connections.reduce(0) { $0 + $1.uploadBytes },
-            downloadBytes: connections.reduce(0) { $0 + $1.downloadBytes },
-            uploadSpeedBps: active.reduce(0) { $0 + $1.uploadSpeedBps },
-            downloadSpeedBps: active.reduce(0) { $0 + $1.downloadSpeedBps },
-            activeConnections: active.count
-        )
-    }
-
-    /// 统一的流量上报入口：appex 经 App Group 上报的 `TrafficStats`、或采样循环喂入，都走这里
-    /// → 记进波形窗口。UI 观察 `trafficHistory` 自动重绘。
+    /// appex 经 App Group 上报的真实 `TrafficStats` 喂进波形窗口。UI 观察 `trafficHistory` 自动重绘。
     public func ingestTrafficStats(_ stats: TrafficStats) {
         trafficHistory.record(stats)
     }
 
-    /// 真隧道在跑时每秒读 App Group 里 appex 上报的真实流量统计，喂进波形。
-    /// 读到新鲜样本即接管（usingRealTraffic=true），让采样循环让位。
+    /// VPN 在跑时每秒读 App Group 里 appex 上报的真实流量统计，喂进波形；
+    /// 没在跑就清空波形 —— 波形只反映真实流量，不再用采样假数据驱动。
     private func trafficPollingLoop() async {
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(1))
             if Task.isCancelled { break }
-            guard isVPNRunning else { usingRealTraffic = false; continue }
+            guard isVPNRunning else {
+                if !trafficHistory.samples.isEmpty { trafficHistory.clear() }
+                continue
+            }
             // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）
             guard let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats") else { continue }
             // 只接受新鲜样本（≤3s），避免读到上一会话残留的旧文件
             guard abs(stats.sampledAt.timeIntervalSinceNow) <= 3 else { continue }
-            usingRealTraffic = true
             ingestTrafficStats(stats)
         }
     }
