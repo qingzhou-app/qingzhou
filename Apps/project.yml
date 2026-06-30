@@ -38,7 +38,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSCameraUsageDescription: 扫描二维码以快速添加节点或订阅
         UILaunchScreen:
-          UIColorName: ""
+          UIColorName: LaunchBackground
         UIRequiredDeviceCapabilities:
           - arm64
         UISupportedInterfaceOrientations:
