@@ -47,6 +47,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private struct ByteCounters { var up: Int64 = 0; var down: Int64 = 0; var lastUp: Int64 = 0; var lastDown: Int64 = 0 }
     private let byteCounters = OSAllocatedUnfairLock(initialState: ByteCounters())
     private var statsTimer: DispatchSourceTimer?
+    /// 流量统计定时器**专用**串行队列。绝不能复用 bridgeQueue —— 那上面跑着
+    /// runFdToWritePacketsLoop 的阻塞 read 死循环，定时器会被饿死、触发间隔远大于 1 秒，
+    /// 于是几秒的字节增量被当成「每秒」速率，严重高估（实测下行飙到 ~9MB/s）。
+    private let statsQueue = DispatchQueue(label: "com.sbraveyoung.qingzhou.tunnel.stats")
+    private var lastReportAt: Date?
 
     override func startTunnel(
         options: [String: NSObject]?,
@@ -319,9 +324,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // MARK: - 流量统计上报
 
-    /// xray 起来后调：每秒在 bridgeQueue 上算一次 delta 速率并写进 App Group。
+    /// xray 起来后调：在独立队列上每秒算一次速率并写进 App Group。
     private func startStatsReporting() {
-        let timer = DispatchSource.makeTimerSource(queue: bridgeQueue)
+        lastReportAt = Date()
+        let timer = DispatchSource.makeTimerSource(queue: statsQueue)
         timer.schedule(deadline: .now() + 1, repeating: 1)
         timer.setEventHandler { [weak self] in self?.reportTrafficStats() }
         timer.resume()
@@ -329,7 +335,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     private func reportTrafficStats() {
-        // delta = 这一秒的字节增量 = 即时速率 byte/s（定时器间隔正好 1s）
+        let now = Date()
+        let elapsed = lastReportAt.map { now.timeIntervalSince($0) } ?? 1
+        lastReportAt = now
         let snap = byteCounters.withLock { c -> (up: Int64, down: Int64, dUp: Int64, dDown: Int64) in
             let dUp = c.up - c.lastUp
             let dDown = c.down - c.lastDown
@@ -337,13 +345,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             c.lastDown = c.down
             return (c.up, c.down, dUp, dDown)
         }
+        // 速率 = 字节增量 ÷ **实际**经过秒数（不假设定时器精确 1 秒，抗漂移/饿死）
+        let secs = elapsed > 0.01 ? elapsed : 1
         let stats = TrafficStats(
             uploadBytes: snap.up,
             downloadBytes: snap.down,
-            uploadSpeedBps: max(0, snap.dUp),
-            downloadSpeedBps: max(0, snap.dDown),
+            uploadSpeedBps: Int64(Double(max(0, snap.dUp)) / secs),
+            downloadSpeedBps: Int64(Double(max(0, snap.dDown)) / secs),
             activeConnections: 0,   // access log 接入后填真实连接数（a 的下一支线）
-            sampledAt: Date()
+            sampledAt: now
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601   // 跟主 App AppGroupStorage.read 的解码策略一致
