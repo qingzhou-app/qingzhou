@@ -200,7 +200,14 @@ public struct NodesView: View {
             Text(shareString(for: node))
                 .font(.caption2.monospaced()).lineLimit(2).truncationMode(.middle)
                 .textSelection(.enabled).foregroundStyle(.secondary).padding(.horizontal)
-            Button("关闭") { qrShareNode = nil }
+            HStack {
+                Button {
+                    copyLink(shareString(for: node))
+                } label: {
+                    Label("复制链接", systemImage: "doc.on.doc")
+                }
+                Button("关闭") { qrShareNode = nil }
+            }
         }
         .padding()
         .frame(minWidth: 320, minHeight: 360)
@@ -228,49 +235,20 @@ public struct NodesView: View {
     }
     #endif
 
-    /// 把节点反序列化成可分享的链接形式。
-    /// 阶段 1 简化：trojan / ss / vless / hy2 直接拼回 URL；vmess 拼 base64 JSON。
+    /// 把节点反序列化成可分享的链接形式。复用规范编码器 `NodeEncoder.shareLink`
+    /// （与「启动 VPN 时喂给 xray」同一份逻辑），避免视图里再维护一份会漂移的副本。
     private func shareString(for node: Node) -> String {
-        var queryItems: [URLQueryItem] = []
-        for (k, v) in node.parameters {
-            queryItems.append(URLQueryItem(name: k, value: v))
-        }
-        var comps = URLComponents()
-        comps.scheme = node.protocolType.urlScheme
-        comps.host = node.host
-        comps.port = node.port
-        if !queryItems.isEmpty { comps.queryItems = queryItems }
-        comps.fragment = node.name
+        NodeEncoder.shareLink(node) ?? ""
+    }
 
-        switch node.protocolType {
-        case .trojan, .hysteria2:
-            comps.user = node.password
-            return comps.url?.absoluteString ?? ""
-        case .vless:
-            comps.user = node.uuid
-            return comps.url?.absoluteString ?? ""
-        case .shadowsocks:
-            // SIP002: ss://base64(method:password)@host:port#name
-            let credential = "\(node.cipher ?? ""):\(node.password ?? "")"
-            let b64 = Data(credential.utf8).base64EncodedString()
-            comps.user = b64
-            return comps.url?.absoluteString ?? ""
-        case .vmess:
-            var json: [String: Any] = [
-                "v": "2",
-                "ps": node.name,
-                "add": node.host,
-                "port": "\(node.port)",
-                "id": node.uuid ?? "",
-                "aid": node.alterId ?? 0,
-                "scy": node.cipher ?? "auto"
-            ]
-            for (k, v) in node.parameters { json[k] = v }
-            if let data = try? JSONSerialization.data(withJSONObject: json) {
-                return "vmess://" + data.base64EncodedString()
-            }
-            return ""
-        }
+    /// 复制到剪贴板（跨平台）。
+    private func copyLink(_ text: String) {
+        #if canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #elseif canImport(UIKit)
+        UIPasteboard.general.string = text
+        #endif
     }
 }
 

@@ -31,4 +31,23 @@ final class XrayCoreTests: XCTestCase {
         // xray JSON 顶层应该有 outbounds 字段
         XCTAssertNotNil(obj["outbounds"])
     }
+
+    /// 节点导出：分享链接 → xray JSON → 再转回分享链接，应还是个 trojan 链接。
+    func testConvertJSONToShareLinksRoundtrip() throws {
+        let json = try XrayCore.convertShareLinks("trojan://password@example.com:443?sni=example.com#test")
+        let links = try XrayCore.convertJSONToShareLinks(json)
+        XCTAssertTrue(links.contains("trojan://"), "导出的分享链接应包含 trojan://，实际: \(links)")
+    }
+
+    /// 配置校验：一坨非法内容应当被 TestXray 拒绝并抛错。
+    func testValidateRejectsGarbage() {
+        XCTAssertThrowsError(try XrayCore.validate(configJSON: "{ not a valid xray config }")) { err in
+            XCTAssertTrue(err is XrayError)
+        }
+    }
+
+    /// 流量统计：metrics 端点不可达时应优雅抛错（而不是崩）。
+    func testQueryStatsUnreachableThrows() {
+        XCTAssertThrowsError(try XrayCore.queryStats(metricsURL: "http://127.0.0.1:1/debug/vars"))
+    }
 }
