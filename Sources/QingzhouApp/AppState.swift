@@ -348,15 +348,17 @@ public final class AppState {
         guard isVPNRunning,
               let node = currentNode,
               let shareLink = NodeEncoder.shareLink(node) else { return }
-        // ① 优先原地无感重配：给运行中的扩展发新配置，只重启 xray，不重连 VPN、不断 TUN。
-        do {
-            try await tunnelManager.reconfigureInPlace(node: node, mode: settings.proxyMode, shareLink: shareLink)
-            logger.info("Seamless switch → \(node.name) / \(settings.proxyMode.rawValue)", category: "tunnel")
-            return
-        } catch {
-            logger.warn("In-place switch failed (\(error.localizedDescription))；回退全量重启", category: "tunnel")
-        }
-        // ② 回退：全量 stop→start（原有行为）。原地重配连不上/超时/扩展报错时才走到这。
+        // ⚠️ 原地无感重配（reconfigureInPlace + 扩展 handleAppMessage）暂时禁用 —— 实测在
+        // 某些切换（规则→全局）上会让 xray 卡死、之后连全量重启都救不回来，疑似 xray-core
+        // 在同一扩展进程内 stop→run 有全局状态没干净复位。扩展侧代码保留待查，这里先走全量重启。
+        // 待真机拿到 xray 的具体报错后再启用（把下面注释掉的块恢复即可）。
+        // do {
+        //     try await tunnelManager.reconfigureInPlace(node: node, mode: settings.proxyMode, shareLink: shareLink)
+        //     logger.info("Seamless switch → \(node.name) / \(settings.proxyMode.rawValue)", category: "tunnel")
+        //     return
+        // } catch {
+        //     logger.warn("In-place switch failed；回退全量重启", category: "tunnel")
+        // }
         do {
             try await tunnelManager.configure(
                 node: node,
@@ -365,9 +367,15 @@ public final class AppState {
                 description: "轻舟 · \(node.name)"
             )
             tunnelManager.stop()
-            try? await Task.sleep(for: .milliseconds(300))  // 等旧连接断开
+            // 等扩展进程**完全断开**再重启 —— 只 sleep 300ms 常常旧进程还没退，start() 复用了
+            // 半死的旧进程，xray 在里面 stop→run 状态不干净就会卡死/不通。轮询到 .disconnected
+            // （最多 5 秒）确保拿到全新扩展进程（全新 Go runtime + 全新 xray），像首次连接一样干净。
+            for _ in 0..<50 {
+                if tunnelManager.status == .disconnected { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
             try await tunnelManager.start()
-            logger.info("Hot-switched running tunnel to \(node.name)", category: "tunnel")
+            logger.info("Clean-restart switched tunnel to \(node.name) / \(settings.proxyMode.rawValue)", category: "tunnel")
         } catch {
             tunnelError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             logger.error("Hot-switch failed: \(tunnelError ?? "?")", category: "tunnel")
