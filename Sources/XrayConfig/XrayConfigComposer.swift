@@ -18,12 +18,6 @@ import QingzhouCore
 
 public enum XrayConfigComposer {
 
-    /// xray metrics（expvar /debug/vars）监听地址 —— 仅本机，供 appex 用 XrayCore.queryStats 拉取。
-    /// appex 侧 metrics 轮询 URL 与这里的 compose(enableStats:) 生成的 inbound 必须一致。
-    public static let metricsListenAddress = "127.0.0.1"
-    public static let metricsPort = 49227
-    public static var metricsURL: String { "http://\(metricsListenAddress):\(metricsPort)/debug/vars" }
-
     public enum Error: Swift.Error, LocalizedError {
         case invalidOutboundJSON
         case noProxyOutbound
@@ -48,8 +42,7 @@ public enum XrayConfigComposer {
     public static func compose(
         outboundsJSON: String,
         mode: ProxyMode,
-        accessLogPath: String? = nil,
-        enableStats: Bool = false
+        accessLogPath: String? = nil
     ) throws -> String {
         guard let data = outboundsJSON.data(using: .utf8),
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -85,7 +78,7 @@ public enum XrayConfigComposer {
 
         // tun inbound：MTU 跟 PacketTunnelProvider 里 setTunnelNetworkSettings 保持一致。
         // sniffing 开启：让 xray 从 TLS SNI / HTTP Host 提取真实域名，便于按域名路由。
-        var inbounds: [[String: Any]] = [[
+        let inbounds: [[String: Any]] = [[
             "tag": "tun-in",
             "protocol": "tun",
             "settings": [
@@ -99,7 +92,6 @@ public enum XrayConfigComposer {
             ]
         ]]
 
-
         // 开了 access log，xray 会把每条连接（from src accepted net:host:port [in -> out]）
         // 追加写到这个文件；主 App 读出来解析成真实连接（AccessLogParser）。sniffing 已开，
         // 所以 host 是嗅探出的域名而非 IP。
@@ -108,7 +100,7 @@ public enum XrayConfigComposer {
             logSection["access"] = accessLogPath
         }
 
-        var config: [String: Any] = [
+        let config: [String: Any] = [
             "log": logSection,
             "inbounds": inbounds,
             "outbounds": outbounds,
@@ -123,22 +115,6 @@ public enum XrayConfigComposer {
                 ["ipPool": "fc00::/18", "poolSize": 65535] as [String: Any]
             ]
         ]
-
-        // 统计：stats 打开计数器容器，policy.system 打开系统级 in/out 上下行计数，
-        // metrics.listen 让 xray 自己在这个本机地址上开 HTTP 服务、于 /debug/vars 暴露 expvar。
-        // （新版 xray 直接用 metrics.listen，不再需要旧写法里那个 tag + dokodemo-door inbound。）
-        if enableStats {
-            config["stats"] = [:] as [String: Any]
-            config["policy"] = [
-                "system": [
-                    "statsInboundUplink": true,
-                    "statsInboundDownlink": true,
-                    "statsOutboundUplink": true,
-                    "statsOutboundDownlink": true
-                ]
-            ]
-            config["metrics"] = ["listen": "\(Self.metricsListenAddress):\(Self.metricsPort)"]
-        }
 
         let out = try JSONSerialization.data(
             withJSONObject: config,

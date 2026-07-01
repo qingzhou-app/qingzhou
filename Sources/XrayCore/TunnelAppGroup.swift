@@ -116,20 +116,4 @@ public enum TunnelAppGroup {
         guard let url = fakeDNSMapURL else { return false }
         return (try? json.write(to: url, atomically: true, encoding: .utf8)) != nil
     }
-
-    // MARK: - per-node 累计流量（Extension 拉 xray metrics 解析后写、主 App 读）
-
-    /// 主 App 侧用 AppGroupStorage.read(from: "node-stats") 同名读取（解码成 XrayTrafficCounters）。
-    public static let nodeStatsName = "node-stats"
-
-    private static var nodeStatsURL: URL? {
-        containerURL?.appendingPathComponent(nodeStatsName).appendingPathExtension("json")
-    }
-
-    /// Extension 调：把 XrayStatsParser 解析出的 per-tag 累计流量（已 encode JSON）写进共享容器。
-    @discardableResult
-    public static func writeNodeStats(_ json: String) -> Bool {
-        guard let url = nodeStatsURL else { return false }
-        return (try? json.write(to: url, atomically: true, encoding: .utf8)) != nil
-    }
 }

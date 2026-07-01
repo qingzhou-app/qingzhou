@@ -28,29 +28,6 @@ final class XrayConfigComposerTests: XCTestCase {
 
     // MARK: - 结构性测试
 
-    /// 默认不开统计：无 stats/metrics/policy，只有 tun 一个 inbound。
-    func testStatsDisabledByDefault() throws {
-        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global))
-        XCTAssertNil(json["stats"])
-        XCTAssertNil(json["metrics"])
-        XCTAssertNil(json["policy"])
-        XCTAssertEqual((json["inbounds"] as! [[String: Any]]).count, 1)
-    }
-
-    /// 开统计：加 stats + policy.system + metrics.listen（新版 xray 自开监听，不再需要额外 inbound）。
-    func testEnableStatsAddsMetricsListenAndPolicy() throws {
-        let json = try parse(try XrayConfigComposer.compose(
-            outboundsJSON: fakeTrojanOutbounds, mode: .global, enableStats: true))
-        XCTAssertNotNil(json["stats"])
-        XCTAssertEqual((json["metrics"] as? [String: Any])?["listen"] as? String,
-                       "\(XrayConfigComposer.metricsListenAddress):\(XrayConfigComposer.metricsPort)")
-        let sys = ((json["policy"] as? [String: Any])?["system"]) as? [String: Any]
-        XCTAssertEqual(sys?["statsOutboundUplink"] as? Bool, true)
-        XCTAssertEqual(sys?["statsOutboundDownlink"] as? Bool, true)
-        // 只有 tun 一个 inbound（metrics 走 metrics.listen，不占 inbound）
-        XCTAssertEqual((json["inbounds"] as! [[String: Any]]).count, 1)
-    }
-
     func testComposeWrapsOutboundIntoFullConfigGlobal() throws {
         let composed = try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global)
 

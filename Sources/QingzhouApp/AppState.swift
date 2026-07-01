@@ -29,9 +29,6 @@ public final class AppState {
     /// 实时流量波形数据（滑动窗口）。appex 经 App Group 上报 `TrafficStats` 喂进来；
     /// 没开 VPN / 没真实上报时为空，UI 显示「等待流量」。
     public var trafficHistory = TrafficHistory(capacity: 60)
-    /// 各 outbound（"proxy"=当前节点、"direct"=直连）的累计上下行流量，来自 xray metrics。
-    /// appex 拉 expvar 解析后经 App Group 提供；VPN 未运行时为 nil。
-    public var nodeTraffic: XrayTrafficCounters?
     public var settings: Settings = Settings()
     public var lastSpeedTestReport: SpeedTestReport?
     /// 正在测速的节点 id 集合 —— UI 据此在对应行显示旋转 loading。
@@ -697,8 +694,6 @@ public final class AppState {
                     trafficHistory.clear()   // 连续 5 秒没新数据 → VPN 停了，清空波形
                 }
             }
-            // per-node 累计流量（appex 从 xray metrics 拉的）——「当前节点用量」的数据源。
-            nodeTraffic = AppGroupStorage.read(XrayTrafficCounters.self, from: "node-stats")
         }
     }
 }

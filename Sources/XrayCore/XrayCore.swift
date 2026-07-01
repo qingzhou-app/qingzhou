@@ -134,58 +134,6 @@ public enum XrayCore {
         #endif
     }
 
-    // MARK: - 配置校验 / 节点导出 / 流量统计（libXray 已导出但之前没接的能力）
-
-    /// 校验一份 xray 配置文件是否合法（连接前预检，坏配置提前给清晰错误）。
-    /// libXray 的 TestXray 只吃**文件路径** + geo 目录（解析 routing 里的 geosite/geoip 需要）。
-    /// - Throws: 配置非法时抛 `XrayError.libXrayError`，消息即 xray 的解析错误。
-    public static func testConfig(configPath: String, geoDir: String) throws {
-        #if canImport(LibXray)
-        let req: [String: String] = ["datDir": geoDir, "configPath": configPath]
-        let reqJSON = try JSONSerialization.data(withJSONObject: req)
-        let respB64 = LibXrayTestXray(reqJSON.base64EncodedString())
-        try Self.throwIfError(respB64)
-        #else
-        throw XrayError.libXrayNotLinked
-        #endif
-    }
-
-    /// 校验 xray 配置 JSON 字符串：写到临时文件再 TestXray。
-    /// geoDir 为空时只能校验不含 geosite/geoip 规则的配置（否则 xray 会因找不到 geo 报错）。
-    public static func validate(configJSON: String, geoDir: String = "") throws {
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("xray-validate-\(abs(configJSON.hashValue)).json")
-        try Data(configJSON.utf8).write(to: tmp, options: [.atomic])
-        defer { try? FileManager.default.removeItem(at: tmp) }
-        try testConfig(configPath: tmp.path, geoDir: geoDir)
-    }
-
-    /// 把一份 xray 配置 JSON 反向转成分享链接（每行一条，vmess 出 VMessAEAD）。
-    /// 用于「导出/分享节点」：节点 → 完整配置 → 分享链接 / 二维码。
-    public static func convertJSONToShareLinks(_ xrayJSON: String) throws -> String {
-        #if canImport(LibXray)
-        let b64 = Data(xrayJSON.utf8).base64EncodedString()
-        let respB64 = LibXrayConvertXrayJsonToShareLinks(b64)
-        return try Self.decodeResponseString(respB64)
-        #else
-        throw XrayError.libXrayNotLinked
-        #endif
-    }
-
-    /// 拉取 xray 的实时统计（打它的 metrics/expvar 端点）。
-    /// - Parameter metricsURL: 形如 `http://127.0.0.1:49227/debug/vars`（配置里要开
-    ///   `stats` + `metrics`(带 tag 的本地 inbound) + `policy.system.stats*`）。
-    /// - Returns: expvar 的原始 JSON 字符串，含 `outbound>>>tag>>>traffic>>>uplink/downlink` 等累计计数。
-    public static func queryStats(metricsURL: String) throws -> String {
-        #if canImport(LibXray)
-        let b64 = Data(metricsURL.utf8).base64EncodedString()
-        let respB64 = LibXrayQueryStats(b64)
-        return try Self.decodeResponseString(respB64)
-        #else
-        throw XrayError.libXrayNotLinked
-        #endif
-    }
-
     // MARK: - 错误响应解析
 
     /// libXray 返回的 base64(JSON{success: bool, data: T, error: string}) 通用解码。
