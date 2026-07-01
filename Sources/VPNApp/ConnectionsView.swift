@@ -41,8 +41,15 @@ public struct ConnectionsView: View {
                 }
             }
         }
-        .navigationDestination(isPresented: $showDomainAnalysis) {
-            DomainAnalysisView(connections: state.connections)
+        .sheet(isPresented: $showDomainAnalysis) {
+            NavigationStack {
+                DomainAnalysisView(connections: state.connections)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showDomainAnalysis = false }
+                        }
+                    }
+            }
         }
         .searchable(text: $keyword, prompt: "搜索 host / route / app")
     }
