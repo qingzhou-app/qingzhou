@@ -43,7 +43,7 @@ public struct ConnectionsView: View {
         }
         .sheet(isPresented: $showDomainAnalysis) {
             NavigationStack {
-                DomainAnalysisView(connections: state.connections)
+                DomainAnalysisView(state: state)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("完成") { showDomainAnalysis = false }

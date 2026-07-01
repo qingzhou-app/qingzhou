@@ -4,12 +4,13 @@ import VPNCore
 /// 域名维度的分析视图：按域名 / 每日 / 优化建议三个视角看连接数据。
 /// 数据源是 `AppState.connections`（隧道上报的真实连接；access log 接入前是示例数据）。
 public struct DomainAnalysisView: View {
-    let connections: [Connection]
+    @Bindable var state: AppState
     @State private var mode = 0
 
-    public init(connections: [Connection]) { self.connections = connections }
+    public init(state: AppState) { self.state = state }
 
     public var body: some View {
+        let connections = state.connections
         let stats = DomainAnalyzer.aggregate(connections)
         let digests = DomainAnalyzer.daily(connections)
         let suggestions = DomainAnalyzer.suggestions(stats)
