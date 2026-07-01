@@ -28,6 +28,31 @@ final class XrayConfigComposerTests: XCTestCase {
 
     // MARK: - 结构性测试
 
+    /// 默认不开统计：无 stats/metrics/policy，只有 tun 一个 inbound。
+    func testStatsDisabledByDefault() throws {
+        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global))
+        XCTAssertNil(json["stats"])
+        XCTAssertNil(json["metrics"])
+        XCTAssertNil(json["policy"])
+        XCTAssertEqual((json["inbounds"] as! [[String: Any]]).count, 1)
+    }
+
+    /// 开统计：加 stats + policy.system + metrics(tag) + 一个 dokodemo-door metrics inbound。
+    func testEnableStatsAddsMetricsInboundAndPolicy() throws {
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .global, enableStats: true))
+        XCTAssertNotNil(json["stats"])
+        XCTAssertEqual((json["metrics"] as? [String: Any])?["tag"] as? String, "metrics-in")
+        let sys = ((json["policy"] as? [String: Any])?["system"]) as? [String: Any]
+        XCTAssertEqual(sys?["statsOutboundUplink"] as? Bool, true)
+        XCTAssertEqual(sys?["statsOutboundDownlink"] as? Bool, true)
+        let inbounds = json["inbounds"] as! [[String: Any]]
+        XCTAssertEqual(inbounds.count, 2)
+        let metrics = inbounds.first { ($0["tag"] as? String) == "metrics-in" }
+        XCTAssertEqual(metrics?["port"] as? Int, XrayConfigComposer.metricsPort)
+        XCTAssertEqual(metrics?["protocol"] as? String, "dokodemo-door")
+    }
+
     func testComposeWrapsOutboundIntoFullConfigGlobal() throws {
         let composed = try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global)
 

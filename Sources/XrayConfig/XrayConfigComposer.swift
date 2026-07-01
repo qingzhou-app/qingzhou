@@ -18,6 +18,12 @@ import QingzhouCore
 
 public enum XrayConfigComposer {
 
+    /// xray metrics（expvar /debug/vars）监听地址 —— 仅本机，供 appex 用 XrayCore.queryStats 拉取。
+    /// appex 侧 metrics 轮询 URL 与这里的 compose(enableStats:) 生成的 inbound 必须一致。
+    public static let metricsListenAddress = "127.0.0.1"
+    public static let metricsPort = 49227
+    public static var metricsURL: String { "http://\(metricsListenAddress):\(metricsPort)/debug/vars" }
+
     public enum Error: Swift.Error, LocalizedError {
         case invalidOutboundJSON
         case noProxyOutbound
@@ -42,7 +48,8 @@ public enum XrayConfigComposer {
     public static func compose(
         outboundsJSON: String,
         mode: ProxyMode,
-        accessLogPath: String? = nil
+        accessLogPath: String? = nil,
+        enableStats: Bool = false
     ) throws -> String {
         guard let data = outboundsJSON.data(using: .utf8),
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -78,7 +85,7 @@ public enum XrayConfigComposer {
 
         // tun inbound：MTU 跟 PacketTunnelProvider 里 setTunnelNetworkSettings 保持一致。
         // sniffing 开启：让 xray 从 TLS SNI / HTTP Host 提取真实域名，便于按域名路由。
-        let inbounds: [[String: Any]] = [[
+        var inbounds: [[String: Any]] = [[
             "tag": "tun-in",
             "protocol": "tun",
             "settings": [
@@ -92,6 +99,19 @@ public enum XrayConfigComposer {
             ]
         ]]
 
+        // metrics inbound：一个只监听 127.0.0.1 的 dokodemo-door，xray 的 metrics 特性
+        // 会劫持它的监听端口，用 HTTP 在 /debug/vars 暴露 expvar 统计。配合下面的
+        // stats + policy，就能按 outbound tag 拿到累计上/下行字节。appex 用 metricsURL 轮询。
+        if enableStats {
+            inbounds.append([
+                "tag": "metrics-in",
+                "listen": Self.metricsListenAddress,
+                "port": Self.metricsPort,
+                "protocol": "dokodemo-door",
+                "settings": ["address": Self.metricsListenAddress]
+            ])
+        }
+
         // 开了 access log，xray 会把每条连接（from src accepted net:host:port [in -> out]）
         // 追加写到这个文件；主 App 读出来解析成真实连接（AccessLogParser）。sniffing 已开，
         // 所以 host 是嗅探出的域名而非 IP。
@@ -100,7 +120,7 @@ public enum XrayConfigComposer {
             logSection["access"] = accessLogPath
         }
 
-        let config: [String: Any] = [
+        var config: [String: Any] = [
             "log": logSection,
             "inbounds": inbounds,
             "outbounds": outbounds,
@@ -115,6 +135,21 @@ public enum XrayConfigComposer {
                 ["ipPool": "fc00::/18", "poolSize": 65535] as [String: Any]
             ]
         ]
+
+        // 统计：stats 打开计数器容器，policy.system 打开系统级 in/out 上下行计数，
+        // metrics 把 expvar 绑到 metrics-in 这个 inbound 上对外暴露。三者缺一不可。
+        if enableStats {
+            config["stats"] = [:] as [String: Any]
+            config["policy"] = [
+                "system": [
+                    "statsInboundUplink": true,
+                    "statsInboundDownlink": true,
+                    "statsOutboundUplink": true,
+                    "statsOutboundDownlink": true
+                ]
+            ]
+            config["metrics"] = ["tag": "metrics-in"]
+        }
 
         let out = try JSONSerialization.data(
             withJSONObject: config,

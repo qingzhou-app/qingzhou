@@ -98,7 +98,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             xrayJSON = try XrayConfigComposer.compose(
                 outboundsJSON: outboundsJSON,
                 mode: mode,
-                accessLogPath: TunnelAppGroup.accessLogPath()
+                accessLogPath: TunnelAppGroup.accessLogPath(),
+                enableStats: true   // 开 metrics/expvar，reportTrafficStats 里拉 per-node 累计流量
             )
         } catch {
             os_log("share link → xray config 转换失败: %{public}@",
@@ -376,6 +377,16 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         if !map.isEmpty, let mData = try? JSONEncoder().encode(map),
            let mJSON = String(data: mData, encoding: .utf8) {
             TunnelAppGroup.writeFakeDNSMap(mJSON)
+        }
+
+        // per-node 累计流量：拉 xray metrics(expvar) → 解析成 per-tag 上下行 → 写 App Group。
+        // 全程静默失败（metrics 端点没起 / 拉取出错都不影响上面的主统计）。localhost expvar，
+        // 连接被拒时 http.Get 立即返回，不会卡住本队列。
+        if let raw = try? XrayCore.queryStats(metricsURL: XrayConfigComposer.metricsURL) {
+            let counters = XrayStatsParser.parse(raw)
+            if let d = try? JSONEncoder().encode(counters), let j = String(data: d, encoding: .utf8) {
+                TunnelAppGroup.writeNodeStats(j)
+            }
         }
     }
 

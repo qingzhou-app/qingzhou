@@ -206,6 +206,15 @@ public struct HomeView: View {
                 statRow("总上行", value: ByteFormatter.format(latest?.uploadBytes ?? 0))
                 statRow("总下行", value: ByteFormatter.format(latest?.downloadBytes ?? 0))
                 statRow("当前速率", value: "↑ \(ByteFormatter.format(latest?.uploadSpeedBps ?? 0))/s · ↓ \(ByteFormatter.format(latest?.downloadSpeedBps ?? 0))/s")
+                // 当前节点累计用量（xray metrics，区分「走节点」vs「直连」—— 波形总量给不了这个）
+                if let nt = state.nodeTraffic {
+                    Divider().padding(.vertical, 2)
+                    statRow("节点上行", value: ByteFormatter.format(nt.proxy.uplink))
+                    statRow("节点下行", value: ByteFormatter.format(nt.proxy.downlink))
+                    if let direct = nt.outbound["direct"], direct.uplink + direct.downlink > 0 {
+                        statRow("直连累计", value: "↑ \(ByteFormatter.format(direct.uplink)) · ↓ \(ByteFormatter.format(direct.downlink))")
+                    }
+                }
             }
         }
     }
