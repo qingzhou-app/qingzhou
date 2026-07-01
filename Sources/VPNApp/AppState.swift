@@ -66,6 +66,8 @@ public final class AppState {
     private var ipRefreshTask: Task<Void, Never>?
     /// access log 文件已读到的字节位置（增量读，不重复解析）。
     private var accessLogOffset: UInt64 = 0
+    /// appex 写的「假 IP → 域名」映射（FakeDNS），把 access log 的 198.18.x.x 翻回域名。
+    private var fakeDNSMap: [String: String] = [:]
 
     public init(
         logger: Logger = Logger(),
@@ -594,6 +596,10 @@ public final class AppState {
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(2))
             if Task.isCancelled { break }
+            // 先刷新 appex 写的「假 IP → 域名」映射，ingestAccessLog 才能把 198.18.x.x 翻回域名
+            if let map = AppGroupStorage.read([String: String].self, from: "fakedns-map") {
+                fakeDNSMap = map
+            }
             ingestAccessLog()
         }
     }
@@ -613,7 +619,13 @@ public final class AppState {
         guard !entries.isEmpty else { return }
         let proxyName = currentNode?.name
         for entry in entries {
-            connections.insert(entry.makeConnection(proxyDisplayName: proxyName), at: 0)
+            var conn = entry.makeConnection(proxyDisplayName: proxyName)
+            // FakeDNS 的假 IP（198.18.x.x）→ 反查回真域名，连接列表/域名分析才有意义
+            if let domain = fakeDNSMap[entry.targetHost] {
+                conn.targetHost = domain
+                conn.targetAddress = "\(domain):\(entry.targetPort)"
+            }
+            connections.insert(conn, at: 0)
         }
         if connections.count > 200 { connections.removeLast(connections.count - 200) }
     }

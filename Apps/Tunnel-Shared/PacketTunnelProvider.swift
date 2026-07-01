@@ -53,6 +53,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private let statsQueue = DispatchQueue(label: "com.sbraveyoung.qingzhou.tunnel.stats")
     private var lastReportAt: Date?
 
+    /// FakeDNS 映射「假 IP → 域名」。从 xray 发回 App 的 DNS 响应里解析出来（见 captureFakeDNS），
+    /// 随 reportTrafficStats 一起写进 App Group，主 App 用它把 access log 的假 IP 翻回域名。
+    private let fakeDNSMap = OSAllocatedUnfairLock(initialState: [String: String]())
+
     override func startTunnel(
         options: [String: NSObject]?,
         completionHandler: @escaping (Error?) -> Void
@@ -305,6 +309,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                  UInt32(buf[3])
             let packet = Data(buf[4..<Int(n)])
             self.byteCounters.withLock { $0.down += Int64(n - 4) }
+            self.captureFakeDNS(packet)
 
             if !loggedFirstXrayPacket {
                 loggedFirstXrayPacket = true
@@ -365,6 +370,21 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         encoder.dateEncodingStrategy = .iso8601   // 跟主 App AppGroupStorage.read 的解码策略一致
         if let data = try? encoder.encode(stats), let json = String(data: data, encoding: .utf8) {
             TunnelAppGroup.writeTrafficStats(json)
+        }
+        // 顺便把 FakeDNS 映射（假 IP → 域名）写出去，主 App 用它把连接列表的假 IP 翻回域名
+        let map = fakeDNSMap.withLock { $0 }
+        if !map.isEmpty, let mData = try? JSONEncoder().encode(map),
+           let mJSON = String(data: mData, encoding: .utf8) {
+            TunnelAppGroup.writeFakeDNSMap(mJSON)
+        }
+    }
+
+    /// 从 xray 发回 App 的下行包里，把 DNS 响应解析成「假 IP → 域名」映射并累积。
+    private func captureFakeDNS(_ packet: Data) {
+        let maps = FakeDNSResolver.mappingsFromIPPacket([UInt8](packet))
+        guard !maps.isEmpty else { return }
+        fakeDNSMap.withLock { dict in
+            for m in maps { dict[m.ip] = m.domain }
         }
     }
 

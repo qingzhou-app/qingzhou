@@ -99,4 +99,21 @@ public enum TunnelAppGroup {
         guard FileManager.default.createFile(atPath: url.path, contents: nil) else { return nil }
         return url.path
     }
+
+    // MARK: - FakeDNS 映射（Extension 写、主 App 读）
+
+    /// 主 App 侧用 AppGroupStorage.read(from: "fakedns-map") 同名读取。
+    public static let fakeDNSMapName = "fakedns-map"
+
+    private static var fakeDNSMapURL: URL? {
+        containerURL?.appendingPathComponent(fakeDNSMapName).appendingPathExtension("json")
+    }
+
+    /// Extension 调：把「假 IP → 域名」映射（已 encode 成 JSON 串）写进共享容器。
+    /// 主 App 用它把 access log 里的 198.18.x.x 假 IP 翻译回真域名。
+    @discardableResult
+    public static func writeFakeDNSMap(_ json: String) -> Bool {
+        guard let url = fakeDNSMapURL else { return false }
+        return (try? json.write(to: url, atomically: true, encoding: .utf8)) != nil
+    }
 }
