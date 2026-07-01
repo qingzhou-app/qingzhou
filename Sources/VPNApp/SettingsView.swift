@@ -163,17 +163,20 @@ public struct SettingsView: View {
                 state.applyMacSystemPreferences()
             }
             Button("启用来源 App 标注") {
+                ContentFilterManager.shared.onNeedsApproval = {
+                    state.showToast("请到「系统设置 → 通用 → 登录项与扩展 → 网络扩展」批准轻舟")
+                }
                 Task {
                     do {
-                        try await ContentFilterManager.enable()
-                        state.showToast("已启用，请在系统弹窗里点「允许」")
+                        try await ContentFilterManager.shared.activateAndEnable()
+                        state.showToast("已启用来源 App 标注")
                     } catch {
                         state.showToast("启用失败：\(error.localizedDescription)")
                         state.logger.error("Content filter enable failed: \(error)", category: "filter")
                     }
                 }
             }
-            Text("开启后「连接」页会标注每条流量是哪个 App 发起的。首次会弹系统授权；需 content-filter 扩展。")
+            Text("开启后「连接」页会标注每条流量是哪个 App 发起的。首次要在系统设置批准扩展 + 授权过滤。")
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }

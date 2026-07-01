@@ -103,6 +103,8 @@ targets:
           - packet-tunnel-provider
         com.apple.security.application-groups:
           - group.com.sbraveyoung.qingzhou
+        # 激活 content filter 的 System Extension 需要主 App 有这项
+        com.apple.developer.system-extension.install: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbraveyoung.qingzhou.mac
@@ -215,7 +217,7 @@ targets:
   # macOS 内容过滤扩展：只观测连接、标注来源 App（bundle id），不阻断。
   # 只在 macOS 有 —— iOS 的 content filter 需要 MDM 监督，普通 App Store app 用不了。
   VPN-Filter-macOS:
-    type: app-extension
+    type: system-extension
     platform: macOS
     sources:
       - path: Filter-macOS
@@ -225,9 +227,11 @@ targets:
         CFBundleDisplayName: 轻舟 Filter
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.networkextension.filter-data
-          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).FilterDataProvider
+        # System Extension 用 NetworkExtension/NEProviderClasses 声明 provider，
+        # 不是 app-extension 的 NSExtension（macOS 26 只认 system extension 形态的 content filter）
+        NetworkExtension:
+          NEProviderClasses:
+            com.apple.networkextension.filter-data: $(PRODUCT_MODULE_NAME).FilterDataProvider
     entitlements:
       path: Filter-macOS/Filter.entitlements
       properties:
