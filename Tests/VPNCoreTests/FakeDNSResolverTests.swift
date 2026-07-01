@@ -17,6 +17,10 @@ final class FakeDNSResolverTests: XCTestCase {
     private func aRecord(_ a: UInt8, _ b: UInt8, _ c: UInt8, _ d: UInt8) -> [UInt8] {
         [0xC0,0x0C, 0x00,0x01, 0x00,0x01, 0x00,0x00,0x01,0x2C, 0x00,0x04, a,b,c,d]
     }
+    // 一条 AAAA 记录（type 28, rdlength 16）
+    private func aaaaRecord(_ v6: [UInt8]) -> [UInt8] {
+        [0xC0,0x0C, 0x00,0x1C, 0x00,0x01, 0x00,0x00,0x01,0x2C, 0x00,0x10] + v6
+    }
 
     func testParsesSingleARecord() {
         let bytes = header(answers: 1) + question + aRecord(198,18,11,144)
@@ -59,5 +63,19 @@ final class FakeDNSResolverTests: XCTestCase {
         // 源端口不是 53（比如 443）→ 不是 DNS 响应，返回空
         var notDNS = packet; notDNS[20] = 0x01; notDNS[21] = 0xBB
         XCTAssertTrue(FakeDNSResolver.mappingsFromIPPacket(notDNS).isEmpty)
+    }
+
+    func testParsesAAAARecordAsCompressedIPv6() {
+        let fc00_11: [UInt8] = [0xfc,0x00, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0x00,0x11]
+        let bytes = header(answers: 1) + question + aaaaRecord(fc00_11)
+        let r = FakeDNSResolver.parseResponse(bytes)
+        XCTAssertEqual(r.first?.ip, "fc00::11", "假 IPv6 要压缩成和 xray access log 一致的形式")
+        XCTAssertEqual(r.first?.domain, "www.google.com")
+    }
+
+    func testFormatIPv6MatchesGoStyle() {
+        XCTAssertEqual(FakeDNSResolver.formatIPv6([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]), "::1")
+        XCTAssertEqual(FakeDNSResolver.formatIPv6([0xfc,0,0,1,0,0,0,0,0,0,0,0,0,0,0,2]), "fc00:1::2")
+        XCTAssertEqual(FakeDNSResolver.formatIPv6([0x20,1,0x0d,0xb8,0,0,0,0,0,0,0,0,0,0,0,1]), "2001:db8::1")
     }
 }

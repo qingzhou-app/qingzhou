@@ -37,6 +37,8 @@ public enum FakeDNSResolver {
             if type == 1 && rdlength == 4 {      // A 记录 = IPv4
                 let ip = "\(bytes[rdataStart]).\(bytes[rdataStart+1]).\(bytes[rdataStart+2]).\(bytes[rdataStart+3])"
                 result.append((ip: ip, domain: domain))
+            } else if type == 28 && rdlength == 16 {   // AAAA 记录 = IPv6
+                result.append((ip: formatIPv6(Array(bytes[rdataStart..<(rdataStart + 16)])), domain: domain))
             }
             offset = rdataStart + rdlength
         }
@@ -57,6 +59,28 @@ public enum FakeDNSResolver {
         let srcPort = Int(packet[ihl]) << 8 | Int(packet[ihl + 1])
         guard srcPort == 53 else { return nil }                            // DNS 响应从 53 来
         return Array(packet[(ihl + 8)...])                                 // 跳过 IP 头 + UDP 头(8)
+    }
+
+    /// 把 16 字节 IPv6 格式化成 Go net.IP.String 的压缩形式（xray access log 用的就是它），
+    /// 例如 fc00:0:0:0:0:0:0:11 → "fc00::11"，这样才能和 access log 里的假 IPv6 对上。
+    static func formatIPv6(_ b: [UInt8]) -> String {
+        guard b.count == 16 else { return "" }
+        var g = [Int]()
+        for i in stride(from: 0, to: 16, by: 2) { g.append(Int(b[i]) << 8 | Int(b[i + 1])) }
+        // 找最长的连续零段（≥2 段才压缩成 ::）
+        var bestStart = -1, bestLen = 0, curStart = -1, curLen = 0
+        for i in 0..<8 {
+            if g[i] == 0 {
+                if curStart == -1 { curStart = i; curLen = 1 } else { curLen += 1 }
+                if curLen > bestLen { bestStart = curStart; bestLen = curLen }
+            } else { curStart = -1; curLen = 0 }
+        }
+        if bestLen < 2 {
+            return g.map { String($0, radix: 16) }.joined(separator: ":")
+        }
+        let head = (0..<bestStart).map { String(g[$0], radix: 16) }.joined(separator: ":")
+        let tail = ((bestStart + bestLen)..<8).map { String(g[$0], radix: 16) }.joined(separator: ":")
+        return head + "::" + tail
     }
 
     /// 读一个 DNS name（labels），返回 (域名, 名字之后的偏移)。

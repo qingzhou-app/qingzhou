@@ -110,7 +110,9 @@ public enum XrayConfigComposer {
             // sniffing 的 fakedns 反查回真域名，于是 access log / 路由都拿到域名，**不依赖 TLS SNI**
             //（SNI 越来越多被 ECH 加密，纯 sniffing 只能看到 IP，这就是"连接页全是 IP"的根因）。
             "fakedns": [
-                ["ipPool": "198.18.0.0/15", "poolSize": 65535] as [String: Any]
+                ["ipPool": "198.18.0.0/15", "poolSize": 65535] as [String: Any],
+                // IPv6 假 IP 池：让 AAAA 查询也拿假 IP，App 走 IPv6 时连接页也能反查回域名
+                ["ipPool": "fc00::/18", "poolSize": 65535] as [String: Any]
             ]
         ]
 
