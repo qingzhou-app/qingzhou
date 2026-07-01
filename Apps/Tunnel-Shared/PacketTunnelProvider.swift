@@ -280,7 +280,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                        log: self.log, type: .default,
                        packets.count, packets[0].count, Int(truncating: protocols[0]))
             }
-            if self.bridgeActive {
+            // 仅当仍是**当前**那对 socketpair 时才重挂 —— 原地重配换了新 fd 后，
+            // 上一代 readPackets 的残留回调不会误挂到旧 fd（否则会出现两条 readPackets 链）。
+            if self.bridgeActive, self.tunPair?.swift == swiftFd {
                 self.startReadPacketsToFd(swiftFd: swiftFd)
             }
         }
@@ -395,9 +397,50 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler()
     }
 
+    /// 原地重配：不动 TUN / VPN 会话，只用新配置重启 xray + socketpair 桥。
+    /// 由主 App 的 sendProviderMessage 触发，实现切模式 / 切节点的无感切换。
+    /// 安全设计：
+    ///  - 新配置**构建失败**时直接回错、**不拆旧 xray** —— 旧连接照跑，网络不受影响；
+    ///  - xray 起不来时 bringUpXray 会自己 tearDown 并回错误，主 App 收到后回退到全量重启。
+    private func reconfigure(nodeJSON: String, shareLink: String, mode: ProxyMode,
+                             nodeName: String, reply: @escaping (Error?) -> Void) {
+        os_log("reconfigure → node=%{public}@ mode=%{public}@", log: log, type: .default, nodeName, mode.rawValue)
+        let xrayJSON: String
+        do {
+            let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
+            xrayJSON = try XrayConfigComposer.compose(
+                outboundsJSON: outboundsJSON,
+                mode: mode,
+                accessLogPath: TunnelAppGroup.accessLogPath()
+            )
+        } catch {
+            os_log("reconfigure: build config failed, keep old xray: %{public}@",
+                   log: log, type: .error, error.localizedDescription)
+            reply(error)   // 旧 xray 照跑，网络不受影响
+            return
+        }
+        _ = XrayCore.stop()
+        tearDownBridge()
+        bringUpXray(configJSON: xrayJSON, completionHandler: reply)
+    }
+
     override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)?) {
-        // S7 才用：主 App 通过 sendProviderMessage 拉连接列表 / 流量统计。
-        completionHandler?(nil)
+        guard let obj = try? JSONSerialization.jsonObject(with: messageData) as? [String: String],
+              obj["command"] == "reconfigure" else {
+            completionHandler?(nil)
+            return
+        }
+        reconfigure(
+            nodeJSON: obj["nodeJSON"] ?? "",
+            shareLink: obj["shareLink"] ?? "",
+            mode: ProxyMode(rawValue: obj["proxyMode"] ?? "") ?? .global,
+            nodeName: obj["nodeName"] ?? "node"
+        ) { error in
+            let payload: [String: Any] = error == nil
+                ? ["ok": true]
+                : ["ok": false, "error": error!.localizedDescription]
+            completionHandler?(try? JSONSerialization.data(withJSONObject: payload))
+        }
     }
 
     override func sleep(completionHandler: @escaping () -> Void) { completionHandler() }

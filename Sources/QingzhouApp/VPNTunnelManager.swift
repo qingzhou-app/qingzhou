@@ -1,5 +1,5 @@
 import Foundation
-import NetworkExtension
+@preconcurrency import NetworkExtension
 import QingzhouCore
 import QingzhouLogging
 
@@ -150,6 +150,56 @@ public final class VPNTunnelManager {
         }
     }
 
+    /// 原地无感重配：给**运行中**的扩展发新配置，扩展只重启 xray（不重连 VPN、不动 TUN）。
+    /// 用于切代理模式 / 切节点时避免整条隧道 stop→start 造成的断连。
+    /// 失败（拿不到会话 / 扩展报错 / 超时）时 throws —— 调用方据此回退到全量重启。
+    public func reconfigureInPlace(node: Node, mode: ProxyMode, shareLink: String) async throws {
+        guard let session = manager?.connection as? NETunnelProviderSession else {
+            throw TunnelError.managerNotLoaded
+        }
+        let msg: [String: String] = [
+            "command": "reconfigure",
+            "nodeJSON": Self.encodeNodeJSON(node),
+            "shareLink": shareLink,
+            "nodeName": node.name,
+            "proxyMode": mode.rawValue
+        ]
+        let data = try JSONSerialization.data(withJSONObject: msg)
+
+        let reply: Data? = try await withCheckedThrowingContinuation { cont in
+            let once = TunnelOnce()
+            do {
+                try session.sendProviderMessage(data) { replyData in
+                    once.run { cont.resume(returning: replyData) }
+                }
+            } catch {
+                once.run { cont.resume(throwing: error) }
+                return
+            }
+            // 扩展崩了 / 卡住不回执时的兜底：超时即当失败，让上层回退到全量重启。
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                once.run { cont.resume(throwing: TunnelError.underlying(
+                    NSError(domain: "qingzhou.tunnel", code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: "原地重配超时"]))) }
+            }
+        }
+        // 扩展回执：{ok: false, error: ...} 表示重配失败（xray 没起来），抛错让上层回退。
+        if let reply,
+           let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
+           obj["ok"] as? Bool == false {
+            throw TunnelError.underlying(NSError(
+                domain: "qingzhou.tunnel", code: -2,
+                userInfo: [NSLocalizedDescriptionKey: (obj["error"] as? String) ?? "扩展重配失败"]))
+        }
+    }
+
+    private static func encodeNodeJSON(_ node: Node) -> String {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return (try? encoder.encode(node)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+
     /// 把系统抛的 NSError 翻译成更可定位的 TunnelError 枚举。
     private static func translate(_ error: NSError) -> TunnelError {
         // NEVPNErrorDomain: VPN 框架自身错误（很少见到）
@@ -193,6 +243,16 @@ public final class VPNTunnelManager {
     }
 
     public var status: NEVPNStatus { manager?.connection.status ?? .invalid }
+}
+
+/// 保证回调只跑一次 —— sendProviderMessage 回执与超时兜底二者互斥、但用它防重复 resume。
+private final class TunnelOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    func run(_ block: () -> Void) {
+        lock.lock(); let first = !done; done = true; lock.unlock()
+        if first { block() }
+    }
 }
 
 extension NEVPNStatus {

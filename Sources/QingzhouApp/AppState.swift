@@ -348,6 +348,15 @@ public final class AppState {
         guard isVPNRunning,
               let node = currentNode,
               let shareLink = NodeEncoder.shareLink(node) else { return }
+        // ① 优先原地无感重配：给运行中的扩展发新配置，只重启 xray，不重连 VPN、不断 TUN。
+        do {
+            try await tunnelManager.reconfigureInPlace(node: node, mode: settings.proxyMode, shareLink: shareLink)
+            logger.info("Seamless switch → \(node.name) / \(settings.proxyMode.rawValue)", category: "tunnel")
+            return
+        } catch {
+            logger.warn("In-place switch failed (\(error.localizedDescription))；回退全量重启", category: "tunnel")
+        }
+        // ② 回退：全量 stop→start（原有行为）。原地重配连不上/超时/扩展报错时才走到这。
         do {
             try await tunnelManager.configure(
                 node: node,
