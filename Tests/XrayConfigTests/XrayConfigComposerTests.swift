@@ -89,8 +89,20 @@ final class XrayConfigComposerTests: XCTestCase {
         let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global))
         let dns = json["dns"] as! [String: Any]
         let servers = dns["servers"] as! [Any]
-        XCTAssertEqual(servers.first as? String, "8.8.8.8")
+        XCTAssertEqual(servers.first as? String, "fakedns", "fakedns 拦在最前，才能给域名分配假 IP")
+        XCTAssertTrue(servers.contains { $0 as? String == "8.8.8.8" }, "真实 DNS 仍在，用于实际连接解析")
         XCTAssertEqual(dns["queryStrategy"] as? String, "UseIP")
+    }
+
+    /// FakeDNS：让 access log/路由拿到真域名而不是 IP（SNI 常被 ECH 加密，纯 sniffing 只见 IP）。
+    func testComposeEnablesFakeDNS() throws {
+        let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global))
+        let fakedns = json["fakedns"] as? [[String: Any]]
+        XCTAssertEqual(fakedns?.first?["ipPool"] as? String, "198.18.0.0/15", "应配 fakedns 假 IP 池")
+        let inbounds = json["inbounds"] as! [[String: Any]]
+        let sniffing = inbounds[0]["sniffing"] as! [String: Any]
+        XCTAssertTrue((sniffing["destOverride"] as! [String]).contains("fakedns"),
+                      "sniffing destOverride 要含 fakedns 才能把假 IP 反查回域名")
     }
 
     func testDNSRuleModeIncludesChinaDNS() throws {

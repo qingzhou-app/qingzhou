@@ -84,7 +84,7 @@ public enum XrayConfigComposer {
             ],
             "sniffing": [
                 "enabled": true,
-                "destOverride": ["http", "tls", "quic"],
+                "destOverride": ["fakedns", "http", "tls", "quic"],
                 "routeOnly": false
             ]
         ]]
@@ -102,7 +102,13 @@ public enum XrayConfigComposer {
             "inbounds": inbounds,
             "outbounds": outbounds,
             "routing": buildRouting(mode: mode),
-            "dns": buildDNS(mode: mode)
+            "dns": buildDNS(mode: mode),
+            // FakeDNS：给每个域名分配一个 198.18.x.x 假 IP。App 连这个假 IP → TUN → xray 靠
+            // sniffing 的 fakedns 反查回真域名，于是 access log / 路由都拿到域名，**不依赖 TLS SNI**
+            //（SNI 越来越多被 ECH 加密，纯 sniffing 只能看到 IP，这就是"连接页全是 IP"的根因）。
+            "fakedns": [
+                ["ipPool": "198.18.0.0/15", "poolSize": 65535] as [String: Any]
+            ]
         ]
 
         let out = try JSONSerialization.data(
@@ -185,13 +191,14 @@ public enum XrayConfigComposer {
         switch mode {
         case .global, .direct:
             return [
-                "servers": ["8.8.8.8", "1.1.1.1"],
+                "servers": ["fakedns", "8.8.8.8", "1.1.1.1"],
                 "queryStrategy": "UseIP"
             ]
         case .rule:
             // 中国域名用阿里 DNS（IPv4），结果落 geoip:cn 才被接受；其他用 Google + Cloudflare。
             return [
                 "servers": [
+                    "fakedns",
                     [
                         "address": "223.5.5.5",
                         "port": 53,
