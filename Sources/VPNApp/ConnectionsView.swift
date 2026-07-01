@@ -114,9 +114,9 @@ public struct ConnectionsView: View {
             }
             .font(.caption2.monospaced()).foregroundStyle(.secondary)
             HStack(spacing: 6) {
-                // 来源 app（bundle id）：macOS 上未来可由 content-filter 提供；iOS 拿不到时优雅省略。
+                // 来源 app：macOS 由 content-filter 提供 bundle id，显示真实图标+名字；iOS 拿不到时省略。
                 if let app = c.sourceApp, !app.isEmpty {
-                    Label(app, systemImage: "app.dashed").lineLimit(1)
+                    SourceAppLabel(bundleID: app)
                     Text("·")
                 }
                 Text("\(c.sourceAddress) → \(c.targetAddress)").lineLimit(1)

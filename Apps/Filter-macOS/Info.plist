@@ -15,17 +15,22 @@
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
-	<string>XPC!</string>
+	<string>SYSX</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>NSExtension</key>
+	<key>NSSystemExtensionUsageDescription</key>
+	<string>轻舟用它标注每条连接由哪个 App 发起（仅本机分析，不上传）。</string>
+	<key>NetworkExtension</key>
 	<dict>
-		<key>NSExtensionPointIdentifier</key>
-		<string>com.apple.networkextension.filter-data</string>
-		<key>NSExtensionPrincipalClass</key>
-		<string>$(PRODUCT_MODULE_NAME).FilterDataProvider</string>
+		<key>NEMachServiceName</key>
+		<string>group.com.sbraveyoung.qingzhou.filter</string>
+		<key>NEProviderClasses</key>
+		<dict>
+			<key>com.apple.networkextension.filter-data</key>
+			<string>$(PRODUCT_MODULE_NAME).FilterDataProvider</string>
+		</dict>
 	</dict>
 </dict>
 </plist>

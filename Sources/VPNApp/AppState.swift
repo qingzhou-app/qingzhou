@@ -68,8 +68,12 @@ public final class AppState {
     private var accessLogOffset: UInt64 = 0
     /// appex 写的「假 IP → 域名」映射（FakeDNS），把 access log 的 198.18.x.x 翻回域名。
     private var fakeDNSMap: [String: String] = [:]
-    /// content filter 扩展写的「源端口 → 来源 App bundle id」（仅 macOS）。
+    /// content filter 扩展提供的「源端口 → 来源 App bundle id」（仅 macOS）。
     private var sourceAppMap: [String: String] = [:]
+    #if os(macOS)
+    /// 内容过滤扩展以 root 运行，App Group 文件与用户 App 不通，故通过 XPC 查询端口→App 映射。
+    private let filterControl = FilterControlClient()
+    #endif
 
     public init(
         logger: Logger = Logger(),
@@ -602,12 +606,36 @@ public final class AppState {
             if let map = AppGroupStorage.read([String: String].self, from: "fakedns-map") {
                 fakeDNSMap = map
             }
-            if let apps = AppGroupStorage.read([String: String].self, from: "source-apps") {
-                sourceAppMap = apps
+            #if os(macOS)
+            // 来源 App 标注暂时搁置（见 FeatureFlags.sourceAppLabeling）。开启时才走 XPC + 回填。
+            if FeatureFlags.sourceAppLabeling {
+                // content filter 扩展（root）经 XPC 提供端口→App 映射；没启用/连不上则保持上次的值。
+                let fetched = await filterControl.fetchPortMap()
+                if let fetched {
+                    sourceAppMap = fetched
+                }
+                // 回填：连接常在 XPC map 就绪前就已 ingest（sourceApp=nil），每轮用最新 map
+                // 把已存在连接的来源 App 补上，否则只有「解析那一刻」端口在 map 里的才有标注。
+                backfillSourceApps()
             }
+            #endif
             ingestAccessLog()
         }
     }
+
+    #if os(macOS)
+    /// 用最新的「源端口 → 来源 App」映射，回填所有还没标注来源的连接。
+    /// content filter 的 map 常晚于连接 ingest 才就绪，只在解析那刻查一次会漏掉大批连接。
+    private func backfillSourceApps() {
+        guard !sourceAppMap.isEmpty else { return }
+        for i in connections.indices where connections[i].sourceApp == nil {
+            if let port = connections[i].sourceAddress.split(separator: ":").last.map(String.init),
+               let bundleID = sourceAppMap[port] {
+                connections[i].sourceApp = bundleID
+            }
+        }
+    }
+    #endif
 
     private func ingestAccessLog() {
         guard let url = AppGroupStorage.accessLogURL,

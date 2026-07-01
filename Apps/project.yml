@@ -19,7 +19,8 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    # 注意：改了系统扩展代码后必须 +1，否则 sysextd 认为同版本、不会用新代码替换正在跑的旧扩展
+    CURRENT_PROJECT_VERSION: "3"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 
@@ -91,6 +92,10 @@ targets:
         # 不要在 dock 显示，只在状态栏 —— 想要常规窗口模式把这行删掉
         # LSUIElement: true
         NSHumanReadableCopyright: Copyright © 2026
+        # 安装系统扩展（来源 App 标注的 content filter）时向用户展示的用途说明。
+        # network_extension 类的系统扩展强制要求主 App Info.plist 有这个键，
+        # 缺了激活会报 OSSystemExtensionErrorDomain #9 validationFailed。
+        NSSystemExtensionUsageDescription: 轻舟需要安装网络扩展，用于标注每条连接由哪个 App 发起（仅本机分析，不上传）。
     entitlements:
       path: macOS/Resources/VPN.entitlements
       properties:
@@ -227,9 +232,20 @@ targets:
         CFBundleDisplayName: 轻舟 Filter
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # 系统扩展必须是 SYSX —— OSSystemExtensionManager 枚举 App bundle 时靠这个
+        # package type 认出「这是系统扩展」，缺了会被当成非扩展跳过，报
+        # "Extension not found in App bundle"。我们给了完整 info.properties，
+        # Xcode 不会再自动注入它（GENERATE_INFOPLIST_FILE=NO），所以必须显式写。
+        CFBundlePackageType: SYSX
+        # network_extension 类的系统扩展，校验时要求扩展自己的 Info.plist 也带用途说明，
+        # 缺了激活报 OSSystemExtensionErrorDomain #9 validationFailed（只加在主 App 上不够）。
+        NSSystemExtensionUsageDescription: 轻舟用它标注每条连接由哪个 App 发起（仅本机分析，不上传）。
         # System Extension 用 NetworkExtension/NEProviderClasses 声明 provider，
         # 不是 app-extension 的 NSExtension（macOS 26 只认 system extension 形态的 content filter）
         NetworkExtension:
+          # 出让给主 App 的 XPC mach service（查端口→App 映射）。必须以 App Group 为前缀，
+          # 沙箱主 App 才能查找；不声明的话扩展 NSXPCListener 拿不到这个 mach 名。
+          NEMachServiceName: group.com.sbraveyoung.qingzhou.filter
           NEProviderClasses:
             com.apple.networkextension.filter-data: $(PRODUCT_MODULE_NAME).FilterDataProvider
     entitlements:
@@ -245,6 +261,15 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbraveyoung.qingzhou.mac.filter
+        # ⚠️ NEProvider 系统扩展的铁律：可执行名（PRODUCT_NAME → CFBundleExecutable）必须
+        # 等于 bundle identifier。否则 sysextd 的 service path 与 bundle id 对不上，激活时
+        # 报 OSSystemExtensionErrorDomain #4 extensionNotFound（"Unable to find any matched
+        # extension with identifier"）——文件明明在 Contents/Library/SystemExtensions/ 也没用。
+        # app-extension 形态的 NE provider（Tunnel appex）没这要求，所以只有这个系统扩展中招。
+        PRODUCT_NAME: com.sbraveyoung.qingzhou.mac.filter
+        # PRODUCT_NAME 带点会污染自动推导的 Swift 模块名，显式钉住，保证 Info.plist 里
+        # $(PRODUCT_MODULE_NAME).FilterDataProvider 稳定解析成 VPN_Filter_macOS.FilterDataProvider
+        PRODUCT_MODULE_NAME: VPN_Filter_macOS
         DEVELOPMENT_TEAM: UK7MME38H9
         SWIFT_VERSION: "6.0"
         ENABLE_HARDENED_RUNTIME: YES

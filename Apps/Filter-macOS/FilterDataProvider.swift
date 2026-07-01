@@ -2,7 +2,12 @@
 //
 // 为什么需要它：packet-tunnel 在 TUN 层只看到 IP 包，拿不到进程归属。content filter 的
 // NEFilterFlow 能给出发起进程的 audit token，我们据此查出 bundle id。**只观测、一律放行**，
-// 把「源端口 → bundle id」写进 App Group；主 App 用 access log 里的源端口反查是哪个 App。
+// 维护「源端口 → bundle id」映射，主 App 用 access log 里的源端口反查是哪个 App。
+//
+// IPC 用 **XPC 不用 App Group 文件**：本扩展是 system extension，以 root 运行，它的 App Group
+// 容器（/var/root/...）和主 App（用户身份，~/Library/...）不是同一目录，共享文件互不可见。
+// 所以出让一个 XPC 服务，主 App 连上来查 map。mach service 名在 Info.plist 的
+// NetworkExtension.NEMachServiceName 声明，必须以 App Group 为前缀（沙箱 App 才能查找）。
 //
 // 注意 macOS 的 API 和 iOS 不同：来源 App 不能用 sourceAppIdentifier（macOS 不可用），
 // 要用 sourceAppAuditToken + Security 框架的 SecCode 反查；端口用 localFlowEndpoint（Network 框架）。
@@ -12,33 +17,24 @@ import Network
 import Security
 import os.log
 
-final class FilterDataProvider: NEFilterDataProvider {
+final class FilterDataProvider: NEFilterDataProvider, NSXPCListenerDelegate, FilterControlProtocol {
     private let log = OSLog(subsystem: "com.sbraveyoung.qingzhou.filter", category: "Filter")
 
     private let portToApp = OSAllocatedUnfairLock(initialState: [String: String]())
-    private var flushTimer: DispatchSourceTimer?
-    private let flushQueue = DispatchQueue(label: "com.sbraveyoung.qingzhou.filter.flush")
-
-    private static let groupID = "group.com.sbraveyoung.qingzhou"
-    private static var mapURL: URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: groupID)?
-            .appendingPathComponent("source-apps.json")
-    }
+    private var listener: NSXPCListener?
 
     override func startFilter(completionHandler: @escaping (Error?) -> Void) {
-        os_log("startFilter", log: log, type: .default)
-        let timer = DispatchSource.makeTimerSource(queue: flushQueue)
-        timer.schedule(deadline: .now() + 1, repeating: 1)
-        timer.setEventHandler { [weak self] in self?.flush() }
-        timer.resume()
-        flushTimer = timer
+        os_log("startFilter, vending XPC %{public}@", log: log, type: .default, FilterIPC.machServiceName)
+        let l = NSXPCListener(machServiceName: FilterIPC.machServiceName)
+        l.delegate = self
+        l.resume()
+        listener = l
         completionHandler(nil)
     }
 
     override func stopFilter(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
-        flushTimer?.cancel()
-        flushTimer = nil
+        listener?.invalidate()
+        listener = nil
         completionHandler()
     }
 
@@ -50,6 +46,21 @@ final class FilterDataProvider: NEFilterDataProvider {
         }
         return .allow()                                       // 只观测，绝不阻断
     }
+
+    // MARK: - XPC（主 App 来查端口→App 映射）
+
+    func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
+        newConnection.exportedInterface = NSXPCInterface(with: FilterControlProtocol.self)
+        newConnection.exportedObject = self
+        newConnection.resume()
+        return true
+    }
+
+    func fetchPortMap(reply: @escaping ([String: String]) -> Void) {
+        reply(portToApp.withLock { $0 })
+    }
+
+    // MARK: - 取端口 / 反查 bundle id
 
     /// 本地端点端口（App 建立连接时分配的源端口，与 access log 的 sourceAddress 端口一致）。
     /// localFlowEndpoint 需 macOS 15；macOS 14 拿不到端口 → 返回 nil，来源 App 标注在 14 上不生效。
@@ -71,12 +82,5 @@ final class FilterDataProvider: NEFilterDataProvider {
         guard SecCodeCopySigningInformation(staticCode, [], &info) == errSecSuccess,
               let dict = info as? [String: Any] else { return nil }
         return dict[kSecCodeInfoIdentifier as String] as? String
-    }
-
-    private func flush() {
-        let map = portToApp.withLock { $0 }
-        guard !map.isEmpty, let url = Self.mapURL,
-              let data = try? JSONEncoder().encode(map) else { return }
-        try? data.write(to: url, options: [.atomic])
     }
 }
