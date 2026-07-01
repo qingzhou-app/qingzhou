@@ -163,7 +163,15 @@ public struct SettingsView: View {
                 state.applyMacSystemPreferences()
             }
             Button("启用来源 App 标注") {
-                Task { try? await ContentFilterManager.enable() }
+                Task {
+                    do {
+                        try await ContentFilterManager.enable()
+                        state.showToast("已启用，请在系统弹窗里点「允许」")
+                    } catch {
+                        state.showToast("启用失败：\(error.localizedDescription)")
+                        state.logger.error("Content filter enable failed: \(error)", category: "filter")
+                    }
+                }
             }
             Text("开启后「连接」页会标注每条流量是哪个 App 发起的。首次会弹系统授权；需 content-filter 扩展。")
                 .font(.caption2).foregroundStyle(.secondary)
