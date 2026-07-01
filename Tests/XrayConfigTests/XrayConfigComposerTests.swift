@@ -80,7 +80,8 @@ final class XrayConfigComposerTests: XCTestCase {
     func testRoutingRulesDirectModeSendsAllToDirect() throws {
         let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .direct))
         let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
-        for r in rules {
+        // 除了最前面的 DNS 拦截（→ dns-out，fakedns 用），其余都走 direct
+        for r in rules where r["outboundTag"] as? String != "dns-out" {
             XCTAssertEqual(r["outboundTag"] as? String, "direct")
         }
     }
@@ -103,6 +104,19 @@ final class XrayConfigComposerTests: XCTestCase {
         let sniffing = inbounds[0]["sniffing"] as! [String: Any]
         XCTAssertTrue((sniffing["destOverride"] as! [String]).contains("fakedns"),
                       "sniffing destOverride 要含 fakedns 才能把假 IP 反查回域名")
+    }
+
+    /// fakedns 只有配了「DNS 查询 → dns-out」路由才会真正触发（否则 DNS 被当普通流量转发到真实 DNS）。
+    func testDNSQueriesRoutedToDNSOut() throws {
+        for mode in [ProxyMode.global, .rule, .direct] {
+            let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: mode))
+            let outs = json["outbounds"] as! [[String: Any]]
+            XCTAssertTrue(outs.contains { $0["tag"] as? String == "dns-out" && $0["protocol"] as? String == "dns" },
+                          "\(mode) 缺 dns-out outbound")
+            let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+            XCTAssertEqual(rules.first?["port"] as? Int, 53, "\(mode) 第一条路由必须是 DNS 拦截")
+            XCTAssertEqual(rules.first?["outboundTag"] as? String, "dns-out")
+        }
     }
 
     func testDNSRuleModeIncludesChinaDNS() throws {

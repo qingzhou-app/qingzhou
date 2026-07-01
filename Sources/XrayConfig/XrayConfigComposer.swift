@@ -72,6 +72,9 @@ public enum XrayConfigComposer {
         // 之后所有规则 / 全局走 "proxy"，直连走 "direct"，拒绝走 "reject"。
         outbounds.append(["tag": "direct", "protocol": "freedom", "settings": [:] as [String: Any]])
         outbounds.append(["tag": "reject", "protocol": "blackhole", "settings": [:] as [String: Any]])
+        // dns outbound：DNS 查询被路由到这里，交给 xray 的 dns 段（含 fakedns）处理，
+        // 而不是当普通流量转发到真实 DNS。**没有它 fakedns 永远不会触发**。
+        outbounds.append(["tag": "dns-out", "protocol": "dns"])
 
         // tun inbound：MTU 跟 PacketTunnelProvider 里 setTunnelNetworkSettings 保持一致。
         // sniffing 开启：让 xray 从 TLS SNI / HTTP Host 提取真实域名，便于按域名路由。
@@ -152,6 +155,9 @@ public enum XrayConfigComposer {
             return [
                 "domainStrategy": "AsIs",
                 "rules": [
+                    // DNS 查询（udp 53）→ dns-out，交给 fakedns 处理。必须在最前，否则被下面
+                    // "tcp,udp→proxy" 抢走当普通流量转发，fakedns 永远不触发。
+                    ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"],
                     ["type": "field",
                      "ip": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12",
                             "192.168.0.0/16", "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10"],
@@ -163,6 +169,8 @@ public enum XrayConfigComposer {
             return [
                 "domainStrategy": "IPIfNonMatch",
                 "rules": [
+                    // DNS 查询 → dns-out（fakedns 处理），必须在最前
+                    ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"],
                     // LAN
                     ["type": "field", "ip": ["geoip:private"], "outboundTag": "direct"],
                     // 中国 IP 段直连
@@ -179,6 +187,8 @@ public enum XrayConfigComposer {
             return [
                 "domainStrategy": "AsIs",
                 "rules": [
+                    // DNS 查询 → dns-out（fakedns 处理），必须在最前
+                    ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"],
                     ["type": "field", "network": "tcp,udp", "outboundTag": "direct"]
                 ]
             ]
