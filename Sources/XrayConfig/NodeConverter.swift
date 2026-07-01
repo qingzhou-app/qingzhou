@@ -8,7 +8,7 @@
 //   自己写一份给应用层更精确的控制和确定性的字段映射。
 // - 测试友好：Swift 转换器能在普通单测里跑；libXray 那条路要拖 Go runtime + xcframework。
 //
-// 当前覆盖：trojan / vmess / vless / shadowsocks 四个协议。hysteria2 留到 S8。
+// 当前覆盖：trojan / vmess / vless / shadowsocks / hysteria2 五个协议全部走原生转换。
 // 输出格式：与 libXray.convertShareLinks 一致 ——
 //   {"outbounds": [{"protocol": "...", "settings": {...}, "streamSettings": {...}}]}
 // 之后 XrayConfigComposer 在这个 outbounds 数组外面套上 tun inbound + routing + dns。
@@ -61,7 +61,7 @@ public enum NodeConverter {
         case .vmess:        return try VMessConverter.toOutbound(node)
         case .vless:        return try VLESSConverter.toOutbound(node)
         case .shadowsocks:  return try ShadowsocksConverter.toOutbound(node)
-        case .hysteria2:    throw NodeConverterError.unsupportedProtocol("hysteria2")
+        case .hysteria2:    return try Hysteria2Converter.toOutbound(node)
         }
     }
 }

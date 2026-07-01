@@ -315,23 +315,131 @@ final class NodeConverterTests: XCTestCase {
         }
     }
 
+    // MARK: - Hysteria2
+
+    /// hysteria2 outbound 形态：协议名 "hysteria"、settings 只放 server endpoint + version=2、
+    /// 口令落在 streamSettings.hysteriaSettings.auth、network "hysteria" + TLS。
+    func testHysteria2BasicShape() throws {
+        let node = Node(
+            name: "hy2", protocolType: .hysteria2,
+            host: "hy.example.com", port: 36500,
+            password: "pwd123",
+            parameters: ["sni": "hy.example.com"]
+        )
+        let out = try NodeConverter.toOutboundDict(node)
+        XCTAssertEqual(out["protocol"] as? String, "hysteria")
+
+        // settings = HysteriaClientConfig：version + address + port，没有密码
+        let settings = out["settings"] as! [String: Any]
+        XCTAssertEqual(settings["version"] as? Int, 2)
+        XCTAssertEqual(settings["address"] as? String, "hy.example.com")
+        XCTAssertEqual(settings["port"] as? Int, 36500)
+        XCTAssertNil(settings["password"], "settings 里不放密码 —— 口令只在 hysteriaSettings.auth")
+        XCTAssertNil(settings["auth"])
+
+        let stream = streamSettings(out)
+        XCTAssertEqual(stream["network"] as? String, "hysteria")
+        XCTAssertEqual(stream["security"] as? String, "tls")
+
+        let tls = stream["tlsSettings"] as! [String: Any]
+        XCTAssertEqual(tls["serverName"] as? String, "hy.example.com")
+
+        // hysteriaSettings = HysteriaConfig：version=2 + auth=口令
+        let hy = stream["hysteriaSettings"] as! [String: Any]
+        XCTAssertEqual(hy["version"] as? Int, 2)
+        XCTAssertEqual(hy["auth"] as? String, "pwd123")
+    }
+
+    /// hy2 链接常带 insecure=1（自签证书），Clash 转出来会是 allowInsecure=1 ——
+    /// 这版 xray-core 移除了该字段，转换器必须在任何层级都不产出它。
+    func testHysteria2NeverEmitsAllowInsecure() throws {
+        let node = Node(
+            name: "hy2", protocolType: .hysteria2,
+            host: "hy.example.com", port: 443,
+            password: "pwd",
+            parameters: ["sni": "real.example", "insecure": "1", "allowInsecure": "1"]
+        )
+        let out = try NodeConverter.toOutboundDict(node)
+        // 递归扫整棵 outbound，确保哪儿都没有 allowInsecure / insecure 漏出去
+        assertNoKeyAnywhere(out, key: "allowInsecure")
+        assertNoKeyAnywhere(out, key: "insecure")
+        // SNI 仍按链接里的 sni 走
+        let tls = streamSettings(out)["tlsSettings"] as! [String: Any]
+        XCTAssertEqual(tls["serverName"] as? String, "real.example")
+    }
+
+    /// 没给 alpn 时默认 h3（hysteria2 就是 HTTP/3 over QUIC）。
+    func testHysteria2DefaultsAlpnToH3() throws {
+        let node = Node(
+            name: "hy2", protocolType: .hysteria2,
+            host: "hy.example.com", port: 443,
+            password: "pwd"
+        )
+        let tls = streamSettings(try NodeConverter.toOutboundDict(node))["tlsSettings"] as! [String: Any]
+        XCTAssertEqual(tls["alpn"] as? [String], ["h3"])
+        // 没给 sni 时退回节点 host
+        XCTAssertEqual(tls["serverName"] as? String, "hy.example.com")
+    }
+
+    /// 链接显式给了 alpn / fp 时尊重链接。
+    func testHysteria2RespectsExplicitAlpnAndFingerprint() throws {
+        let node = Node(
+            name: "hy2", protocolType: .hysteria2,
+            host: "h", port: 443,
+            password: "pwd",
+            parameters: ["alpn": "h3,h2", "fp": "chrome"]
+        )
+        let tls = streamSettings(try NodeConverter.toOutboundDict(node))["tlsSettings"] as! [String: Any]
+        XCTAssertEqual(tls["alpn"] as? [String], ["h3", "h2"])
+        XCTAssertEqual(tls["fingerprint"] as? String, "chrome")
+    }
+
+    /// udpIdleTimeout 合法(2...600)才透传，非法值忽略。
+    func testHysteria2UdpIdleTimeout() throws {
+        let valid = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                         password: "pwd", parameters: ["udpIdleTimeout": "120"])
+        let hyValid = streamSettings(try NodeConverter.toOutboundDict(valid))["hysteriaSettings"] as! [String: Any]
+        XCTAssertEqual(hyValid["udpIdleTimeout"] as? Int, 120)
+
+        // 越界 / 非数字 → 不透传，让 xray 用默认 60
+        for bad in ["1", "601", "abc"] {
+            let node = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                            password: "pwd", parameters: ["udpIdleTimeout": bad])
+            let hy = streamSettings(try NodeConverter.toOutboundDict(node))["hysteriaSettings"] as! [String: Any]
+            XCTAssertNil(hy["udpIdleTimeout"], "非法 udpIdleTimeout=\(bad) 不应透传")
+        }
+    }
+
+    func testHysteria2RejectsMissingPassword() {
+        let node = Node(name: "hy2", protocolType: .hysteria2, host: "h", port: 443, password: nil)
+        XCTAssertThrowsError(try NodeConverter.toOutboundDict(node)) { err in
+            XCTAssertEqual(err as? NodeConverterError, .missingPassword)
+        }
+    }
+
+    /// compose 应该能接住 hysteria2 的 outbound 输出，且最终配置里没有 allowInsecure。
+    func testHysteria2OutputIsAcceptedByComposer() throws {
+        let node = Node(
+            name: "hy2", protocolType: .hysteria2,
+            host: "hy.example.com", port: 443,
+            password: "pwd",
+            parameters: ["sni": "hy.example.com", "insecure": "1"]
+        )
+        let outbounds = try NodeConverter.toOutboundsJSON(node)
+        let composed = try XrayConfigComposer.compose(outboundsJSON: outbounds, mode: .global)
+        let parsed = try JSONSerialization.jsonObject(with: composed.data(using: .utf8)!) as! [String: Any]
+        let outs = parsed["outbounds"] as! [[String: Any]]
+        let proxy = outs.first { ($0["tag"] as? String) == "proxy" }!
+        XCTAssertEqual(proxy["protocol"] as? String, "hysteria")
+        assertNoKeyAnywhere(parsed, key: "allowInsecure")
+    }
+
     // MARK: - 公共错误路径
 
     func testRejectsInvalidPort() {
         let node = Node(name: "n", protocolType: .trojan, host: "h", port: 0, password: "p")
         XCTAssertThrowsError(try NodeConverter.toOutboundDict(node)) { err in
             XCTAssertEqual(err as? NodeConverterError, .invalidPort(0))
-        }
-    }
-
-    func testRejectsHysteria2AsUnsupported() {
-        let node = Node(name: "n", protocolType: .hysteria2, host: "h", port: 443, password: "p")
-        XCTAssertThrowsError(try NodeConverter.toOutboundDict(node)) { err in
-            if case let NodeConverterError.unsupportedProtocol(s) = err {
-                XCTAssertEqual(s, "hysteria2")
-            } else {
-                XCTFail("expected unsupportedProtocol, got \(err)")
-            }
         }
     }
 
@@ -387,5 +495,19 @@ final class NodeConverterTests: XCTestCase {
 
     private func streamSettings(_ out: [String: Any]) -> [String: Any] {
         return out["streamSettings"] as! [String: Any]
+    }
+
+    /// 递归断言整棵 JSON 对象里不存在某个 key（用于证明 allowInsecure 哪儿都没漏出去）。
+    private func assertNoKeyAnywhere(_ obj: Any, key: String,
+                                    file: StaticString = #file, line: UInt = #line) {
+        switch obj {
+        case let dict as [String: Any]:
+            XCTAssertNil(dict[key], "意外出现 key=\(key)", file: file, line: line)
+            for value in dict.values { assertNoKeyAnywhere(value, key: key, file: file, line: line) }
+        case let array as [Any]:
+            for element in array { assertNoKeyAnywhere(element, key: key, file: file, line: line) }
+        default:
+            break
+        }
     }
 }

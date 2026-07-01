@@ -27,7 +27,7 @@
 | **S5** | W9–10 | 🚀 **MVP 上架** | App Store 提交 → 通过审核 → 公开上架 |
 | **S6** | W11–12 | macOS port | macOS 版本（共用 Tunnel 桥接代码） |
 | **S7** | W13–14 | 体验差异化 | 自动测速 + 自动择优（用户最有感知的卖点） |
-| **S8** | W15–16 | hysteria2 | 加 hy2 单独 lib（之前承诺过） |
+| **S8** | W15–16 | hysteria2 | ✅ 已提前完成：打包的 xray-core 自带 hysteria 传输，hy2 走原生 `Hysteria2Converter`（无需单独 lib） |
 | **S9** | W17–18 | Widget + Shortcuts | iOS Widget 一键开关 + Apple Shortcuts |
 | **S10** | W19–20 | Clash YAML | Clash / Mihomo 配置导入 |
 | **S11** | W21–22 | i18n + Polish | 简繁英日 + 暗色模式 + Onboarding |
@@ -44,7 +44,7 @@
 - 基础设置：端口、日志级别、主题
 
 **砍掉（MVP 不做，等迭代）**：
-- ❌ hysteria2（S8）
+- ✅ hysteria2 —— 已由原生 `Hysteria2Converter` 支持（提前于 S8 完成）
 - ❌ macOS 版本（S6）
 - ❌ Widget（S9）
 - ❌ Apple Shortcuts（S9）
