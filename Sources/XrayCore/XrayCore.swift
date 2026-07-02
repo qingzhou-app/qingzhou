@@ -45,12 +45,20 @@ public enum XrayCore {
         #endif
     }
 
-    /// 构建 mph 缓存。**必须在 `run(...)` 之前调用**（rule 模式用 geosite/geoip，
-    /// xray router 启动时会去「加载」这个缓存文件 —— 没有就报
-    /// "failed to load file: xray-mph.cache: no such file or directory"）。
+    /// 构建 mph 缓存 —— **可选优化，当前有意不用**（目前无调用点，留作以后加速
+    /// rule 模式启动的入口）。
+    ///
+    /// rule 模式不需要它：`run(...)` 传空 `mphCachePath` 时 libXray 不设
+    /// `xray.mph.cache` 环境变量，内核 router 走 `NewMphMatcherGroup` 在内存里
+    /// 构建 matcher（见 PacketTunnelProvider 里 `mphCache = ""` 的说明）。
+    /// 只有 env 指了路径而文件缺失才会报 "no such file"。
+    ///
+    /// 历史坑（真要启用缓存前先解决）：BuildMphCache 解析 `configPath` 配置**文件**，
+    /// 与 RunXrayFromJSON 解析内联 JSON 产出的 matcher key 对不上，run 时报
+    /// "matcher not found"（见 16b6f31 → 9dfb7bd 的演进）。
     ///
     /// BuildMphCache 读 `configPath` 指向的配置文件，解析其中引用的 geosite/geoip，
-    /// 从 `geoDir` 的 .dat 构建 MPH 写到 `mphCachePath`。所以调用前要先把配置写成文件。
+    /// 从 `geoDir` 的 .dat 构建 MPH 写到 `mphCachePath`。
     public static func buildMphCache(configPath: String, geoDir: String, mphCachePath: String) throws {
         #if canImport(LibXray)
         // LibXrayBuildMphCache 要 base64(JSON{datDir, mphCachePath, configPath})
