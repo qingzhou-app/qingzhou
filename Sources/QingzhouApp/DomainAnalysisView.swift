@@ -203,6 +203,10 @@ public struct DomainAnalysisView: View {
             ToolbarItem(placement: .primaryAction) {
                 IgnoreIPToggle(isOn: $hideBareIPs)
             }
+            ToolbarItem {
+                // 导出当前过滤视图（搜索 + 忽略 IP 生效后的域名聚合），空数据禁用
+                DomainStatsExportButton(stats: stats, state: state)
+            }
         }
         #if os(macOS)
         .task {
