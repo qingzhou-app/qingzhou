@@ -66,6 +66,15 @@ public final class AppState {
     /// 数据源是扩展写的 App Group 会话标记（启动时刻 + 时长推算），每秒轮询刷新 ——
     /// 不依赖和扩展的实时通信，主 App 被杀重启后也能恢复显示。
     public internal(set) var autoStopDeadline: Date?
+    /// 本次隧道会话的起点（xray 真正跑起来那刻，非「用户按下开关」那刻）。首页据此显示
+    /// 「已连接 1:23:45」。数据源与 autoStopDeadline 同一个 App Group 会话标记
+    /// （扩展在 xray 起来后写 startedAt），每秒轮询刷新；断开清 nil。
+    /// 热切换 = 全量重启 = 新会话，从新会话起点重新计时（与定时关闭的口径一致）。
+    public internal(set) var connectedSince: Date?
+    /// 本进程内最近一次提交隧道启动的时刻。用来过滤 App Group 里**上一次会话**的残留
+    /// 标记文件：start 提交后到扩展写新标记之间有 1–3 秒窗口，旧文件的 startedAt 会让
+    /// 「已连接时长」瞬间显示成几小时。只采纳不早于本次启动的 startedAt。
+    private var lastTunnelStartAt: Date?
     /// 当前 xray-core 版本。由 app 入口注入（QingzhouApp 库本身不依赖 XrayCore，避免拖进 380MB xcframework）。
     public var coreVersion: String?
 
@@ -734,6 +743,7 @@ public final class AppState {
             )
             try await tunnelManager.start()
             isVPNRunning = true
+            lastTunnelStartAt = Date()   // 之后只认不早于此刻的会话标记（滤掉上次会话残留）
             tunnelError = nil
             logger.info("Tunnel started for node \(node.name)", category: "tunnel")
             if settings.autoStopSeconds > 0 {
@@ -768,6 +778,7 @@ public final class AppState {
         tunnelManager.stop()
         isVPNRunning = false
         autoStopDeadline = nil       // 手动关了，倒计时立即消失（不等下一秒轮询）
+        connectedSince = nil         // 已连接时长同理，立即清零
         markAllConnectionsClosed()   // 隧道停了，活跃连接全部立即归入「已关闭」
         scheduleIPRefresh()   // 隧道断开后刷新公网 IP → 落回「直连」那栏
     }
@@ -831,6 +842,7 @@ public final class AppState {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             try await tunnelManager.start()
+            lastTunnelStartAt = Date()   // 新会话：时长从新会话标记重新计（滤掉旧标记残留）
             // start() 只等"启动请求提交成功"，不等隧道真连上 —— 到这里就收窗口的话，
             // 开关会在 xray 还没就绪时就滑回"开"（规则模式加载 geo 那几秒尤其明显）。
             // 继续轮询到 .connected 再结束"切换中"，动画的结束沿才真正跟着真实状态走。
@@ -847,6 +859,7 @@ public final class AppState {
             // 和 startTunnel 的失败路径一样干净收尾：关 On-Demand 防止拿坏配置反复重连，
             // 再 stop() 让系统回收 TUN / 路由。pending 也作废——VPN 已关，等用户重新开。
             isVPNRunning = false
+            connectedSince = nil
             pendingReapply = false
             try? await tunnelManager.setOnDemandEnabled(false)
             tunnelManager.stop()
@@ -1286,9 +1299,20 @@ public final class AppState {
             autoStopDeadline = nil
         }
 
+        // 已连接时长的起点：采纳扩展写的会话起点（xray 真跑起来那刻），但只认不早于
+        // 本进程本次 start 的 —— start 后扩展还没写新标记的 1–3 秒里，旧标记会把时长
+        // 显示成上次会话的几小时。窗口期内保持 nil（UI 不显示），新标记落盘后自然出现。
+        if isVPNRunning, let s = session, s.stoppedAt == nil,
+           let floor = lastTunnelStartAt, s.startedAt >= floor.addingTimeInterval(-1) {
+            connectedSince = s.startedAt
+        } else if !isVPNRunning {
+            connectedSince = nil
+        }
+
         if isVPNRunning, let s = session, s.stoppedAt != nil,
            tunnelManager.status == .disconnected || tunnelManager.status == .invalid {
             isVPNRunning = false
+            connectedSince = nil
             markAllConnectionsClosed()
             scheduleIPRefresh()
             showToast("已按定时自动断开 VPN")

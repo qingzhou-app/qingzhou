@@ -96,6 +96,17 @@ public struct HomeView: View {
                     } else {
                         Text("未选择节点").font(.caption).foregroundStyle(.secondary)
                     }
+                    // 已连接时长 + 本次会话累计流量：安全感信号，独立一行不挤倒计时胶囊。
+                    // 时长起点 = 扩展会话标记的 startedAt（xray 真跑起来那刻）；
+                    // 会话流量 = appex 按会话累计的 TrafficStats（隧道重启即归零，口径一致）。
+                    if state.isVPNRunning, !state.isSwitchingTunnel,
+                       let since = state.connectedSince {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text(sessionStatusLine(since: since, now: context.date))
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 Spacer()
                 Toggle("", isOn: state.vpnRunningBinding)
@@ -206,6 +217,22 @@ public struct HomeView: View {
         }
     }
     #endif
+
+    /// 「已连接 1:23:45 · ↑ 1.2 MB ↓ 34 MB」。流量读 appex 上报的会话累计值；
+    /// 隧道刚起来还没上报时只显示时长。
+    private func sessionStatusLine(since: Date, now: Date) -> String {
+        var line = "已连接 \(Self.durationText(max(0, now.timeIntervalSince(since))))"
+        if let latest = state.trafficHistory.latest {
+            line += " · ↑ \(ByteFormatter.format(latest.uploadBytes)) ↓ \(ByteFormatter.format(latest.downloadBytes))"
+        }
+        return line
+    }
+
+    /// 秒数 → "1:23:45"（小时不补零，分秒补零）。
+    static func durationText(_ interval: TimeInterval) -> String {
+        let s = Int(interval)
+        return String(format: "%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
+    }
 
     // 状态胶囊三态：切换中（橙）> 已连接（绿）> 未连接（灰）
     private var statusText: String {
