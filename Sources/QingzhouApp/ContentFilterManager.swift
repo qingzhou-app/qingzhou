@@ -24,6 +24,14 @@ public final class ContentFilterManager: NSObject {
 
     public static var isEnabled: Bool { NEFilterManager.shared().isEnabled }
 
+    /// 先 loadFromPreferences 再读 isEnabled —— 进程启动后没 load 过时
+    /// shared() 的 isEnabled 恒 false，直接读会误判「未启用」。
+    public static func loadIsEnabled() async -> Bool {
+        let m = NEFilterManager.shared()
+        try? await m.loadFromPreferences()
+        return m.isEnabled
+    }
+
     private func activateExtension() async throws {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             activation = cont

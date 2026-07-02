@@ -8,6 +8,11 @@ public struct DomainAnalysisView: View {
     /// 「忽略 IP」过滤：来自 ConnectionsView 的临时状态（不持久化），两页联动。
     @Binding var hideBareIPs: Bool
     @State private var mode = 0
+    #if os(macOS)
+    /// 「应用」tab 是否可用 = 内容过滤扩展（来源 App 标注）当前已启用。
+    /// 跟随运行时开关而不是编译期 flag —— 用户在设置里关掉标注后，这个 tab 应当消失。
+    @State private var appTabAvailable = false
+    #endif
 
     public init(state: AppState, hideBareIPs: Binding<Bool>) {
         self.state = state
@@ -34,10 +39,11 @@ public struct DomainAnalysisView: View {
                 Text("域名").tag(0)
                 Text("每日").tag(1)
                 Text("建议 \(suggestions.count)").tag(2)
-                // 「应用」视角只在 macOS 有：来源 App 靠 content filter 系统扩展标注，
-                // iOS 拿不到进程归属（需 MDM 监督），不给一个永远空的 tab。
+                // 「应用」视角只在 macOS 且「来源 App 标注」开启时有：来源 App 靠
+                // content filter 系统扩展标注，iOS 拿不到进程归属（需 MDM 监督），
+                // 扩展关着时也不给一个永远空的 tab。
                 #if os(macOS)
-                Text("应用").tag(3)
+                if appTabAvailable { Text("应用").tag(3) }
                 #endif
             }
             .pickerStyle(.segmented)
@@ -96,6 +102,20 @@ public struct DomainAnalysisView: View {
                 IgnoreIPToggle(isOn: $hideBareIPs)
             }
         }
+        #if os(macOS)
+        .task {
+            // 每次进入本页刷新一次开关状态（页面是 sheet，改设置必先关掉它，够新鲜）。
+            // 必须走 loadFromPreferences 的版本 —— 冷启动后直接读 isEnabled 恒 false 会误判。
+            // 注：不能写 `flag && (await …)`，&& 右侧是 autoclosure，不支持 await。
+            if FeatureFlags.sourceAppLabeling {
+                appTabAvailable = await ContentFilterManager.loadIsEnabled()
+            } else {
+                appTabAvailable = false
+            }
+            // 正停在「应用」tab 时开关被关掉 → 切回「域名」，不留一个既无 tab 又无内容的悬空态
+            if !appTabAvailable && mode == 3 { mode = 0 }
+        }
+        #endif
     }
 
     // MARK: - rows
@@ -127,14 +147,13 @@ public struct DomainAnalysisView: View {
 
     @ViewBuilder private func appSections(_ connections: [Connection]) -> some View {
         let appStats = DomainAnalyzer.aggregateByApp(connections)
-        // 一条真实标注都没有（含完全没数据）→ 大概率没启用内容过滤扩展，给启用指引
+        // 本 tab 只在扩展启用后可见，所以空态语义是「已启用但还没标注到」不是「去启用」
         if appStats.allSatisfy({ $0.bundleID == nil }) {
             ContentUnavailableView {
                 Label("暂无来源 App 数据", systemImage: "app.badge.checkmark")
             } description: {
-                Text("按 App 查看流量需要启用「来源 App 标注」（内容过滤系统扩展）：\n"
-                     + "设置 → macOS 集成 → 启用来源 App 标注，首次需在系统设置批准扩展。\n"
-                     + "注意：只有启用之后建立的连接能标注来源，之前的连接无法补标。")
+                Text("「来源 App 标注」已启用，还没有可归属的连接。\n"
+                     + "确认 VPN 已开启并浏览一会儿；启用标注之前建立的连接无法补标。")
             }
         } else {
             ForEach(appStats) { appSection($0) }
