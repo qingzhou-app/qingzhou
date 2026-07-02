@@ -25,7 +25,11 @@ public final class AppState {
     public var currentNodeId: UUID?
     public var customRules: [Rule] = []
     public var remoteRules: [Rule] = []
-    public var connections: [Connection] = []
+    /// 连接列表（UI 读这里）。写入/老化/关闭统一走 `connectionTracker`，
+    /// 它负责「同身份重现刷新活跃时间 + 超时置 closedAt」——否则「已关闭」分组永远为空
+    /// （xray access log 只记连接建立，没有关闭事件）。
+    public var connections: [Connection] { connectionTracker.connections }
+    var connectionTracker = ConnectionTracker()
     /// 实时流量波形数据（滑动窗口）。appex 经 App Group 上报 `TrafficStats` 喂进来；
     /// 没开 VPN / 没真实上报时为空，UI 显示「等待流量」。
     public var trafficHistory = TrafficHistory(capacity: 60)
@@ -352,6 +356,7 @@ public final class AppState {
         }
         tunnelManager.stop()
         isVPNRunning = false
+        markAllConnectionsClosed()   // 隧道停了，活跃连接全部立即归入「已关闭」
         scheduleIPRefresh()   // 隧道断开后刷新公网 IP → 落回「直连」那栏
     }
 
@@ -401,6 +406,7 @@ public final class AppState {
                 description: "轻舟 · \(node.name)"
             )
             tunnelManager.stop()
+            markAllConnectionsClosed()   // 热切换 = 旧隧道进程整个换掉，旧连接全部已死
             // 等扩展进程**完全断开**再重启 —— 只 sleep 300ms 常常旧进程还没退，start() 复用了
             // 半死的旧进程，xray 在里面 stop→run 状态不干净就会卡死/不通。轮询到 .disconnected
             // （最多 5 秒）确保拿到全新扩展进程（全新 Go runtime + 全新 xray），像首次连接一样干净。
@@ -694,16 +700,21 @@ public final class AppState {
     /// content filter 的 map 常晚于连接 ingest 才就绪，只在解析那刻查一次会漏掉大批连接。
     private func backfillSourceApps() {
         guard !sourceAppMap.isEmpty else { return }
-        for i in connections.indices where connections[i].sourceApp == nil {
-            if let port = connections[i].sourceAddress.split(separator: ":").last.map(String.init),
+        for i in connectionTracker.connections.indices where connectionTracker.connections[i].sourceApp == nil {
+            if let port = connectionTracker.connections[i].sourceAddress.split(separator: ":").last.map(String.init),
                let bundleID = sourceAppMap[port] {
-                connections[i].sourceApp = bundleID
+                connectionTracker.connections[i].sourceApp = bundleID
             }
         }
     }
     #endif
 
     private func ingestAccessLog() {
+        defer {
+            // 每轮都老化一遍（即使没有新日志行）：xray access log 只记连接建立，
+            // 超过 ConnectionTracker.idleTimeout 无活动的连接由这里判定为已关闭。
+            connectionTracker.ageOut()
+        }
         guard let url = AppGroupStorage.accessLogURL,
               let handle = try? FileHandle(forReadingFrom: url) else { return }
         defer { try? handle.close() }
@@ -729,9 +740,14 @@ public final class AppState {
                let bundleID = sourceAppMap[port] {
                 conn.sourceApp = bundleID
             }
-            connections.insert(conn, at: 0)
+            // 同身份（源地址+目标+端口）重现 → 只刷新活跃时间，不重复插入
+            connectionTracker.ingest(conn)
         }
-        if connections.count > 200 { connections.removeLast(connections.count - 200) }
+    }
+
+    /// 隧道停止 → 所有仍活跃的连接立即归入「已关闭」。
+    func markAllConnectionsClosed(at now: Date = Date()) {
+        connectionTracker.closeAll(at: now)
     }
 
     /// appex 经 App Group 上报的真实 `TrafficStats` 喂进波形窗口。UI 观察 `trafficHistory` 自动重绘。
@@ -758,6 +774,8 @@ public final class AppState {
                 staleSeconds += 1
                 if staleSeconds >= 5, !trafficHistory.samples.isEmpty {
                     trafficHistory.clear()   // 连续 5 秒没新数据 → VPN 停了，清空波形
+                    // VPN 不是从本 App 关的（系统设置里关 / 扩展崩溃）也走这里 —— 一并关掉连接
+                    markAllConnectionsClosed()
                 }
             }
         }

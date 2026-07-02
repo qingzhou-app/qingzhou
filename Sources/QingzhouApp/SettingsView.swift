@@ -61,8 +61,16 @@ public struct SettingsView: View {
                 Text("启动 + 定时").tag(AutoSelectTrigger.onAppLaunchAndInterval)
                 Text("关闭").tag(AutoSelectTrigger.off)
             }
-            Stepper(value: state.setting(\.autoSelectIntervalSeconds), in: 60...86400, step: 60) {
-                LabeledContent("择优间隔", value: "\(Int(state.settings.autoSelectIntervalSeconds / 60)) 分钟")
+            // 固定档位 Picker，样式与上面「自动测速」一致（label 左、值右）。
+            // 旧版是 Stepper（任意分钟值），binding 的 get 里做就近回退，
+            // 保证 Picker 永远有合法选中项；用户不动它就不改写已存的旧值。
+            Picker("择优间隔", selection: autoSelectIntervalBinding) {
+                Text("5 分钟").tag(TimeInterval(5 * 60))
+                Text("15 分钟").tag(TimeInterval(15 * 60))
+                Text("30 分钟").tag(TimeInterval(30 * 60))
+                Text("1 小时").tag(TimeInterval(60 * 60))
+                Text("6 小时").tag(TimeInterval(6 * 60 * 60))
+                Text("24 小时").tag(TimeInterval(24 * 60 * 60))
             }
             Text("开启后会主动把「当前节点」切到测速最快的那个 —— 如果你手选了节点不想被换，关掉这一项。")
                 .font(.caption2).foregroundStyle(.secondary)
@@ -114,6 +122,16 @@ public struct SettingsView: View {
         } header: {
             Text("地区")
         }
+    }
+
+    /// 「择优间隔」的 Binding：读取时把旧版 Stepper 存下的任意值就近吸附到固定档位
+    /// （见 `AutoSelectIntervalPresets.nearest`），写入时按用户所选档位持久化。
+    private var autoSelectIntervalBinding: Binding<TimeInterval> {
+        let raw = state.setting(\.autoSelectIntervalSeconds)
+        return Binding(
+            get: { AutoSelectIntervalPresets.nearest(to: raw.wrappedValue) },
+            set: { raw.wrappedValue = $0 }
+        )
     }
 
     /// 某地区是否被排除的 Binding（toggle）。

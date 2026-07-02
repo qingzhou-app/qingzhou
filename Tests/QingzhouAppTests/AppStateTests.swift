@@ -262,4 +262,28 @@ final class AppStateTests: XCTestCase {
         state.isSwitchingTunnel = true
         XCTAssertFalse(state.vpnRunningBinding.wrappedValue)
     }
+
+    // MARK: - 连接老化 / 隧道停止关闭
+
+    func testMarkAllConnectionsClosedClosesActiveOnes() {
+        let state = makeState()
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        state.connectionTracker.ingest(
+            Connection(targetHost: "a.com", sourceAddress: "10.0.0.2:1111",
+                       targetAddress: "a.com:443", type: .https, route: "PROXY", matchedRule: ""),
+            at: t0
+        )
+        state.connectionTracker.ingest(
+            Connection(targetHost: "b.com", sourceAddress: "10.0.0.2:2222",
+                       targetAddress: "b.com:443", type: .https, route: "DIRECT", matchedRule: ""),
+            at: t0 + 1
+        )
+        XCTAssertTrue(state.connections.allSatisfy(\.isActive))
+
+        state.markAllConnectionsClosed(at: t0 + 30)
+
+        XCTAssertEqual(state.connections.count, 2)
+        XCTAssertTrue(state.connections.allSatisfy { !$0.isActive })
+        XCTAssertTrue(state.connections.allSatisfy { $0.closedAt == t0 + 30 })
+    }
 }

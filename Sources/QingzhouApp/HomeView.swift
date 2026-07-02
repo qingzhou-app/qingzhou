@@ -89,6 +89,14 @@ public struct HomeView: View {
             HStack {
                 Text("代理模式").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                #if os(macOS)
+                // 原生 .segmented Picker 在 macOS 是 AppKit 桥接（NSSegmentedControl），
+                // 窗口失焦时选中段的强调色底会变灰，.controlActiveState 环境覆盖对
+                // AppKit 桥接控件不生效 —— 蓝底文字变灰会让人误以为 VPN/模式没生效。
+                // 自绘 + 显式颜色（controlAccentColor 不随 key window 变化），失焦仍保持高亮。
+                ProxyModeSegmentedControl(selection: state.proxyModeBinding, title: label(for:))
+                    .frame(maxWidth: 280)
+                #else
                 Picker("", selection: state.proxyModeBinding) {
                     ForEach(ProxyMode.allCases, id: \.self) { m in
                         Text(label(for: m)).tag(m)
@@ -97,13 +105,9 @@ public struct HomeView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(maxWidth: 280)
+                #endif
             }
         }
-        #if os(macOS)
-        // 只让这张 VPN 开关卡在窗口失焦时仍保持高亮 —— 否则整窗控件随系统变暗，会让人误以为
-        // VPN 关了。其余卡片沿用 macOS 失焦变暗的默认行为。
-        .environment(\.controlActiveState, .active)
-        #endif
     }
 
     /// VPN 主开关的自绘滑轨样式：胶囊轨道 + 白色圆钮，观感对齐系统 Switch。
@@ -140,6 +144,42 @@ public struct HomeView: View {
             .onTapGesture { configuration.isOn.toggle() }
         }
     }
+
+    #if os(macOS)
+    /// 代理模式的自绘分段选择器（仅 macOS，iOS 继续用原生 segmented Picker）。
+    /// 动机：NSSegmentedControl 在窗口失焦时把选中段的强调色底画成灰色，看起来像设置失效。
+    /// 选中段用 `NSColor.controlAccentColor` —— 跟随用户系统强调色、深浅色模式下由系统
+    /// 自动适配，且是静态语义色，不随 key window 状态去饱和。
+    /// 和 TunnelToggleStyle 一样不用 Button 承载（macOS 的 Button 有 bezel / 焦点环）。
+    private struct ProxyModeSegmentedControl: View {
+        @Binding var selection: ProxyMode
+        let title: (ProxyMode) -> String
+
+        var body: some View {
+            HStack(spacing: 2) {
+                ForEach(ProxyMode.allCases, id: \.self) { mode in
+                    let isSelected = selection == mode
+                    Text(title(mode))
+                        .font(.callout.weight(isSelected ? .medium : .regular))
+                        .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 3)
+                        .background {
+                            if isSelected {
+                                Capsule().fill(Color(nsColor: .controlAccentColor))
+                            }
+                        }
+                        .contentShape(Capsule())
+                        .onTapGesture { selection = mode }
+                        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                }
+            }
+            .padding(2)
+            .background(Color.primary.opacity(0.06), in: Capsule())
+            .animation(.easeOut(duration: 0.15), value: selection)
+        }
+    }
+    #endif
 
     // 状态胶囊三态：切换中（橙）> 已连接（绿）> 未连接（灰）
     private var statusText: String {

@@ -35,11 +35,18 @@ public struct TCPConnectLatencyProber: LatencyProber {
         else {
             return LatencyResult(url: url, latencyMs: nil, errorDescription: "invalid host:port")
         }
-        // 注：曾用 NWParameters.prohibitedInterfaceTypes=[.other] 想强制绕开 VPN 的 utun、
-        // 让"VPN 开着也测直连延迟"。但 .other 会把 **iPhone USB 共享 / 某些环境下唯一的物理网卡**
-        // 也一并禁掉 → 探针全部超时 → 完全测不出耗时（实测在 iPhone 热点下整列无耗时）。
-        // 得不偿失，回退成普通探针。"VPN 开启时恒直连测速"需要更稳的实现 + 真机验证，后续单独做。
-        return await Self.tcpConnect(host: host, port: port, url: url, timeout: timeout, parameters: .tcp)
+        // VPN 开启时强制直连：反向**主动绑定**当前物理接口（requiredInterface），
+        // 让探测流量绕开 utun，测到的是真实直连 RTT 而不是"建隧道+经节点绕一圈"的假延迟。
+        //
+        // ⚠️ 历史教训：曾用 NWParameters.prohibitedInterfaceTypes=[.other] 反向排除 utun，
+        // 但 iPhone USB 共享等场景下**唯一物理网卡的类型也是 .other** → 探针全部超时。
+        // 所以选择逻辑（PhysicalInterfacePicker）按名字识别 utun 等虚拟接口、
+        // 且**找不到合适物理接口时回退无绑定** —— 宁可测到假延迟，也不能全超时。
+        let parameters = NWParameters.tcp
+        if let iface = await DirectInterfaceResolver.shared.currentPhysicalInterface() {
+            parameters.requiredInterface = iface
+        }
+        return await Self.tcpConnect(host: host, port: port, url: url, timeout: timeout, parameters: parameters)
     }
 
     /// NWConnection 异步 + completion 风格的 callback —— 包成 async：用一个 box 守 didResume 避免
