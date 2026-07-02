@@ -54,6 +54,9 @@ public struct SettingsView: View {
         if mem.limitBytes > 0 {
             let headroom = max(0, mem.limitBytes - mem.footprintBytes)
             parts.append("距 \(ByteFormatter.format(mem.limitBytes)) 上限余 \(ByteFormatter.format(headroom))")
+        } else {
+            // macOS：NE 扩展没有 iOS 那条 50MB jetsam 硬上限，如实说，别让人找"余量"
+            parts.append("无硬性内存上限")
         }
         parts.append("历史最高 \(ByteFormatter.format(mem.allTimePeakBytes))")
         if mem.warningCount > 0 {

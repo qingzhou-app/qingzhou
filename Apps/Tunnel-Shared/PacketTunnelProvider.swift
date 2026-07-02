@@ -513,15 +513,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // 接近上限预警（40MB，距 jetsam 线还剩 10MB）。带 4MB 迟滞：越线只记一次，
         // 回落到 36MB 以下才重新武装 —— 避免在阈值附近抖动时每秒刷一条日志。
-        if footprint >= Self.memWarnThreshold {
-            if !memInWarningZone {
-                memInWarningZone = true
-                memWarningCount += 1
-                os_log("⚠️ memory footprint %lld MB ≥ 40 MB warn threshold (iOS jetsam limit 50 MB), warning #%d this session",
-                       log: log, type: .error, footprint / (1024 * 1024), memWarningCount)
+        // **只在有硬上限的平台（iOS）武装**：macOS 无 jetsam 线、扩展常态就 60MB+，
+        // 在那儿告警是纯噪声（本机实测装上第一秒就误报了一次）。
+        if MemoryFootprint.platformLimitBytes > 0 {
+            if footprint >= Self.memWarnThreshold {
+                if !memInWarningZone {
+                    memInWarningZone = true
+                    memWarningCount += 1
+                    os_log("⚠️ memory footprint %lld MB ≥ 40 MB warn threshold (iOS jetsam limit 50 MB), warning #%d this session",
+                           log: log, type: .error, footprint / (1024 * 1024), memWarningCount)
+                }
+            } else if footprint < Self.memWarnThreshold - 4 * 1024 * 1024 {
+                memInWarningZone = false
             }
-        } else if footprint < Self.memWarnThreshold - 4 * 1024 * 1024 {
-            memInWarningZone = false
         }
 
         let stats = TunnelMemoryStats(

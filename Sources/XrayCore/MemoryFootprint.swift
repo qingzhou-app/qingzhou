@@ -16,18 +16,25 @@ import os.proc
 public enum MemoryFootprint {
 
     /// 当前进程的 phys_footprint（字节）。jetsam 的判定依据。失败返回 nil。
+    ///
+    /// ⚠️ count 必须给**完整**的 TASK_VM_INFO_COUNT（整个结构体的 integer_t 数）。
+    /// 内核按修订版本填字段：调用方 count < TASK_VM_INFO_REV1_COUNT（覆盖到
+    /// phys_footprint 为止的长度）时，task_info **成功返回但不填 phys_footprint** ——
+    /// 结构体保持初始化的 0。上一版用 offset(of:)/4+1 只覆盖到 phys_footprint 的
+    /// 前 4 字节，差 1 个 integer_t 没到 REV1 线，于是采出来恒 0（验收 #17 的根因）。
     public static func currentFootprint() -> Int64? {
         var info = task_vm_info_data_t()
-        // 只取到 phys_footprint 为止的字段数，内核允许截断返回（老系统字段更少也兼容）
         var count = mach_msg_type_number_t(
-            MemoryLayout.offset(of: \task_vm_info_data_t.phys_footprint)! / MemoryLayout<integer_t>.size
-        ) + 1
+            MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size
+        )
         let kr = withUnsafeMutablePointer(to: &info) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
                 task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), intPtr, &count)
             }
         }
-        guard kr == KERN_SUCCESS else { return nil }
+        // 0 也当失败：活进程的 footprint 不可能为 0，出现即字段没被填（内核截断/老系统）。
+        // 宁缺勿假 —— 返 nil 让调用方跳过本轮，绝不把 0 写进 memory-stats 跟真实数据混淆。
+        guard kr == KERN_SUCCESS, info.phys_footprint > 0 else { return nil }
         return Int64(info.phys_footprint)
     }
 
