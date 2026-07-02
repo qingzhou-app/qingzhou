@@ -11,8 +11,40 @@ import QingzhouApp
 import QingzhouLogging
 import QingzhouCore
 
+#if os(macOS)
+import AppKit
+
+/// 单实例守卫：全机只允许一个轻舟 macOS 实例运行。
+///
+/// 历史坑：曾同时从 /Applications、DerivedData、/tmp 启动多份实例，
+/// 造成 VPN 状态互抢、App Group 文件互相覆盖等真实问题。
+/// 这里在展示 UI 之前（applicationWillFinishLaunching）就检测同 bundle id
+/// 的其它进程，若存在则激活既有实例并退出自己。
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.sbraveyoung.qingzhou.mac"
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        let currentApp = NSRunningApplication.current
+
+        // 找出所有同 bundle id 且不是自己的运行进程。
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .filter { $0.processIdentifier != myPID && $0 != currentApp }
+
+        guard let existing = others.first else { return }
+
+        // 已有实例在跑：把它拉到前台，然后退出自己。
+        existing.activate(options: [.activateAllWindows])
+        NSApp.terminate(nil)
+    }
+}
+#endif
+
 @main
 struct VPNMacApp: App {
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
+
     @State private var state: AppState = AppState(
         logger: Logger(capacity: 10000, minimumLevel: .debug)
     )
