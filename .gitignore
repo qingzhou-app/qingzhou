@@ -23,7 +23,7 @@ xcuserdata/
 *.xcresult
 
 ## Binary frameworks (built by scripts/build-libxray.sh, ~380MB, can be regenerated)
-Frameworks/LibXray.xcframework/
+Frameworks/LibXray.xcframework
 
 ## Editor
 .vscode/

@@ -26,5 +26,17 @@
 	<string>Copyright © 2026</string>
 	<key>NSSystemExtensionUsageDescription</key>
 	<string>轻舟需要安装网络扩展，用于标注每条连接由哪个 App 发起（仅本机分析，不上传）。</string>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.com.sbraveyoung.qingzhou</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>轻舟</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>One</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

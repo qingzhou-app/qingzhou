@@ -48,6 +48,9 @@ public struct Settings: Codable, Sendable {
     public var autoConnectOnAppLaunch: Bool
     /// 触发自动连的 App bundle id 集合（如 ["com.tinyspeck.slackmacgap"]）。
     public var autoConnectApps: Set<String>
+    /// 把配置镜像到 iCloud Drive 文档容器（vault）—— 卸载不丢数据、换设备可恢复。
+    /// 默认开：数据只进用户自己的 iCloud，重装即有「自动恢复」的体验。
+    public var iCloudSyncEnabled: Bool
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -64,7 +67,8 @@ public struct Settings: Codable, Sendable {
         theme: AppearanceTheme = .system,
         language: AppLanguage = .system,
         autoConnectOnAppLaunch: Bool = false,
-        autoConnectApps: Set<String> = []
+        autoConnectApps: Set<String> = [],
+        iCloudSyncEnabled: Bool = true
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -81,6 +85,7 @@ public struct Settings: Codable, Sendable {
         self.language = language
         self.autoConnectOnAppLaunch = autoConnectOnAppLaunch
         self.autoConnectApps = autoConnectApps
+        self.iCloudSyncEnabled = iCloudSyncEnabled
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -92,6 +97,7 @@ public struct Settings: Codable, Sendable {
         case ruleSourceURL, launchAtLogin
         case logLevel, theme, language
         case autoConnectOnAppLaunch, autoConnectApps
+        case iCloudSyncEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -112,5 +118,6 @@ public struct Settings: Codable, Sendable {
         self.language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         self.autoConnectOnAppLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoConnectOnAppLaunch) ?? false
         self.autoConnectApps = try c.decodeIfPresent(Set<String>.self, forKey: .autoConnectApps) ?? []
+        self.iCloudSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? true
     }
 }
