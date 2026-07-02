@@ -54,6 +54,19 @@ public struct DailyDigest: Sendable, Equatable, Identifiable {
         self.directCount = directCount
         self.rejectCount = rejectCount
     }
+
+    /// 按域名关键字过滤（大小写不敏感）。无匹配 → nil（这一天整个不显示）；
+    /// 关键字为空/全空白 → 原样返回。proxy/direct/rejectCount 保持全天口径不改写 ——
+    /// UI 在搜索态下自行隐藏这段，避免和过滤后的行数对不上。
+    public func filtered(byDomainKeyword keyword: String) -> DailyDigest? {
+        let kw = keyword.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !kw.isEmpty else { return self }
+        let matched = domains.filter { $0.domain.lowercased().contains(kw) }
+        guard !matched.isEmpty else { return nil }
+        var copy = self
+        copy.domains = matched
+        return copy
+    }
 }
 
 public struct RuleSuggestion: Sendable, Equatable, Identifiable {

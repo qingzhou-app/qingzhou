@@ -8,6 +8,9 @@ public struct DomainAnalysisView: View {
     /// 「忽略 IP」过滤：来自 ConnectionsView 的临时状态（不持久化），两页联动。
     @Binding var hideBareIPs: Bool
     @State private var mode = 0
+    /// 域名关键字搜索：作用于所有 tab（页内搜索框 —— 本页是 sheet，
+    /// macOS 上 .searchable 在 sheet 的 toolbar 里没有稳定落点，页内框两平台一致）。
+    @State private var keyword = ""
     #if os(macOS)
     /// 「应用」tab 是否可用 = 内容过滤扩展（来源 App 标注）当前已启用。
     /// 跟随运行时开关而不是编译期 flag —— 用户在设置里关掉标注后，这个 tab 应当消失。
@@ -22,16 +25,23 @@ public struct DomainAnalysisView: View {
     public var body: some View {
         // 「忽略 IP」过滤（与连接页联动）：裸 IP 目标在聚合前剔除 ——
         // FakeDNS 反查不到域名的连接对域名分析没有价值。
-        let connections = hideBareIPs
+        let unsearched = hideBareIPs
             ? state.connections.filter { !HostClassifier.isBareIP($0.targetHost) }
             : state.connections
-        let hiddenIPCount = state.connections.count - connections.count
+        let hiddenIPCount = state.connections.count - unsearched.count
+        // 搜索：在连接层（聚合之前）按域名关键字过滤 —— 域名/建议/应用三个 tab 吃同一份
+        // 过滤结果，口径天然一致；「每日」吃持久化 digest，用 filtered(byDomainKeyword:) 单独过。
+        let kw = keyword.trimmingCharacters(in: .whitespaces).lowercased()
+        let connections = kw.isEmpty
+            ? unsearched
+            : unsearched.filter { $0.targetHost.lowercased().contains(kw) }
         // 排序/展示都用连接次数维度：接上 QueryStats 拿到真实字节前，per-连接流量恒 0，
         // 「按流量排序 + 显示 0B」是假数据。有真实字节后把 sortBy 切回 .traffic 并恢复字节列。
         let stats = DomainAnalyzer.aggregate(connections, sortBy: .connections)
         // 「每日」读按天聚合的持久化历史（跨重启、保留 30 天），不再从内存最近 200 条
         // 连接现算 —— 那是假历史。「忽略 IP」必须同样作用到这里，否则和域名 tab 数字对不上。
         let digests = state.domainHistory.digests(excludingBareIPs: hideBareIPs)
+            .compactMap { $0.filtered(byDomainKeyword: kw) }
         let suggestions = DomainAnalyzer.suggestions(stats)
 
         List {
@@ -49,6 +59,30 @@ public struct DomainAnalysisView: View {
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)
 
+            // 页内搜索框：搜索体验与连接页一致（按域名关键字过滤，所有 tab 生效）
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .imageScale(.small).foregroundStyle(.secondary)
+                TextField("搜索域名", text: $keyword)
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                if !keyword.isEmpty {
+                    Button {
+                        keyword = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .imageScale(.small).foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+            .listRowSeparator(.hidden)
+
             // 过滤生效时的轻提示，避免用户忘了开着过滤、以为数据少了
             if hiddenIPCount > 0 {
                 HStack(spacing: 4) {
@@ -60,15 +94,24 @@ public struct DomainAnalysisView: View {
                 .listRowSeparator(.hidden)
             }
 
+            let searching = !kw.isEmpty
             switch mode {
             case 0:
-                Section("按连接次数排序 · \(stats.count) 个域名") {
-                    ForEach(stats) { domainRow($0) }
+                if stats.isEmpty && searching {
+                    searchEmptyState
+                } else {
+                    Section("按连接次数排序 · \(stats.count) 个域名") {
+                        ForEach(stats) { domainRow($0) }
+                    }
                 }
             case 1:
                 if digests.isEmpty {
-                    ContentUnavailableView("暂无每日历史", systemImage: "calendar",
-                                           description: Text("开启 VPN 浏览后，这里按天保留最近 30 天的域名访问汇总。"))
+                    if searching {
+                        searchEmptyState
+                    } else {
+                        ContentUnavailableView("暂无每日历史", systemImage: "calendar",
+                                               description: Text("开启 VPN 浏览后，这里按天保留最近 30 天的域名访问汇总。"))
+                    }
                 } else {
                     ForEach(digests) { d in
                         Section {
@@ -78,13 +121,17 @@ public struct DomainAnalysisView: View {
                                 Text("… 还有 \(d.domains.count - 8) 个域名（按连接次数排序，仅显示前 8）")
                                     .font(.caption2).foregroundStyle(.tertiary)
                             }
-                        } header: { dailyHeader(d) }
+                        } header: { dailyHeader(d, searching: searching) }
                     }
                 }
             case 2:
                 if suggestions.isEmpty {
-                    ContentUnavailableView("暂无优化建议", systemImage: "checkmark.seal",
-                                           description: Text("当前域名的代理/直连分流看起来都合理。"))
+                    if searching {
+                        searchEmptyState
+                    } else {
+                        ContentUnavailableView("暂无优化建议", systemImage: "checkmark.seal",
+                                               description: Text("当前域名的代理/直连分流看起来都合理。"))
+                    }
                 } else {
                     ForEach(suggestions) { suggestionRow($0) }
                 }
@@ -147,8 +194,12 @@ public struct DomainAnalysisView: View {
 
     @ViewBuilder private func appSections(_ connections: [Connection]) -> some View {
         let appStats = DomainAnalyzer.aggregateByApp(connections)
+        // 搜索无结果时明确说「是搜索导致的空」——下面的「暂无来源 App 数据」会误导
+        if appStats.isEmpty && !keyword.trimmingCharacters(in: .whitespaces).isEmpty {
+            searchEmptyState
+        }
         // 本 tab 只在扩展启用后可见，所以空态语义是「已启用但还没标注到」不是「去启用」
-        if appStats.allSatisfy({ $0.bundleID == nil }) {
+        else if appStats.allSatisfy({ $0.bundleID == nil }) {
             ContentUnavailableView {
                 Label("暂无来源 App 数据", systemImage: "app.badge.checkmark")
             } description: {
@@ -196,15 +247,27 @@ public struct DomainAnalysisView: View {
         .padding(.vertical, 2)
     }
 
-    private func dailyHeader(_ d: DailyDigest) -> some View {
+    private func dailyHeader(_ d: DailyDigest, searching: Bool) -> some View {
         HStack {
             Text(d.day.formatted(date: .abbreviated, time: .omitted))
             Spacer()
-            // 口径：代理/直连/拒绝是**连接次数**（和行里的「N 次」同单位，三者之和 = 当天
-            // 总次数）；域名数单独给。不显示 totalBytes —— 接上 QueryStats 前恒 0（假数据）。
-            Text("\(d.domains.count) 个域名 · 代理 \(d.proxyCount) / 直连 \(d.directCount) / 拒绝 \(d.rejectCount) 次")
-                .font(.caption2).textCase(nil)
+            if searching {
+                // 搜索态：domains 已被关键字过滤，代理/直连/拒绝的全天次数和行数对不上，
+                // 只报匹配数（口径对账的老教训，别混着显示）
+                Text("匹配 \(d.domains.count) 个域名")
+                    .font(.caption2).textCase(nil)
+            } else {
+                // 口径：代理/直连/拒绝是**连接次数**（和行里的「N 次」同单位，三者之和 = 当天
+                // 总次数）；域名数单独给。不显示 totalBytes —— 接上 QueryStats 前恒 0（假数据）。
+                Text("\(d.domains.count) 个域名 · 代理 \(d.proxyCount) / 直连 \(d.directCount) / 拒绝 \(d.rejectCount) 次")
+                    .font(.caption2).textCase(nil)
+            }
         }
+    }
+
+    /// 搜索无结果的空态：和连接页一样明确说「是搜索导致的空」，别让用户以为没数据。
+    private var searchEmptyState: some View {
+        ContentUnavailableView.search(text: keyword)
     }
 
     private func routeBadge(_ r: DomainRoute) -> some View {
