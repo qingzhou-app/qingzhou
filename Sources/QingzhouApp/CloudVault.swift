@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// iCloud vault —— 像 Obsidian 的 vault 一样，把配置（订阅 / 节点 / 规则 / 设置）镜像到
@@ -123,10 +124,58 @@ public struct VaultSyncState: Codable, Sendable {
     /// 本机最后写入 / 恢复过的云端 revision。
     public var lastSyncedRevision: Int
     public var lastSyncedAt: Date
+    /// 上次成功镜像的**规范化**快照内容哈希 —— 内容没变就跳过镜像，
+    /// 不产生新 revision、不挤掉滚动备份里有价值的历史。optional：兼容旧文件。
+    public var lastMirroredContentHash: String?
 
-    public init(lastSyncedRevision: Int, lastSyncedAt: Date) {
+    public init(lastSyncedRevision: Int, lastSyncedAt: Date, lastMirroredContentHash: String? = nil) {
         self.lastSyncedRevision = lastSyncedRevision
         self.lastSyncedAt = lastSyncedAt
+        self.lastMirroredContentHash = lastMirroredContentHash
+    }
+}
+
+// MARK: - 镜像内容规范化（可单测）
+
+/// 上云前对快照做规范化：剥离**设备本地的瞬态字段**。
+///
+/// 动机（真机踩过）：自动测速 / 自动择优每 30 分钟改一次 `lastLatencyMs` / `currentNodeId`，
+/// 订阅自动刷新每小时改一次 `lastUpdatedAt` / `usedBytes` —— 每次都 persist → 镜像 →
+/// 新 revision + 新备份，5 份滚动备份很快全是「只有延迟数字不同」的雷同版本，
+/// 把真正有价值的历史（比如删空前的配置）挤出去。
+///
+/// 剥离的字段（都没有跨设备同步价值，恢复时从本地回填 / 由设备自己重新产生）：
+/// - `Node.lastLatencyMs` / `lastTestedAt` —— 延迟是「这台设备到节点」的瞬态测量
+/// - `Snapshot.currentNodeId` —— 设备本地的运行时选择，且自动择优会频繁改它
+/// - `Subscription.lastUpdatedAt` / `usedBytes` —— 本地拉取时刻 / 随流量消耗每次刷新必变
+///   （`totalBytes` / `expiresAt` 保留：服务端事实，低频变化、有同步价值）
+public enum VaultSnapshotNormalizer {
+    public static func normalized(_ snapshot: Persistence.Snapshot) -> Persistence.Snapshot {
+        var s = snapshot
+        s.currentNodeId = nil
+        s.nodes = s.nodes.map { node in
+            var n = node
+            n.lastLatencyMs = nil
+            n.lastTestedAt = nil
+            return n
+        }
+        s.subscriptions = s.subscriptions.map { subscription in
+            var sub = subscription
+            sub.lastUpdatedAt = nil
+            sub.usedBytes = nil
+            return sub
+        }
+        return s
+    }
+
+    /// 规范化快照的稳定内容指纹（sortedKeys JSON 的 SHA-256）。
+    /// 用于镜像去重：与上次成功镜像的哈希一致 → 跳过本次镜像。
+    public static func contentHash(of snapshot: Persistence.Snapshot) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]   // 字节序稳定，哈希才可比
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(snapshot)
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
 
