@@ -50,6 +50,17 @@ public final class AppState {
     /// 实时流量波形数据（滑动窗口）。appex 经 App Group 上报 `TrafficStats` 喂进来；
     /// 没开 VPN / 没真实上报时为空，UI 显示「等待流量」。
     public var trafficHistory = TrafficHistory(capacity: 60)
+    /// 隧道扩展内存快照（iOS 对 NE 扩展有 50MB jetsam 硬上限 —— 超限即"断流"）。
+    /// 最近一次从 App Group 读到的值：VPN 停着时是上次会话的残留（历史峰值仍有展示价值），
+    /// 新鲜与否用 `tunnelMemoryIsLive` 区分。设置页「诊断」区显示。
+    public internal(set) var tunnelMemory: TunnelMemoryStats?
+    /// tunnelMemory 是否是活数据（扩展 3 秒内刚写的）。
+    public var tunnelMemoryIsLive: Bool {
+        guard let m = tunnelMemory else { return false }
+        return abs(m.sampledAt.timeIntervalSinceNow) <= 3
+    }
+    /// 上次已在主 App 日志里记过的扩展内存告警数 —— 只对新增告警写日志，不重复刷。
+    private var loggedMemoryWarningCount = 0
     public var settings: Settings = Settings()
     public var lastSpeedTestReport: SpeedTestReport?
     /// 正在测速的节点 id 集合 —— UI 据此在对应行显示旋转 loading。
@@ -1356,6 +1367,7 @@ public final class AppState {
             try? await Task.sleep(for: .seconds(1))
             if Task.isCancelled { break }
             syncAutoStopState()   // 定时关闭：刷新倒计时 + 识别「扩展已按定时自停」
+            syncTunnelMemory()    // 扩展内存观测：读快照 + 新增告警转写进主 App 日志
             // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）
             if let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats"),
                abs(stats.sampledAt.timeIntervalSinceNow) <= 3 {   // 只接受新鲜样本，避免旧文件
@@ -1369,6 +1381,30 @@ public final class AppState {
                     markAllConnectionsClosed()
                 }
             }
+        }
+    }
+
+    /// 扩展内存观测的主 App 侧（每秒调，轻量：读一个小 JSON 文件）：
+    /// 1. 刷新 `tunnelMemory` 给设置页「诊断」区显示（含 VPN 停后的历史峰值残留）；
+    /// 2. 扩展侧新增的 40MB 越限告警转写进主 App 日志（LogsView 可见、可导出）——
+    ///    扩展进程的 os_log 用户看不到，这里是它进 App 内日志页的通道。
+    private func syncTunnelMemory() {
+        // "memory-stats" 与 XrayCore.TunnelAppGroup.memoryStatsName 一致（两模块互不依赖）
+        guard let stats = AppGroupStorage.read(TunnelMemoryStats.self, from: "memory-stats") else { return }
+        tunnelMemory = stats
+        if stats.warningCount > loggedMemoryWarningCount {
+            // 主 App 不在场时扩展照常计数，这里回放漏掉的告警（合并成一条，别刷屏）
+            let missed = stats.warningCount - loggedMemoryWarningCount
+            loggedMemoryWarningCount = stats.warningCount
+            logger.warn(
+                "隧道扩展内存接近上限：footprint \(ByteFormatter.format(stats.footprintBytes))，"
+                + "会话峰值 \(ByteFormatter.format(stats.sessionPeakBytes))"
+                + "（iOS jetsam 上限 50 MB，本次会话第 \(stats.warningCount) 次越过 40 MB"
+                + (missed > 1 ? "，含 \(missed - 1) 次主 App 离线期间的告警" : "") + "）",
+                category: "tunnel"
+            )
+        } else if stats.warningCount < loggedMemoryWarningCount {
+            loggedMemoryWarningCount = stats.warningCount   // 扩展重启，计数归零
         }
     }
 

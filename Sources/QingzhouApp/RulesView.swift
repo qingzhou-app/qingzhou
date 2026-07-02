@@ -104,6 +104,19 @@ public struct RulesView: View {
                     #endif
             }
 
+            // GEOIP 精简版提示：内置 geo 数据只含 cn/private（NE 扩展 50MB 内存预算），
+            // 其他国家码的规则不会生效 —— 用户一输入就知道，别等真机跑了才发现分流不对。
+            if newType == .geoip {
+                let v = newValue.trimmingCharacters(in: .whitespaces)
+                if !v.isEmpty && !GeoDataBundle.supportsGeoIP(v) {
+                    Text("当前 geo 数据不含「\(v)」，该规则将不生效（内置精简版仅含 cn / private，完整版下载后续提供）")
+                        .font(.caption2).foregroundStyle(.orange)
+                } else {
+                    Text("内置 geo 数据为精简版，GEOIP 仅支持 cn 与 private。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
             // 命中后动作 —— 三选一，segmented 紧凑
             Picker("匹配后", selection: $newTarget) {
                 ForEach(RuleTarget.allCases, id: \.self) { target in
@@ -187,7 +200,7 @@ public struct RulesView: View {
         case .domainKeyword: return "google"
         case .ipCIDR:        return "192.168.0.0/16"
         case .ipCIDR6:       return "fc00::/7"
-        case .geoip:         return "cn / us / jp …"
+        case .geoip:         return "cn / private"
         case .processName:   return "Telegram"
         case .userAgent:     return "MyApp/*"
         case .final:         return ""
@@ -230,11 +243,23 @@ public struct RulesView: View {
         }
     }
 
+    /// 内置 geoip.dat 是精简版（仅 cn/private，给 NE 扩展 50MB 内存预算省地）——
+    /// 其他国家码的 GEOIP 规则转换层会跳过（xray 对缺失分类直接启动失败），这里如实标注。
+    private func isIneffectiveGeoIP(_ rule: Rule) -> Bool {
+        rule.type == .geoip && !GeoDataBundle.supportsGeoIP(rule.value)
+    }
+
     private func ruleRow(_ rule: Rule, isCustom: Bool) -> some View {
         HStack {
             targetChip(rule.target)
-            Text(rule.lineForm)
-                .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rule.lineForm)
+                    .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+                if isIneffectiveGeoIP(rule) {
+                    Text("当前 geo 数据不含 \(rule.value)，规则将不生效")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
+            }
             Spacer()
             if isCustom {
                 Button {

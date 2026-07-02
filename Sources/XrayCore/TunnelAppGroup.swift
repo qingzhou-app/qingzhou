@@ -117,6 +117,29 @@ public enum TunnelAppGroup {
         return (try? json.write(to: url, atomically: true, encoding: .utf8)) != nil
     }
 
+    // MARK: - 扩展内存统计（Extension 写、主 App 读；Extension 启动时也读 —— 接续历史峰值）
+
+    /// 主 App 侧用 AppGroupStorage.read(TunnelMemoryStats.self, from: "memory-stats") 同名读取。
+    public static let memoryStatsName = "memory-stats"
+
+    private static var memoryStatsURL: URL? {
+        containerURL?.appendingPathComponent(memoryStatsName).appendingPathExtension("json")
+    }
+
+    /// Extension 调：把内存快照（TunnelMemoryStats 已 encode 成 JSON 串）写进共享容器。
+    /// 随流量统计每秒一次。entitlement 不全时静默失败 —— 观测缺席不影响 VPN。
+    @discardableResult
+    public static func writeMemoryStats(_ json: String) -> Bool {
+        guard let url = memoryStatsURL else { return false }
+        return (try? json.write(to: url, atomically: true, encoding: .utf8)) != nil
+    }
+
+    /// Extension 启动时调：读上次落盘的内存统计（取 allTimePeakBytes 接着累计）。
+    public static func readMemoryStatsJSON() -> String? {
+        guard let url = memoryStatsURL else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
     // MARK: - FakeDNS 映射（Extension 写、主 App 读）
 
     /// 主 App 侧用 AppGroupStorage.read(from: "fakedns-map") 同名读取。

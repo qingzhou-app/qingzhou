@@ -66,6 +66,24 @@ final class RoutingRuleConverterTests: XCTestCase {
         XCTAssertEqual(out[0]["ip"] as? [String], ["geoip:cn"], "GEOIP → geoip: 前缀且小写")
     }
 
+    func testGeoIPOutsideBundledDataSkipped() {
+        // 内置 geoip.dat 是精简版（only-cn-private）。缺失分类必须跳过 ——
+        // xray 对 routing 规则里找不到的 geoip 分类直接启动失败，
+        // 一条 GEOIP,us 规则透传过去就是"VPN 连不上"级别的事故。
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoip, value: "us", target: .proxy),
+            Rule(type: .geoip, value: "JP", target: .direct)
+        ])
+        XCTAssertTrue(out.isEmpty, "非 cn/private 的 GEOIP 规则在精简 geo 数据下必须整条跳过")
+    }
+
+    func testGeoIPPrivateStillSupported() {
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoip, value: "private", target: .direct)
+        ])
+        XCTAssertEqual(out[0]["ip"] as? [String], ["geoip:private"])
+    }
+
     // MARK: - 保序合并
 
     func testConsecutiveSameTargetDomainRulesMergeIntoOne() {

@@ -104,6 +104,11 @@ public enum RoutingRuleConverter {
             return (.ip, value)
         case .geoip:
             guard isValidGeoCode(value) else { return nil }
+            // 内置 geoip.dat 是精简版（only-cn-private，给 NE 50MB 内存预算省地）。
+            // 缺失的分类**必须**跳过：xray 对 routing 规则里找不到的 geoip 分类直接
+            // 启动失败（"country not found"），一条 GEOIP,us 规则就能让 VPN 起不来。
+            // UI 层（RulesView）对这类规则显示「规则不生效」提示。
+            guard GeoDataBundle.supportsGeoIP(value) else { return nil }
             return (.ip, "geoip:\(value.lowercased())")
         case .processName, .userAgent, .final:
             // PROCESS-NAME / USER-AGENT：xray 在 TUN 层无法匹配；FINAL 由 finalOutboundTag 处理
