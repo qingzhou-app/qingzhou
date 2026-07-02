@@ -24,7 +24,11 @@ let package = Package(
     ],
     targets: [
         // resources: cn-domains.txt —— CN 域名归属判定的内置后缀表（见 CNDomains.swift）
-        .target(name: "QingzhouCore", resources: [.copy("Resources/cn-domains.txt")]),
+        //           tracker-domains.txt —— 追踪器域名后缀表（见 TrackerDomains.swift）
+        .target(name: "QingzhouCore", resources: [
+            .copy("Resources/cn-domains.txt"),
+            .copy("Resources/tracker-domains.txt"),
+        ]),
         .target(
             name: "QingzhouProtocols",
             dependencies: [

@@ -1,0 +1,246 @@
+# 常见追踪器域名后缀表（TrackerDomains.suffixes 的数据源）
+#
+# 来源：人工整理的高频子集，参照下列知名开源追踪器清单核验（域名本身是事实性数据）：
+#   - DuckDuckGo Tracker Radar / tracker-blocklists（CC BY-NC-SA 4.0）
+#     https://github.com/duckduckgo/tracker-radar
+#   - EasyPrivacy（GPLv3 / CC BY-SA 3.0 双许可）https://easylist.to/easylist/easyprivacy.txt
+# 挑选口径：广告网络、行为分析、移动归因、会话回放、DMP/数据经纪商、广告验证 ——
+#   只收「专门做追踪」的域名；大厂主站（google.com / baidu.com）不收，
+#   其追踪专用子域按多段后缀收（如 hm.baidu.com）。
+# 更新：python3 scripts/update-tracker-domains.py —— 拉取 EasyPrivacy + DDG 清单，
+#   逐条校验本表条目仍在上游内；行尾 `# manual` 标注的条目豁免上游校验（人工核实）。
+# 约定：一行一个后缀（子域名自动覆盖）；全小写；几百条 < 100KB，宁缺毋滥。
+# 判定代码：TrackerDomains.swift（逐级剥子域名后缀匹配，与 CNDomains 同机制）。
+
+# ---- Google 广告 / 统计 ----
+doubleclick.net
+google-analytics.com
+googletagmanager.com
+googletagservices.com
+googlesyndication.com
+googleadservices.com
+adservice.google.com
+admob.com
+app-measurement.com
+crashlytics.com
+2mdn.net
+urchin.com
+
+# ---- Meta / Facebook ----
+facebook.net
+an.facebook.com
+atdmt.com
+
+# ---- 微软 / LinkedIn / Bing ----
+clarity.ms
+bat.bing.com
+ads.linkedin.com
+telemetry.microsoft.com
+vortex.data.microsoft.com
+
+# ---- Adobe 营销云 ----
+demdex.net
+omtrdc.net
+2o7.net
+adobedtm.com
+everesttech.net
+
+# ---- 亚马逊 / 苹果搜索广告 ----
+amazon-adsystem.com
+iadsdk.apple.com
+
+# ---- 通用行为分析 ----
+mixpanel.com
+amplitude.com
+segment.io
+api.segment.com
+heapanalytics.com
+kissmetrics.io
+kissmetrics.com
+statcounter.com
+quantserve.com
+quantcount.com
+scorecardresearch.com
+chartbeat.com
+chartbeat.net
+parsely.com
+newrelic.com
+nr-data.net
+browser-intake-datadoghq.com
+histats.com
+webtrends.com
+imrworldwide.com
+getclicky.com
+woopra.com
+matomo.cloud
+plausible.io
+mouseflow.com
+snowplowanalytics.com # manual
+
+# ---- 错误 / 性能上报（在上游追踪清单内）----
+sentry.io
+bugsnag.com
+rollbar.com
+
+# ---- 会话回放 / 热图 ----
+hotjar.com
+hotjar.io
+fullstory.com
+crazyegg.com
+clicktale.net
+inspectlet.com
+luckyorange.com
+smartlook.com
+logrocket.io
+lr-ingest.io
+
+# ---- 移动归因 / SDK ----
+appsflyer.com
+adjust.com
+adjust.io
+branch.io
+kochava.com
+singular.net
+tenjin.io # manual
+flurry.com
+
+# ---- 推送 / 用户触达（含行为追踪）----
+onesignal.com
+braze.com
+urbanairship.com
+leanplum.com
+clevertap-prod.com
+wzrkt.com
+iterable.com
+track.customer.io
+
+# ---- A/B 测试 / 个性化 ----
+optimizely.com
+visualwebsiteoptimizer.com
+split.io
+
+# ---- 广告网络 / 交易平台 ----
+adnxs.com
+rubiconproject.com
+pubmatic.com
+openx.net
+criteo.com
+criteo.net
+taboola.com
+outbrain.com
+revcontent.com
+mgid.com
+adroll.com
+sharethrough.com
+smartadserver.com
+teads.tv
+casalemedia.com
+media.net
+sovrn.com
+lijit.com
+adform.net
+adition.com
+bidswitch.net
+smaato.net
+yieldlab.net
+360yield.com
+gumgum.com
+contextweb.com
+sonobi.com
+yieldmo.com
+triplelift.com
+pubnative.net # manual
+advertising.com
+exoclick.com
+mathtag.com
+simpli.fi
+adsrvr.org
+turn.com
+amgdgt.com # manual
+rfihub.com
+sitescout.com
+bidr.io # manual
+
+# ---- 移动广告 SDK（游戏 / App 变现）----
+unityads.unity3d.com
+vungle.com # manual
+applovin.com
+chartboost.com # manual
+supersonicads.com
+inmobi.com
+tapjoy.com # manual
+adcolony.com # manual
+mopub.com
+fyber.com # manual
+mintegral.net # manual
+pangolin-sdk-toutiao.com # manual
+
+# ---- 广告验证 / 可见性测量 ----
+moatads.com
+doubleverify.com
+adsafeprotected.com
+serving-sys.com
+flashtalking.com
+innovid.com # manual
+
+# ---- DMP / 数据经纪商 / 身份图谱 ----
+krxd.net
+bluekai.com
+exelator.com
+eyeota.net
+tapad.com
+rlcdn.com
+liveramp.com
+id5-sync.com
+agkn.com
+permutive.com
+fpjs.io # manual
+
+# ---- 标签管理 / 采集管道 ----
+tealiumiq.com
+tiqcdn.com
+ensighten.com
+
+# ---- 社交平台像素 / 广告子域 ----
+ads-twitter.com
+ct.pinterest.com
+analytics.tiktok.com
+ads.tiktok.com
+tr.snapchat.com
+addthis.com
+sharethis.com
+
+# ---- Yandex ----
+mc.yandex.ru
+an.yandex.ru
+adriver.ru # manual
+
+# ---- 国内统计 / 广告 / 推送 ----
+cnzz.com
+umeng.com
+umengcloud.com
+talkingdata.com
+talkingdata.net # manual
+growingio.com
+sensorsdata.cn # manual
+zhugeio.com # manual
+getui.com # manual
+igexin.com # manual
+jpush.cn # manual
+jiguang.cn # manual
+miaozhen.com # manual
+admaster.com.cn # manual
+gridsumdissector.com # manual
+hm.baidu.com
+pos.baidu.com
+cpro.baidu.com
+eclick.baidu.com
+tanx.com
+alimama.com # manual
+mmstat.com
+gdt.qq.com
+beacon.qq.com # manual
+pingjs.qq.com # manual
+data.mistat.xiaomi.com # manual
+tracking.miui.com # manual
+volceapplog.com # manual

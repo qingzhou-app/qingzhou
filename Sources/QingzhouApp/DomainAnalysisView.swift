@@ -226,6 +226,14 @@ public struct DomainAnalysisView: View {
             HStack(spacing: 8) {
                 routeBadge(s.route)
                 Text(s.domain).font(.subheadline).fontWeight(.medium).lineLimit(1)
+                // 追踪器徽章（灰紫色，与建议页「建议拒绝」同色系）
+                if TrackerDomains.isTracker(s.domain) {
+                    Text("追踪器")
+                        .font(.caption2).fontWeight(.medium)
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(Self.trackerColor.opacity(0.16), in: Capsule())
+                        .foregroundStyle(Self.trackerColor)
+                }
                 Spacer()
                 // 流量字节在接上 QueryStats 前恒 0，不显示假 0B；先用连接次数当主指标
                 Text("\(s.connectionCount) 次").font(.caption.monospaced()).foregroundStyle(.secondary)
@@ -381,7 +389,11 @@ public struct DomainAnalysisView: View {
         switch kind {
         case .shouldProxy:  return ("arrow.up.right.circle", .blue)
         case .shouldDirect: return ("arrow.down.right.circle", .green)
+        case .shouldReject: return ("nosign", Self.trackerColor)
         case .unmatched:    return ("questionmark.circle", .orange)
         }
     }
+
+    /// 追踪器徽章的灰紫色：比 .purple 更沉一点，和路由徽章的红/绿/蓝区分开、不抢眼。
+    static let trackerColor = Color(red: 0.55, green: 0.48, blue: 0.72)
 }

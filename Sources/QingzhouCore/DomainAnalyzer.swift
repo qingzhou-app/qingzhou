@@ -73,6 +73,7 @@ public struct RuleSuggestion: Sendable, Equatable, Identifiable {
     public enum Kind: String, Sendable {
         case shouldProxy   // 境外域名走了直连，建议补代理规则
         case shouldDirect  // 国内域名走了代理，建议直连省流量
+        case shouldReject  // 高频追踪器域名，建议加拒绝规则
         case unmatched     // 未命中任何规则，走的默认出站
     }
     public var domain: String
@@ -208,11 +209,22 @@ public enum DomainAnalyzer {
 
     // MARK: - 规则优化建议
 
+    /// 「建议拒绝」追踪器的最低连接次数：低频命中可能只是页面偶带的像素，刷建议是噪音。
+    public static let trackerRejectMinConnections = 3
+
     public static func suggestions(_ stats: [DomainStat]) -> [RuleSuggestion] {
         var out: [RuleSuggestion] = []
         for s in stats {
             let cn = isLikelyCN(s.domain)
             let unmatched = isUnmatchedRule(s.lastMatchedRule)
+            // 追踪器优先：已知追踪器域名的「补代理/直连」建议没有意义，直接建议拒绝
+            if TrackerDomains.isTracker(s.domain) {
+                if s.route != .reject && s.connectionCount >= trackerRejectMinConnections {
+                    out.append(.init(domain: s.domain, kind: .shouldReject,
+                                     reason: "已知追踪器域名（连接 \(s.connectionCount) 次），拒绝可减少行为追踪；个别 App 的统计功能可能受影响"))
+                }
+                continue
+            }
             if s.route == .direct && !cn && unmatched {
                 out.append(.init(domain: s.domain, kind: .shouldProxy,
                                  reason: "境外域名走了直连且未命中规则，可能需要补一条代理规则"))

@@ -28,15 +28,24 @@ struct QuickRuleActionsModifier: ViewModifier {
     }
 
     @ViewBuilder private var menuItems: some View {
+        // 追踪器域名：把「拒绝」提到最前并标注推荐 —— 这是对追踪器最合理的动作
+        let isTracker = TrackerDomains.isTracker(host)
         Section("为 \(DomainAnalyzer.registrableDomain(host)) 添加规则") {
+            if isTracker {
+                Button(role: .destructive) { state.quickAddDomainRule(forHost: host, target: .reject) } label: {
+                    Label("加入拒绝（追踪器，推荐）", systemImage: "nosign")
+                }
+            }
             Button { state.quickAddDomainRule(forHost: host, target: .direct) } label: {
                 Label("加入直连", systemImage: "arrow.down.right.circle")
             }
             Button { state.quickAddDomainRule(forHost: host, target: .proxy) } label: {
                 Label("加入代理", systemImage: "arrow.up.right.circle")
             }
-            Button(role: .destructive) { state.quickAddDomainRule(forHost: host, target: .reject) } label: {
-                Label("加入拒绝", systemImage: "nosign")
+            if !isTracker {
+                Button(role: .destructive) { state.quickAddDomainRule(forHost: host, target: .reject) } label: {
+                    Label("加入拒绝", systemImage: "nosign")
+                }
             }
         }
     }
