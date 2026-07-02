@@ -31,26 +31,51 @@ public struct SettingsView: View {
 
     /// 诊断：隧道扩展进程的内存水位。iOS 对 NE 扩展有 50MB jetsam 硬上限，超限即"断流"——
     /// 高速测速 / 大流量下载是竞品翻车的典型场景，这里给用户/开发者一个随时可查的数字。
+    ///
+    /// 用 TimelineView **每秒自驱动重算**，不依赖任何数据变更就能走字 —— 于是
+    /// 「上次采样：N 秒前」这行读数把故障环节一劈两半：秒数持续增大 = 扩展没在写
+    /// （旧扩展进程没换新代码 / 写入失败）；秒数一直 ≤2 秒但数字不动 = 不可能
+    /// （数字和采样时间在同一个文件里）。「扩展尚未上报」= 文件根本不存在。
     private var diagnosticsSection: some View {
         Section("诊断") {
-            if let mem = state.tunnelMemory, state.tunnelMemoryIsLive {
-                LabeledContent("扩展内存",
-                               value: "\(ByteFormatter.format(mem.footprintBytes))"
-                               + " · 峰值 \(ByteFormatter.format(mem.sessionPeakBytes))")
-                Text(memoryCaption(mem))
-                    .font(.caption2).foregroundStyle(mem.warningCount > 0 ? .orange : .secondary)
-            } else if let mem = state.tunnelMemory {
-                LabeledContent("扩展内存", value: "VPN 未运行")
-                Text("上次会话峰值 \(ByteFormatter.format(mem.sessionPeakBytes))"
-                     + " · 历史最高 \(ByteFormatter.format(mem.allTimePeakBytes))"
-                     + (mem.limitBytes > 0 ? "（上限 \(ByteFormatter.format(mem.limitBytes))）" : ""))
-                    .font(.caption2).foregroundStyle(.secondary)
-            } else {
-                LabeledContent("扩展内存", value: "暂无数据")
-                Text("开启 VPN 后这里显示隧道扩展的实时内存占用与峰值。")
-                    .font(.caption2).foregroundStyle(.secondary)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                if let mem = state.tunnelMemory {
+                    let age = context.date.timeIntervalSince(mem.sampledAt)
+                    let live = age <= 3
+                    VStack(alignment: .leading, spacing: 4) {
+                        LabeledContent("扩展内存", value: live
+                            ? "\(ByteFormatter.format(mem.footprintBytes))"
+                              + " · 峰值 \(ByteFormatter.format(mem.sessionPeakBytes))"
+                            : "未在上报")
+                        Text(live
+                            ? memoryCaption(mem)
+                            : "上次会话峰值 \(ByteFormatter.format(mem.sessionPeakBytes))"
+                              + " · 历史最高 \(ByteFormatter.format(mem.allTimePeakBytes))"
+                              + (mem.limitBytes > 0 ? "（上限 \(ByteFormatter.format(mem.limitBytes))）" : ""))
+                            .font(.caption2)
+                            .foregroundStyle(live && mem.warningCount > 0 ? .orange : .secondary)
+                        Text("上次采样：\(Self.ageText(age))")
+                            .font(.caption2)
+                            .foregroundStyle(live ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        LabeledContent("扩展内存", value: "暂无数据")
+                        Text("扩展尚未上报 —— 需 VPN 处于开启状态，且隧道扩展为最新版本"
+                             + "（更新 App 后要关-开一次 VPN，运行中的旧扩展进程才会换成新代码）。")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
             }
         }
+    }
+
+    /// 「上次采样」的人话时间差。负值（时钟偏差）并进"刚刚"。
+    static func ageText(_ age: TimeInterval) -> String {
+        if age < 2 { return "刚刚" }
+        if age < 60 { return "\(Int(age)) 秒前" }
+        if age < 3600 { return "\(Int(age / 60)) 分钟前" }
+        return "\(Int(age / 3600)) 小时前"
     }
 
     private func memoryCaption(_ mem: TunnelMemoryStats) -> String {
