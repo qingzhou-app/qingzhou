@@ -90,4 +90,22 @@ public struct StatusBarMenu: View {
         .keyboardShortcut("q")
     }
 }
+
+/// 状态栏图标。必须是独立 View 而不是在 MenuBarExtra 的 label 闭包里直接读 state ——
+/// @Observable 的依赖追踪只在 View.body 求值时登记，Scene 层闭包里读状态不建立观察，
+/// 状态变了图标不重绘（实测：VPN 开关/热切换后菜单栏图标不更新）。
+public struct StatusBarIcon: View {
+    @Bindable var state: AppState
+
+    public init(state: AppState) { self.state = state }
+
+    public var body: some View {
+        // 已连接=满格三角；切换中=半格；断开=空心
+        if state.isSwitchingTunnel {
+            Image(systemName: "triangle.lefthalf.filled")
+        } else {
+            Image(systemName: state.isVPNRunning ? "triangle.fill" : "triangle")
+        }
+    }
+}
 #endif
