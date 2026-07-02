@@ -1132,11 +1132,14 @@ public final class AppState {
     }
 
     #if os(macOS)
-    /// 用最新的「源端口 → 来源 App」映射，回填所有还没标注来源的连接。
+    /// 用最新的「源端口 → 来源 App」映射，回填还没标注来源的**活跃**连接。
     /// content filter 的 map 常晚于连接 ingest 才就绪，只在解析那刻查一次会漏掉大批连接。
+    /// 只回填活跃的：已关闭连接的源端口可能早被系统回收给了别的 App，再回填就是误标
+    /// （见 FeatureFlags.sourceAppLabeling 注释第 2 条）。
     private func backfillSourceApps() {
         guard !sourceAppMap.isEmpty else { return }
-        for i in connectionTracker.connections.indices where connectionTracker.connections[i].sourceApp == nil {
+        for i in connectionTracker.connections.indices
+        where connectionTracker.connections[i].sourceApp == nil && connectionTracker.connections[i].isActive {
             if let port = connectionTracker.connections[i].sourceAddress.split(separator: ":").last.map(String.init),
                let bundleID = sourceAppMap[port] {
                 connectionTracker.connections[i].sourceApp = bundleID

@@ -34,6 +34,11 @@ public struct DomainAnalysisView: View {
                 Text("域名").tag(0)
                 Text("每日").tag(1)
                 Text("建议 \(suggestions.count)").tag(2)
+                // 「应用」视角只在 macOS 有：来源 App 靠 content filter 系统扩展标注，
+                // iOS 拿不到进程归属（需 MDM 监督），不给一个永远空的 tab。
+                #if os(macOS)
+                Text("应用").tag(3)
+                #endif
             }
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)
@@ -70,13 +75,19 @@ public struct DomainAnalysisView: View {
                         } header: { dailyHeader(d) }
                     }
                 }
-            default:
+            case 2:
                 if suggestions.isEmpty {
                     ContentUnavailableView("暂无优化建议", systemImage: "checkmark.seal",
                                            description: Text("当前域名的代理/直连分流看起来都合理。"))
                 } else {
                     ForEach(suggestions) { suggestionRow($0) }
                 }
+            default:
+                #if os(macOS)
+                appSections(connections)
+                #else
+                EmptyView()
+                #endif
             }
         }
         .navigationTitle("域名分析")
@@ -110,6 +121,49 @@ public struct DomainAnalysisView: View {
         // 一键规则：iOS 长按/左滑，macOS 右键 →「加入直连 / 代理 / 拒绝」
         .quickRuleActions(host: s.domain, state: state)
     }
+
+    #if os(macOS)
+    // MARK: - 「应用」视角（macOS：来源 App 由内容过滤系统扩展标注）
+
+    @ViewBuilder private func appSections(_ connections: [Connection]) -> some View {
+        let appStats = DomainAnalyzer.aggregateByApp(connections)
+        // 一条真实标注都没有（含完全没数据）→ 大概率没启用内容过滤扩展，给启用指引
+        if appStats.allSatisfy({ $0.bundleID == nil }) {
+            ContentUnavailableView {
+                Label("暂无来源 App 数据", systemImage: "app.badge.checkmark")
+            } description: {
+                Text("按 App 查看流量需要启用「来源 App 标注」（内容过滤系统扩展）：\n"
+                     + "设置 → macOS 集成 → 启用来源 App 标注，首次需在系统设置批准扩展。\n"
+                     + "注意：只有启用之后建立的连接能标注来源，之前的连接无法补标。")
+            }
+        } else {
+            ForEach(appStats) { appSection($0) }
+        }
+    }
+
+    @ViewBuilder private func appSection(_ a: DomainAnalyzer.AppUsageStat) -> some View {
+        Section {
+            ForEach(a.domains) { domainRow($0) }
+            // 只展示 top N，剩余的说明白 —— 否则行数和 header 的次数对不上
+            if a.totalDomainCount > a.domains.count {
+                Text("… 还有 \(a.totalDomainCount - a.domains.count) 个域名（按连接次数排序，仅显示前 \(a.domains.count)）")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        } header: {
+            HStack {
+                if let bid = a.bundleID {
+                    SourceAppLabel(bundleID: bid)
+                } else {
+                    Label("未知来源", systemImage: "questionmark.app")
+                    Text("· 启用过滤前的连接 / 系统流量").font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\(a.connectionCount) 次连接").font(.caption2)
+            }
+            .textCase(nil)
+        }
+    }
+    #endif
 
     private func suggestionRow(_ s: RuleSuggestion) -> some View {
         let (icon, color) = badge(for: s.kind)
