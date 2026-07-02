@@ -125,6 +125,42 @@ public struct DomainDailyHistory: Codable, Sendable, Equatable {
         .sorted { $0.day > $1.day }
     }
 
+    // MARK: - 今日新增（新面孔）
+
+    /// 「今日新增」的主域名统计：今天出现、且窗口内**更早的天**从未见过的主域名。
+    /// 判定完全基于本结构的 30 天历史 —— 30 天前见过但已被滚动清理的域名会再次算新，
+    /// 这是「新面孔」语义的自然边界（和 UI 文案「30 天内首次出现」一致）。
+    ///
+    /// - Parameter excludingBareIPs: 与 digests 的「忽略 IP」同口径。
+    /// - Returns: 今天的聚合统计（DomainStat，字节恒 0 同 digests），按连接次数降序。
+    public func newTodayStats(now: Date = Date(), calendar: Calendar = .current,
+                              excludingBareIPs: Bool = false) -> [DomainStat] {
+        let todayKey = Self.dayKey(now, calendar: calendar)
+        guard let today = days[todayKey], !today.isEmpty else { return [] }
+        guard let todayStart = Self.parseDayKey(todayKey, calendar: calendar) else { return [] }
+        // 更早的天里见过的主域名全集（未来天键防御性忽略：时钟回拨产生的脏键别误伤）
+        var seenBefore: Set<String> = []
+        for (key, records) in days where key != todayKey {
+            guard let day = Self.parseDayKey(key, calendar: calendar), day < todayStart else { continue }
+            seenBefore.formUnion(records.keys)
+        }
+        return today.values
+            .filter { !seenBefore.contains($0.domain) }
+            .filter { !excludingBareIPs || !HostClassifier.isBareIP($0.domain) }
+            .map { r in
+                DomainStat(
+                    domain: r.domain, connectionCount: r.connectionCount,
+                    uploadBytes: 0, downloadBytes: 0,
+                    route: Self.dominantRoute(r), lastMatchedRule: r.lastMatchedRule,
+                    firstSeen: r.firstSeen, lastSeen: r.lastSeen
+                )
+            }
+            .sorted {
+                $0.connectionCount != $1.connectionCount
+                    ? $0.connectionCount > $1.connectionCount : $0.domain < $1.domain
+            }
+    }
+
     // MARK: - 天键
 
     static func dayKey(_ date: Date, calendar: Calendar) -> String {

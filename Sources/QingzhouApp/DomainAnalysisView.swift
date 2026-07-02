@@ -103,6 +103,26 @@ public struct DomainAnalysisView: View {
                 if stats.isEmpty && searching {
                     searchEmptyState
                 } else {
+                    // 「今日新增」：今天首次出现、且 30 天历史里没见过的主域名（有才显示）。
+                    // 数据源是持久化历史而不是内存连接 —— 重启后今天更早的新面孔也在。
+                    let newToday = state.domainHistory
+                        .newTodayStats(excludingBareIPs: hideBareIPs)
+                        .filter { kw.isEmpty || $0.domain.lowercased().contains(kw) }
+                    if !newToday.isEmpty {
+                        Section {
+                            ForEach(newToday.prefix(8)) { domainRow($0) }
+                            if newToday.count > 8 {
+                                Text("… 还有 \(newToday.count - 8) 个（按连接次数排序，仅显示前 8）")
+                                    .font(.caption2).foregroundStyle(.tertiary)
+                            }
+                        } header: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sparkles")
+                                Text("今日新增 · \(newToday.count) 个域名（30 天内首次出现）")
+                            }
+                            .textCase(nil)
+                        }
+                    }
                     Section("按连接次数排序 · \(stats.count) 个域名") {
                         ForEach(stats) { domainRow($0) }
                     }
