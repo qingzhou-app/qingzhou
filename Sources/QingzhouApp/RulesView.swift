@@ -104,15 +104,21 @@ public struct RulesView: View {
                     #endif
             }
 
-            // GEOIP 精简版提示：内置 geo 数据只含 cn/private（NE 扩展 50MB 内存预算），
-            // 其他国家码的规则不会生效 —— 用户一输入就知道，别等真机跑了才发现分流不对。
+            // GEOIP 提示三态：完整版已就位（全部国家码可用）/ 输入了精简版不含的码
+            //（需下载完整版 + 一键下载）/ 普通说明。用户一输入就知道，别等真机跑了才发现分流不对。
             if newType == .geoip {
                 let v = newValue.trimmingCharacters(in: .whitespaces)
-                if !v.isEmpty && !GeoDataBundle.supportsGeoIP(v) {
-                    Text("当前 geo 数据不含「\(v)」，该规则将不生效（内置精简版仅含 cn / private，完整版下载后续提供）")
-                        .font(.caption2).foregroundStyle(.orange)
+                if state.geoData.hasFullGeoIP {
+                    Text("已启用完整版 geo 数据，支持全部国家/地区码。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                } else if !v.isEmpty && !GeoDataBundle.supportsGeoIP(v) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("「\(v)」需下载完整版 geo 数据后才会生效（内置精简版仅含 cn / private）")
+                            .font(.caption2).foregroundStyle(.orange)
+                        geoDownloadControl
+                    }
                 } else {
-                    Text("内置 geo 数据为精简版，GEOIP 仅支持 cn 与 private。")
+                    Text("内置 geo 数据为精简版，GEOIP 仅支持 cn 与 private；其他国家码需下载完整版。")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -245,8 +251,42 @@ public struct RulesView: View {
 
     /// 内置 geoip.dat 是精简版（仅 cn/private，给 NE 扩展 50MB 内存预算省地）——
     /// 其他国家码的 GEOIP 规则转换层会跳过（xray 对缺失分类直接启动失败），这里如实标注。
+    /// 完整版 geo 数据（此页一键下载 / 设置 → Geo 数据）就位后全部解锁，不再标注。
     private func isIneffectiveGeoIP(_ rule: Rule) -> Bool {
-        rule.type == .geoip && !GeoDataBundle.supportsGeoIP(rule.value)
+        !state.geoData.hasFullGeoIP && rule.type == .geoip && !GeoDataBundle.supportsGeoIP(rule.value)
+    }
+
+    /// 一键下载完整版 geo 数据的控件（下载进度 / 校验中 / 按钮 + 错误三态）。
+    /// 下载成功后 AppState.downloadFullGeoData 自动热切换，GEOIP 规则立即生效。
+    @ViewBuilder
+    private var geoDownloadControl: some View {
+        switch state.geoData.phase {
+        case .downloading(let sourceName, let progress):
+            HStack(spacing: 6) {
+                ProgressView(value: progress)
+                    .frame(maxWidth: 140)
+                Text("正在从\(sourceName)下载…")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        case .verifying:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("校验中…").font(.caption2).foregroundStyle(.secondary)
+            }
+        default:
+            VStack(alignment: .leading, spacing: 2) {
+                Button {
+                    Task { await state.downloadFullGeoData() }
+                } label: {
+                    Label("下载完整版 geo 数据", systemImage: "arrow.down.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                if case .failed(let message) = state.geoData.phase {
+                    Text(message).font(.caption2).foregroundStyle(.red)
+                }
+            }
+        }
     }
 
     private func ruleRow(_ rule: Rule, isCustom: Bool) -> some View {
@@ -256,7 +296,7 @@ public struct RulesView: View {
                 Text(rule.lineForm)
                     .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
                 if isIneffectiveGeoIP(rule) {
-                    Text("当前 geo 数据不含 \(rule.value)，规则将不生效")
+                    Text("需下载完整版 geo 数据，该规则暂不生效")
                         .font(.caption2).foregroundStyle(.orange)
                 }
             }

@@ -84,6 +84,36 @@ final class RoutingRuleConverterTests: XCTestCase {
         XCTAssertEqual(out[0]["ip"] as? [String], ["geoip:private"])
     }
 
+    func testGeoIPForeignCodePassesThroughWithFullGeoData() {
+        // 完整版 geoip.dat（App Group 下载）就位时，扩展会传 hasFullGeoIP=true ——
+        // 此时任意国家/地区码都真实存在于 dat 里，不再跳过。
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoip, value: "US", target: .proxy),
+            Rule(type: .geoip, value: "jp", target: .direct)
+        ], hasFullGeoIP: true)
+        XCTAssertEqual(out.count, 2, "完整版 geo 数据下外国 GEOIP 码不再跳过")
+        XCTAssertEqual(out[0]["ip"] as? [String], ["geoip:us"])
+        XCTAssertEqual(out[0]["outboundTag"] as? String, "proxy")
+        XCTAssertEqual(out[1]["ip"] as? [String], ["geoip:jp"])
+    }
+
+    func testGeoIPForeignCodeStillSkippedByDefault() {
+        // 默认（不传参）必须保持旧行为：精简版下跳过 —— 这是"VPN 起不来"级别的守门。
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoip, value: "us", target: .proxy)
+        ])
+        XCTAssertTrue(out.isEmpty)
+    }
+
+    func testGeoIPMalformedValueSkippedEvenWithFullGeoData() {
+        // 完整版只解锁分类码的**范围**，畸形值（空白/非法字符）仍要拦。
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoip, value: "u s", target: .proxy),
+            Rule(type: .geoip, value: "", target: .direct)
+        ], hasFullGeoIP: true)
+        XCTAssertTrue(out.isEmpty)
+    }
+
     // MARK: - 保序合并
 
     func testConsecutiveSameTargetDomainRulesMergeIntoOne() {
