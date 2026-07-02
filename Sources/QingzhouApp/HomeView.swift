@@ -75,6 +75,12 @@ public struct HomeView: View {
                 Toggle("", isOn: state.vpnRunningBinding)
                     .toggleStyle(.switch)
                     .labelsHidden()
+                    #if os(macOS)
+                    // Keep the switch rendered in its active appearance even when the
+                    // window is inactive; otherwise AppKit dims it so it looks "off",
+                    // misleading users into thinking the VPN is disconnected.
+                    .environment(\.controlActiveState, .active)
+                    #endif
             }
 
             Divider().padding(.vertical, 6)
