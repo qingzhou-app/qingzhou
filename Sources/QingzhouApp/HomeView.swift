@@ -62,8 +62,25 @@ public struct HomeView: View {
                         .foregroundStyle(statusColor)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(statusText)
-                        .font(.title3.bold())
+                    HStack(spacing: 6) {
+                        Text(statusText)
+                            .font(.title3.bold())
+                        // 定时关闭倒计时：小胶囊贴在状态文字旁，风格对齐状态胶囊但刻意低调
+                        //（caption2 + secondary），不喧宾夺主。每秒随 TimelineView 重算。
+                        if let deadline = state.autoStopDeadline,
+                           state.isVPNRunning, !state.isSwitchingTunnel {
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                Label(
+                                    AutoStopPresets.remainingText(until: deadline, now: context.date),
+                                    systemImage: "timer"
+                                )
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(Color.secondary.opacity(0.14), in: Capsule())
+                            }
+                        }
+                    }
                     if let n = state.currentNode {
                         Text("\(n.name) · \(n.protocolType.rawValue.uppercased())")
                             .font(.caption).foregroundStyle(.secondary)

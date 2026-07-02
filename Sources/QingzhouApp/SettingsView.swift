@@ -84,6 +84,19 @@ public struct SettingsView: View {
                 Text("6 小时").tag(TimeInterval(6 * 60 * 60))
                 Text("24 小时").tag(TimeInterval(24 * 60 * 60))
             }
+
+            // 定时关闭（防忘关）：档位样式与「择优间隔」一致。倒计时在隧道扩展进程里生效，
+            // 主 App 被系统回收也照样到点断开。DEBUG 构建带 1 分钟调试档。
+            Picker("定时关闭", selection: autoStopBinding) {
+                ForEach(AutoStopPresets.values, id: \.self) { v in
+                    Text(AutoStopPresets.label(for: v)).tag(v)
+                }
+            }
+            Text("到点自动断开 VPN，只对本次连接生效 —— 断开后不会自动重连，手动重开会重新计时。"
+                 + "VPN 运行中修改会立即从现在起重新计时。注意：启用定时的连接不开启系统自动重连"
+                 + "（On-Demand），若扩展异常退出需手动重开。")
+                .font(.caption2).foregroundStyle(.secondary)
+
             Text("当前节点：\(state.currentNode?.name ?? "未选")")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -132,6 +145,15 @@ public struct SettingsView: View {
         return Binding(
             get: { AutoSelectIntervalPresets.nearest(to: raw.wrappedValue) },
             set: { raw.wrappedValue = $0 }
+        )
+    }
+
+    /// 「定时关闭」的 Binding：读取时把任意存量值（iCloud 同步来的等）就近吸附到档位；
+    /// 写入走 AppState.setAutoStopSeconds —— VPN 运行中改档会热生效（重新计时），不只是存值。
+    private var autoStopBinding: Binding<TimeInterval> {
+        Binding(
+            get: { AutoStopPresets.nearest(to: state.settings.autoStopSeconds) },
+            set: { state.setAutoStopSeconds($0) }
         )
     }
 

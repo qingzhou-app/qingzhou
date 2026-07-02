@@ -57,6 +57,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// 随 reportTrafficStats 一起写进 App Group，主 App 用它把 access log 的假 IP 翻回域名。
     private let fakeDNSMap = OSAllocatedUnfairLock(initialState: [String: String]())
 
+    /// 定时自动关闭（防忘关）：倒计时**必须**在扩展进程里跑 —— iOS 主 App 随时会被系统
+    /// 回收，主 App 侧 Timer 靠不住。一次性 DispatchSourceTimer，内存开销可忽略（NE 50MB 预算）。
+    /// 挂 statsQueue（轻量定时器专用队列，绝不能上 bridgeQueue —— 那里的阻塞 read 会饿死它）。
+    /// 到点自停能成立的前提：启用定时的连接主 App 没开 On-Demand（见 VPNTunnelManager.configure），
+    /// cancelTunnelWithError(nil) 后系统不会把隧道拉回来。
+    private var autoStopTimer: DispatchSourceTimer?
+    /// 本次会话标记（写 App Group 给主 App 画倒计时用）。到点自停时回填 stoppedAt 再写一次。
+    private var sessionInfo: TunnelSessionInfo?
+
     override func startTunnel(
         options: [String: NSObject]?,
         completionHandler: @escaping (Error?) -> Void
@@ -85,6 +94,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let nodeName = (providerConfig?["nodeName"] as? String) ?? "node"
         let modeRaw = (providerConfig?["proxyMode"] as? String) ?? ProxyMode.global.rawValue
         let mode = ProxyMode(rawValue: modeRaw) ?? .global
+        // 定时自动关闭（秒，0/缺省 = 不启用）。plist 里的数字取回来是 NSNumber。
+        let autoStopSeconds = (providerConfig?["autoStopSeconds"] as? NSNumber)?.doubleValue ?? 0
         // 用户规则（自定义 + 远程）：内联压缩 Data，超大规则集降级为 App Group 文件路径
         let userRules = loadUserRules(
             inlineData: providerConfig?["userRulesGZ"] as? Data,
@@ -131,7 +142,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(error)
                 return
             }
-            self.bringUpXray(configJSON: xrayJSON, completionHandler: completionHandler)
+            self.bringUpXray(configJSON: xrayJSON) { error in
+                if error == nil {
+                    // xray 真起来了才武装定时（并写会话标记给主 App 画倒计时）。
+                    // 只在 startTunnel 路径武装 —— reconfigure（原地重配）不动定时，倒计时跨重配延续。
+                    self.armAutoStop(seconds: autoStopSeconds)
+                }
+                completionHandler(error)
+            }
         }
     }
 
@@ -363,6 +381,57 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
+    // MARK: - 定时自动关闭（防忘关）
+
+    /// 武装 / 重设 / 取消定时（seconds <= 0 = 取消）。startTunnel 成功后与
+    /// handleAppMessage("setAutoStop") 都走这里：从**现在**起计时，写会话标记给主 App。
+    private func armAutoStop(seconds: TimeInterval) {
+        autoStopTimer?.cancel()
+        autoStopTimer = nil
+        // 始终写会话标记（含 0）—— 覆盖上一次会话的残留，主 App 才不会拿旧 deadline 画倒计时
+        let info = TunnelSessionInfo(startedAt: Date(), autoStopSeconds: max(0, seconds))
+        sessionInfo = info
+        writeSessionInfo(info)
+        guard seconds > 0 else {
+            os_log("auto-stop disarmed", log: log, type: .default)
+            return
+        }
+        let timer = DispatchSource.makeTimerSource(queue: statsQueue)
+        // leeway 给 30s：到点精度不重要（分钟级功能），让系统合并唤醒省电
+        timer.schedule(deadline: .now() + seconds, leeway: .seconds(30))
+        timer.setEventHandler { [weak self] in self?.performAutoStop() }
+        timer.resume()
+        autoStopTimer = timer
+        os_log("auto-stop armed: %.0f s", log: log, type: .default, seconds)
+    }
+
+    /// 到点自停。顺序讲究：
+    /// 1. 先把 stoppedAt 落盘 —— 哪怕随后进程立刻被回收，主 App 也能识别「按定时断开」；
+    /// 2. 停 xray + 拆桥（cancelTunnelWithError 之后系统**不会**再调 stopTunnel，得自己收尾；
+    ///    就算个别系统版本会调，XrayCore.stop / tearDownBridge 都幂等，双跑无害）；
+    /// 3. cancelTunnelWithError(nil) —— NE 惯例的扩展自停路径：系统随即断开隧道、
+    ///    系统 UI 的 VPN 图标同步消失。On-Demand 没开（主 App configure 时约定），不会被拉回。
+    private func performAutoStop() {
+        os_log("auto-stop fired — stopping tunnel", log: log, type: .default)
+        if var info = sessionInfo {
+            info.stoppedAt = Date()
+            sessionInfo = info
+            writeSessionInfo(info)
+        }
+        _ = XrayCore.stop()
+        tearDownBridge()
+        cancelTunnelWithError(nil)
+    }
+
+    /// 会话标记 → App Group（ISO8601，与主 App AppGroupStorage 的解码策略一致）。
+    private func writeSessionInfo(_ info: TunnelSessionInfo) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(info),
+              let json = String(data: data, encoding: .utf8) else { return }
+        TunnelAppGroup.writeTunnelSession(json)
+    }
+
     // MARK: - 流量统计上报
 
     /// xray 起来后调：在独立队列上每秒算一次速率并写进 App Group。
@@ -420,6 +489,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
         os_log("stopTunnel reason=%d", log: log, type: .default, reason.rawValue)
+        autoStopTimer?.cancel()
+        autoStopTimer = nil
         _ = XrayCore.stop()
         tearDownBridge()
         completionHandler()
@@ -457,23 +528,33 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)?) {
         guard let obj = try? JSONSerialization.jsonObject(with: messageData) as? [String: String],
-              obj["command"] == "reconfigure" else {
+              let command = obj["command"] else {
             completionHandler?(nil)
             return
         }
-        reconfigure(
-            nodeJSON: obj["nodeJSON"] ?? "",
-            shareLink: obj["shareLink"] ?? "",
-            mode: ProxyMode(rawValue: obj["proxyMode"] ?? "") ?? .global,
-            nodeName: obj["nodeName"] ?? "node",
-            userRules: loadUserRules(inlineData: nil,
-                                     base64: obj["userRulesGZ"],
-                                     path: obj["userRulesPath"])
-        ) { error in
-            let payload: [String: Any] = error == nil
-                ? ["ok": true]
-                : ["ok": false, "error": error!.localizedDescription]
-            completionHandler?(try? JSONSerialization.data(withJSONObject: payload))
+        switch command {
+        case "reconfigure":
+            reconfigure(
+                nodeJSON: obj["nodeJSON"] ?? "",
+                shareLink: obj["shareLink"] ?? "",
+                mode: ProxyMode(rawValue: obj["proxyMode"] ?? "") ?? .global,
+                nodeName: obj["nodeName"] ?? "node",
+                userRules: loadUserRules(inlineData: nil,
+                                         base64: obj["userRulesGZ"],
+                                         path: obj["userRulesPath"])
+            ) { error in
+                let payload: [String: Any] = error == nil
+                    ? ["ok": true]
+                    : ["ok": false, "error": error!.localizedDescription]
+                completionHandler?(try? JSONSerialization.data(withJSONObject: payload))
+            }
+        case "setAutoStop":
+            // VPN 运行中改「定时关闭」档位：从现在起按新时长重新计时（0 = 取消），不断流。
+            let seconds = TimeInterval(obj["seconds"] ?? "") ?? 0
+            armAutoStop(seconds: seconds)
+            completionHandler?(try? JSONSerialization.data(withJSONObject: ["ok": true]))
+        default:
+            completionHandler?(nil)
         }
     }
 

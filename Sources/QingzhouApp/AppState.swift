@@ -52,6 +52,10 @@ public final class AppState {
     public internal(set) var isSwitchingTunnel: Bool = false
     /// VPN 启停最近一次错误（拿不到 entitlement / 配置失败等）。UI 用 alert 展示。
     public var tunnelError: String?
+    /// 「定时关闭」的到点时刻（本次连接启用了定时才非 nil）。首页状态区据此画倒计时。
+    /// 数据源是扩展写的 App Group 会话标记（启动时刻 + 时长推算），每秒轮询刷新 ——
+    /// 不依赖和扩展的实时通信，主 App 被杀重启后也能恢复显示。
+    public internal(set) var autoStopDeadline: Date?
     /// 当前 xray-core 版本。由 app 入口注入（QingzhouApp 库本身不依赖 XrayCore，避免拖进 380MB xcframework）。
     public var coreVersion: String?
 
@@ -202,6 +206,37 @@ public final class AppState {
         logger.info("Proxy mode → \(mode.rawValue)", category: "app")
         // VPN 在跑才需要重启；没跑时 reapplyRunningTunnel 内部 guard 会直接返回。
         Task { await reapplyRunningTunnel() }
+    }
+
+    /// 设定「定时关闭」时长（秒，0 = 关闭）。改值 + 持久化；VPN 在跑时**热生效**：
+    /// 经 providerMessage 让扩展从现在起按新时长重新计时（不重启隧道、不断流），
+    /// 并同步 On-Demand 开关（定时开 → On-Demand 关，见 VPNTunnelManager.configure 注释）。
+    /// 消息失败（扩展没响应等）降级为「下次连接生效」，toast 如实告知。
+    public func setAutoStopSeconds(_ seconds: TimeInterval) {
+        guard settings.autoStopSeconds != seconds else { return }
+        settings.autoStopSeconds = seconds
+        persist()
+        logger.info("Auto-stop → \(Int(seconds))s", category: "tunnel")
+        guard isVPNRunning, !isSwitchingTunnel else { return }
+        Task { @MainActor in
+            do {
+                if seconds > 0 {
+                    // 先关 On-Demand 再武装定时：若反过来，App 在两步之间被杀会留下
+                    // 「On-Demand 开 + 定时开」—— 到点自停后被立刻拉回，定时形同虚设。
+                    try await tunnelManager.setOnDemandEnabled(false)
+                    try await tunnelManager.setAutoStop(seconds: seconds)
+                    showToast("已重新计时：\(AutoStopPresets.label(for: seconds))后自动断开")
+                } else {
+                    try await tunnelManager.setAutoStop(seconds: 0)
+                    try await tunnelManager.setOnDemandEnabled(true)
+                    autoStopDeadline = nil
+                    showToast("已取消定时断开")
+                }
+            } catch {
+                logger.warn("Apply auto-stop to running tunnel failed: \(error)", category: "tunnel")
+                showToast("定时设置将在下次连接时生效")
+            }
+        }
     }
 
     /// settings 任意字段变化后调用：把字段的「执行性」副作用真正落地。
@@ -684,12 +719,16 @@ public final class AppState {
                 mode: settings.proxyMode,
                 shareLink: shareLink,
                 rules: effectiveUserRules,
+                autoStopSeconds: settings.autoStopSeconds,
                 description: "轻舟 · \(node.name)"
             )
             try await tunnelManager.start()
             isVPNRunning = true
             tunnelError = nil
             logger.info("Tunnel started for node \(node.name)", category: "tunnel")
+            if settings.autoStopSeconds > 0 {
+                showToast("已开启定时：\(AutoStopPresets.label(for: settings.autoStopSeconds))后自动断开")
+            }
             scheduleIPRefresh()   // 隧道生效后刷新公网 IP → 落到「节点出口」那栏
             // 冲突防呆：系统代理（Clash 等）开着会在轻舟之前劫走流量 → 部分 App 联不上。
             // 只读检测、不改系统设置，检出就提示用户去关掉系统代理。
@@ -718,6 +757,7 @@ public final class AppState {
         }
         tunnelManager.stop()
         isVPNRunning = false
+        autoStopDeadline = nil       // 手动关了，倒计时立即消失（不等下一秒轮询）
         markAllConnectionsClosed()   // 隧道停了，活跃连接全部立即归入「已关闭」
         scheduleIPRefresh()   // 隧道断开后刷新公网 IP → 落回「直连」那栏
     }
@@ -766,6 +806,9 @@ public final class AppState {
                 mode: settings.proxyMode,
                 shareLink: shareLink,
                 rules: effectiveUserRules,
+                // 热切换 = 全量重启 = 新会话：定时按设置的时长**重新计时**（切节点/模式后
+                // 从头再数）。不带旧剩余时间过去 —— 语义简单、扩展侧无需额外状态。
+                autoStopSeconds: settings.autoStopSeconds,
                 description: "轻舟 · \(node.name)"
             )
             tunnelManager.stop()
@@ -1199,6 +1242,7 @@ public final class AppState {
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(1))
             if Task.isCancelled { break }
+            syncAutoStopState()   // 定时关闭：刷新倒计时 + 识别「扩展已按定时自停」
             // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）
             if let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats"),
                abs(stats.sampledAt.timeIntervalSinceNow) <= 3 {   // 只接受新鲜样本，避免旧文件
@@ -1212,6 +1256,33 @@ public final class AppState {
                     markAllConnectionsClosed()
                 }
             }
+        }
+    }
+
+    /// 定时关闭的主 App 侧收尾（每秒调，轻量：读一个小 JSON 文件）：
+    /// 1. 倒计时展示：VPN 开着且扩展标记了本次会话带定时 → 暴露 deadline 给首页；
+    /// 2. 到点自停识别：扩展写了 stoppedAt 且隧道确实断了 → 开关归位 + toast。
+    ///    这条路**不承担关 VPN 的正确性**（On-Demand 在启用定时的连接上本来就没开，
+    ///    扩展 cancelTunnelWithError 后不会被拉回）—— 只是 UI 收尾，主 App 不在场也没事。
+    private func syncAutoStopState() {
+        guard !isSwitchingTunnel else { return }   // 热切换窗口内状态是过渡态，别误判
+        // 文件名与 XrayCore.TunnelAppGroup.tunnelSessionName 一致（两模块互不依赖）
+        let session = AppGroupStorage.read(TunnelSessionInfo.self, from: "tunnel-session")
+
+        if isVPNRunning, let s = session, s.stoppedAt == nil,
+           let deadline = s.deadline, deadline > Date() {
+            autoStopDeadline = deadline
+        } else {
+            autoStopDeadline = nil
+        }
+
+        if isVPNRunning, let s = session, s.stoppedAt != nil,
+           tunnelManager.status == .disconnected || tunnelManager.status == .invalid {
+            isVPNRunning = false
+            markAllConnectionsClosed()
+            scheduleIPRefresh()
+            showToast("已按定时自动断开 VPN")
+            logger.info("Auto-stop observed from extension (stoppedAt=\(s.stoppedAt!))", category: "tunnel")
         }
     }
 }
