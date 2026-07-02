@@ -44,6 +44,11 @@ final class FilterControlClient: @unchecked Sendable {
             proxy.fetchPortMap { map in
                 once.run { cont.resume(returning: map) }
             }
+            // 超时兜底：filter 扩展没在跑时 errorHandler 不一定触发（launchd 按需拉起失败
+            // 的语义不可依赖），reply 可能永远不来。2 秒没回就当 nil，Once 防重入。
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+                once.run { cont.resume(returning: nil) }
+            }
         }
     }
 }
