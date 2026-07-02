@@ -7,6 +7,7 @@ public struct SubscriptionsView: View {
     @State private var newURL: String = ""
     @State private var addError: String?
     @State private var refreshingId: UUID?
+    @State private var isRefreshingAll = false
     @State private var qrShareSub: Subscription?
     #if os(iOS)
     @State private var showScanner: Bool = false
@@ -65,6 +66,23 @@ public struct SubscriptionsView: View {
             }
         }
         .navigationTitle("订阅")
+        // iOS 下拉刷新；macOS List 没有下拉手势，靠工具栏「全部刷新」按钮
+        .refreshable { await refreshAll() }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    Task { await refreshAll() }
+                } label: {
+                    if isRefreshingAll {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("全部刷新", systemImage: "arrow.clockwise")
+                    }
+                }
+                .disabled(isRefreshingAll || refreshingId != nil || state.subscriptions.isEmpty)
+                .help("依次刷新所有订阅")
+            }
+        }
         .sheet(item: $qrShareSub) { sub in qrShareSheet(sub) }
         #if os(iOS)
         .sheet(isPresented: $showScanner) { scannerSheet }
@@ -181,6 +199,28 @@ public struct SubscriptionsView: View {
         }
         .padding()
         .frame(minWidth: 320, minHeight: 360)
+    }
+
+    /// 逐个刷新全部订阅（串行，避免并发打爆网络/机场限频）。
+    /// 逐条设置 refreshingId，让正在刷的那行显示转圈；结束后 toast 汇报结果。
+    private func refreshAll() async {
+        guard !isRefreshingAll, refreshingId == nil, !state.subscriptions.isEmpty else { return }
+        isRefreshingAll = true
+        defer {
+            refreshingId = nil
+            isRefreshingAll = false
+        }
+        let subs = state.subscriptions
+        for sub in subs {
+            refreshingId = sub.id
+            await state.refreshSubscription(sub)
+        }
+        let failed = subs.filter { state.subscriptionErrors[$0.id] != nil }.count
+        if failed == 0 {
+            state.showToast("已刷新 \(subs.count) 个订阅")
+        } else {
+            state.showToast("刷新完成：\(subs.count - failed) 成功，\(failed) 失败")
+        }
     }
 
     private func addAndRefresh() async {

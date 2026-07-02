@@ -68,6 +68,15 @@ struct VPNMacApp: App {
             CommandGroup(replacing: .newItem) { } // 关掉 ⌘N
         }
 
+        // 标准设置场景：让 ⌘, 和菜单栏「设置…」能打开设置窗口（macOS 用户的肌肉记忆）。
+        // 复用主窗口同一个 AppState 实例，改动即时双向同步；SettingsView 本身不感知宿主差异。
+        Settings {
+            SettingsView(state: state)
+                .frame(minWidth: 560, minHeight: 520)
+                .preferredColorScheme(colorScheme(for: state.settings.theme))
+                .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
+        }
+
         MenuBarExtra {
             StatusBarMenu(state: state)
                 .environment(\.locale, LocaleResolver.locale(for: state.settings.language))

@@ -31,6 +31,15 @@ public struct NodesView: View {
             }
         }
         .navigationTitle("节点")
+        // 下拉刷新语义取「重测全部延迟」而非「拉订阅」：节点内容的更新入口在订阅页
+        //（那边有自己的下拉刷新），而本页用户最常想要的"刷新"是延迟列，且 measureAllNodes
+        // 自带逐行转圈 + 「上次测速 刚刚」的可见反馈。
+        .refreshable {
+            guard !isMeasuring, !isAutoSelecting else { return }
+            isMeasuring = true
+            await state.measureAllNodes()
+            isMeasuring = false
+        }
         .searchable(text: $searchText, prompt: "搜索节点 / 主机 / 协议")
         .toolbar {
             ToolbarItem {
