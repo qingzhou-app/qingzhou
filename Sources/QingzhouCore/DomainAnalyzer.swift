@@ -9,7 +9,8 @@ public enum DomainRoute: String, Sendable, Equatable {
     case proxy, direct, reject, mixed
 }
 
-public struct DomainStat: Sendable, Equatable, Identifiable {
+// Hashable：详情页导航（navigationDestination(item:)）要求；全字段值语义，直接合成。
+public struct DomainStat: Sendable, Equatable, Hashable, Identifiable {
     public var domain: String           // 归并后的主域名（registrable domain）
     public var connectionCount: Int
     public var uploadBytes: Int64

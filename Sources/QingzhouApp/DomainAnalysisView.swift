@@ -11,6 +11,8 @@ public struct DomainAnalysisView: View {
     /// 域名关键字搜索：作用于所有 tab（页内搜索框 —— 本页是 sheet，
     /// macOS 上 .searchable 在 sheet 的 toolbar 里没有稳定落点，页内框两平台一致）。
     @State private var keyword = ""
+    /// 点中的域名行 → 趋势详情页（sheet 内 push）。
+    @State private var selectedStat: DomainStat?
     #if os(macOS)
     /// 「应用」tab 是否可用 = 内容过滤扩展（来源 App 标注）当前已启用。
     /// 跟随运行时开关而不是编译期 flag —— 用户在设置里关掉标注后，这个 tab 应当消失。
@@ -188,6 +190,10 @@ public struct DomainAnalysisView: View {
             }
         }
         .navigationTitle("域名分析")
+        // 域名行 → 趋势详情（本页在 ConnectionsView 的 sheet 内、外层已有 NavigationStack，直接 push）
+        .navigationDestination(item: $selectedStat) { s in
+            DomainDetailView(state: state, stat: s)
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 IgnoreIPToggle(isOn: $hideBareIPs)
@@ -237,6 +243,8 @@ public struct DomainAnalysisView: View {
                 Spacer()
                 // 流量字节在接上 QueryStats 前恒 0，不显示假 0B；先用连接次数当主指标
                 Text("\(s.connectionCount) 次").font(.caption.monospaced()).foregroundStyle(.secondary)
+                // 可点进详情的示意（List 行手动 push 没有系统自带的 chevron）
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
             }
             HStack(spacing: 8) {
                 if DomainAnalyzer.isUnmatchedRule(s.lastMatchedRule) {
@@ -247,6 +255,9 @@ public struct DomainAnalysisView: View {
             }
         }
         .padding(.vertical, 2)
+        // 点击进趋势详情；长按菜单 / 左滑 / 右键的一键规则不受影响
+        .contentShape(Rectangle())
+        .onTapGesture { selectedStat = s }
         // 一键规则：iOS 长按/左滑，macOS 右键 →「加入直连 / 代理 / 拒绝」
         .quickRuleActions(host: s.domain, state: state)
     }
