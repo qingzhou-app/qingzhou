@@ -301,12 +301,21 @@ public final class AppState {
         }
     }
 
-    /// 用户确认恢复（`cloudRestoreOffer`）：本地快照先备份，再整体替换为所选版本并落盘。
-    /// 候选可能是云端主文档，也可能是 backups/ 里的历史版本。
-    public func restoreFromCloud() async {
-        // 先摘掉 offer —— 后面若要回推镜像，mirrorToCloudNow 的 offer 防护不能被自己挡住
-        let candidate = cloudRestoreOffer
+    /// 用户确认恢复：本地快照先备份，再整体替换为所选版本并落盘。
+    /// 候选可能是云端主文档（`candidate == nil` 或 `backupFileName == nil`），
+    /// 也可能是 backups/ 里的历史版本。
+    ///
+    /// ⚠️ **候选必须由调用方显式传入，不能在这里读 `cloudRestoreOffer`** —— 确认 alert 的
+    /// 按钮 action 只是 spawn 一个 Task，SwiftUI 会先走 dismiss：isPresented binding 置
+    /// false → declineCloudRestore() 把 offer 清成 nil，这一切都发生在 Task 真正执行之前。
+    /// 在这里再读 offer 拿到的**恒为 nil**，于是用户在版本列表选的历史版本被忽略、
+    /// 永远恢复成云端主文档（真机事故：选了「1 订阅 30 节点」的历史版，恢复出来 0/0，
+    /// 因为主文档在该设备视角还是删空后的那份）。
+    public func restoreFromCloud(candidate: VaultRestoreCandidate?) async {
         cloudRestoreOffer = nil
+        // 恢复期间取消在途的防抖镜像 —— 别让「恢复前的旧状态」在 apply 的 await 间隙被推上云端
+        cloudMirrorTask?.cancel()
+        cloudMirrorTask = nil
 
         let document: VaultDocument?
         do {

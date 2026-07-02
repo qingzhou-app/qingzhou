@@ -183,13 +183,32 @@ public actor CloudVaultStore {
     }
 
     /// 读取指定历史版本的完整文档。
+    /// 未下载完（只有 .icloud 占位符）→ 抛 `notYetDownloaded`，**不**静默当「没找到」——
+    /// 否则恢复流程会误报「iCloud 上没有备份」。
     public func loadBackupDocument(fileName: String) throws -> VaultDocument? {
         // 防路径穿越：只接受纯文件名
         guard !fileName.contains("/"), !fileName.contains(".."),
               let dir = backupsDirectoryURL()
         else { return nil }
         let url = dir.appendingPathComponent(fileName)
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        let fm = FileManager.default
+        if fm.isUbiquitousItem(at: url) {
+            try? fm.startDownloadingUbiquitousItem(at: url)
+        }
+        var coordinationError: NSError?
+        var data: Data?
+        NSFileCoordinator().coordinate(
+            readingItemAt: url, options: [], error: &coordinationError
+        ) { actualURL in
+            data = try? Data(contentsOf: actualURL)
+        }
+        guard let data else {
+            let placeholder = dir.appendingPathComponent(".\(fileName).icloud")
+            if fm.fileExists(atPath: placeholder.path) {
+                throw StoreError.notYetDownloaded
+            }
+            return nil
+        }
         return try VaultDocument.decode(from: data)
     }
 

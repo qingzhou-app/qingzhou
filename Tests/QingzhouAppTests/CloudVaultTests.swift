@@ -316,7 +316,7 @@ final class AppStateCloudVaultTests: XCTestCase {
         XCTAssertEqual(state.cloudRestoreOffer?.header.revision, 5)
         XCTAssertEqual(state.cloudRestoreOffer?.header.contentSummary, "0 个订阅 · 1 个节点")
 
-        await state.restoreFromCloud()
+        await state.restoreFromCloud(candidate: state.cloudRestoreOffer)
         XCTAssertNil(state.cloudRestoreOffer)
         XCTAssertEqual(state.nodes.count, 1)
         XCTAssertEqual(state.nodes.first?.name, "cloud-node")
@@ -390,11 +390,15 @@ final class AppStateCloudVaultTests: XCTestCase {
             options.first(where: { ($0.header.nodeCount ?? 0) == 2 }),
             "删空前的历史版本应在列表里")
 
-        // 4) 选历史版本 → 确认恢复 → 节点找回
+        // 4) 选历史版本 → 确认恢复 → 节点找回。
+        //    严格按真机 UI 时序：alert 呈现时捕获 presenting 值 → dismiss 先清 offer →
+        //    恢复 Task 才执行（拿捕获值，不能再读 offer）
         state.chooseCloudRestoreCandidate(goodBackup)
         XCTAssertNil(state.cloudVersionOptions)
         XCTAssertEqual(state.cloudRestoreOffer, goodBackup)
-        await state.restoreFromCloud()
+        let presented = state.cloudRestoreOffer          // alert 的 presenting 捕获
+        state.declineCloudRestore()                      // dismiss：isPresented → false
+        await state.restoreFromCloud(candidate: presented)
         XCTAssertEqual(state.nodes.count, 2)
         XCTAssertEqual(Set(state.nodes.map(\.name)), ["keep-1", "keep-2"])
 
@@ -402,6 +406,50 @@ final class AppStateCloudVaultTests: XCTestCase {
         let rescued = try await store.loadDocument()
         XCTAssertEqual(rescued?.snapshot.nodes.count, 2, "云端主文档应被恢复内容回推救回")
         XCTAssertGreaterThan(try XCTUnwrap(rescued?.revision), mainRev)
+    }
+
+    /// 真机事故 #2 的复现：版本列表摘要正确（1 订阅 30 节点），选它恢复却得到 0/0。
+    /// 根因：确认 alert 的 dismiss 会先把 cloudRestoreOffer 清成 nil，恢复 Task 里再读
+    /// offer 恒为 nil → 用户选的历史版本被忽略、恢复成了（该设备视角仍是空的）云端主文档。
+    /// 修复后：候选经 alert presenting 参数显式传入，与 offer 生命周期解耦。
+    func testChosenBackupSurvivesAlertDismissClearingOffer() async throws {
+        let store = makeStore()
+
+        // 云端：历史版本 r1 = 1 订阅 + 30 节点；主文档 rev2 = 空（被某台设备删空后镜像）
+        var full = Persistence.Snapshot()
+        full.subscriptions = [Subscription(name: "my-sub", url: URL(string: "https://example.com/sub")!)]
+        full.nodes = try (1...30).map { try ProxyURLParser.parse("trojan://pw@host\($0).example.com:443#node-\($0)") }
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+        try await store.save(VaultDocument(revision: 2, modifiedAt: Date(), deviceName: "phone", snapshot: Persistence.Snapshot()))
+
+        let state = makeState(store: store)
+        XCTAssertTrue(state.nodes.isEmpty && state.subscriptions.isEmpty)
+
+        // 「立即恢复」→ 版本列表里有摘要正确的历史版本
+        await state.requestManualCloudRestore()
+        let options = try XCTUnwrap(state.cloudVersionOptions)
+        let good = try XCTUnwrap(options.first(where: { $0.header.nodeCount == 30 }))
+        XCTAssertEqual(good.header.contentSummary, "1 个订阅 · 30 个节点")
+        XCTAssertNotNil(good.backupFileName, "1/30 那份是历史版本，不是主文档")
+
+        // 用户点选 → alert 呈现（presenting 捕获）→ 点「恢复」→ dismiss 先清 offer → Task 执行
+        state.chooseCloudRestoreCandidate(good)
+        let presented = state.cloudRestoreOffer
+        state.declineCloudRestore()                      // 真机上先于恢复 Task 发生
+        XCTAssertNil(state.cloudRestoreOffer, "复现前提：恢复执行时 offer 已被 dismiss 清空")
+        await state.restoreFromCloud(candidate: presented)
+
+        // 修复前这里恢复出的是主文档（空）→ 0/0；修复后必须是选中的那份
+        XCTAssertEqual(state.subscriptions.count, 1, "恢复后订阅应非空（事故里这里是 0）")
+        XCTAssertEqual(state.nodes.count, 30, "恢复后节点应非空（事故里这里是 0）")
+        XCTAssertEqual(state.subscriptions.first?.name, "my-sub")
+
+        // UI 可观察状态 + 本地持久化也都是恢复后的数据
+        XCTAssertEqual(state.sortedNodes.count, 30)
+        state.persistence.waitForPendingWritesForTesting()
+        let persisted = state.persistence.loadSnapshot()
+        XCTAssertEqual(persisted.nodes.count, 30)
+        XCTAssertEqual(persisted.subscriptions.count, 1)
     }
 
     func testStartupWithEmptyLocalAndEmptyCloudDoesNotCreateEmptyVault() async throws {
