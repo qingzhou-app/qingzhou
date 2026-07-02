@@ -5,15 +5,19 @@ import QingzhouCore
 /// 数据源是 `AppState.connections`（隧道上报的真实连接；access log 接入前是示例数据）。
 public struct DomainAnalysisView: View {
     @Bindable var state: AppState
+    /// 「忽略 IP」过滤：来自 ConnectionsView 的临时状态（不持久化），两页联动。
+    @Binding var hideBareIPs: Bool
     @State private var mode = 0
 
-    public init(state: AppState) { self.state = state }
+    public init(state: AppState, hideBareIPs: Binding<Bool>) {
+        self.state = state
+        self._hideBareIPs = hideBareIPs
+    }
 
     public var body: some View {
-        // 「忽略 IP」过滤（与连接页共享设置）：裸 IP 目标在聚合前剔除 ——
+        // 「忽略 IP」过滤（与连接页联动）：裸 IP 目标在聚合前剔除 ——
         // FakeDNS 反查不到域名的连接对域名分析没有价值。
-        let hideIP = state.settings.hideBareIPConnections
-        let connections = hideIP
+        let connections = hideBareIPs
             ? state.connections.filter { !HostClassifier.isBareIP($0.targetHost) }
             : state.connections
         let hiddenIPCount = state.connections.count - connections.count
@@ -62,7 +66,7 @@ public struct DomainAnalysisView: View {
         .navigationTitle("域名分析")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                IgnoreIPToggle(state: state)
+                IgnoreIPToggle(isOn: $hideBareIPs)
             }
         }
     }

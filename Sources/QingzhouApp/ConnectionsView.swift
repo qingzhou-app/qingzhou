@@ -6,6 +6,9 @@ public struct ConnectionsView: View {
     @State private var keyword: String = ""
     @State private var filter: ConnectionFilter = .active
     @State private var showDomainAnalysis = false
+    /// 「忽略 IP」过滤：临时状态，不持久化 —— 离开本页自动复位。
+    /// 经 Binding 传给域名分析页，两页联动。
+    @State private var hideBareIPs = false
 
     enum ConnectionFilter: String, CaseIterable, Identifiable {
         case active = "活跃"
@@ -41,17 +44,16 @@ public struct ConnectionsView: View {
         .navigationTitle("连接")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                IgnoreIPToggle(state: state)
-            }
-            ToolbarItem(placement: .primaryAction) {
                 Button { showDomainAnalysis = true } label: {
+                    // 图标 + 文字并显：toolbar 默认只出图标，第一眼看不懂
                     Label("域名分析", systemImage: "chart.pie")
+                        .labelStyle(.titleAndIcon)
                 }
             }
         }
         .sheet(isPresented: $showDomainAnalysis) {
             NavigationStack {
-                DomainAnalysisView(state: state)
+                DomainAnalysisView(state: state, hideBareIPs: $hideBareIPs)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("完成") { showDomainAnalysis = false }
@@ -68,12 +70,16 @@ public struct ConnectionsView: View {
 
     private func controls(hiddenIPCount: Int) -> some View {
         VStack(spacing: 4) {
-            Picker("", selection: $filter) {
-                ForEach(ConnectionFilter.allCases) { f in
-                    Text(f.rawValue).tag(f)
+            HStack(spacing: 8) {
+                Picker("", selection: $filter) {
+                    ForEach(ConnectionFilter.allCases) { f in
+                        Text(f.rawValue).tag(f)
+                    }
                 }
+                .pickerStyle(.segmented)
+                // 放在分段控件旁而不是 toolbar：iOS 工具栏空间紧，这里文字能完整展示
+                IgnoreIPToggle(isOn: $hideBareIPs)
             }
-            .pickerStyle(.segmented)
             // 过滤生效时的轻提示：避免用户忘了开着「忽略 IP」，以为数据丢了
             if hiddenIPCount > 0 {
                 HStack(spacing: 4) {
@@ -93,7 +99,7 @@ public struct ConnectionsView: View {
     /// `hiddenIPCount` 只统计前两层已命中、仅因裸 IP 被隐藏的条数，用于轻提示。
     private var filtered: (visible: [Connection], hiddenIPCount: Int) {
         let kw = keyword.lowercased()
-        let hideIP = state.settings.hideBareIPConnections
+        let hideIP = hideBareIPs
         var visible: [Connection] = []
         var hiddenIP = 0
         for c in state.connections {

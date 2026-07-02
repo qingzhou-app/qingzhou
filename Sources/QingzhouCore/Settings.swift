@@ -48,9 +48,6 @@ public struct Settings: Codable, Sendable {
     public var autoConnectOnAppLaunch: Bool
     /// 触发自动连的 App bundle id 集合（如 ["com.tinyspeck.slackmacgap"]）。
     public var autoConnectApps: Set<String>
-    /// 连接页 / 域名分析页共用的「忽略 IP」过滤：隐藏目标是裸 IP（没有域名，
-    /// 通常是 FakeDNS 反查不到）的条目。判定见 `HostClassifier.isBareIP`。
-    public var hideBareIPConnections: Bool
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -67,8 +64,7 @@ public struct Settings: Codable, Sendable {
         theme: AppearanceTheme = .system,
         language: AppLanguage = .system,
         autoConnectOnAppLaunch: Bool = false,
-        autoConnectApps: Set<String> = [],
-        hideBareIPConnections: Bool = false
+        autoConnectApps: Set<String> = []
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -85,7 +81,6 @@ public struct Settings: Codable, Sendable {
         self.language = language
         self.autoConnectOnAppLaunch = autoConnectOnAppLaunch
         self.autoConnectApps = autoConnectApps
-        self.hideBareIPConnections = hideBareIPConnections
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -97,7 +92,6 @@ public struct Settings: Codable, Sendable {
         case ruleSourceURL, launchAtLogin
         case logLevel, theme, language
         case autoConnectOnAppLaunch, autoConnectApps
-        case hideBareIPConnections
     }
 
     public init(from decoder: Decoder) throws {
@@ -118,6 +112,5 @@ public struct Settings: Codable, Sendable {
         self.language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         self.autoConnectOnAppLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoConnectOnAppLaunch) ?? false
         self.autoConnectApps = try c.decodeIfPresent(Set<String>.self, forKey: .autoConnectApps) ?? []
-        self.hideBareIPConnections = try c.decodeIfPresent(Bool.self, forKey: .hideBareIPConnections) ?? false
     }
 }
