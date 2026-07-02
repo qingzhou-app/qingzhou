@@ -44,6 +44,21 @@ final class DomainAnalyzerTests: XCTestCase {
         XCTAssertEqual(stats.first?.route, .proxy)
     }
 
+    func testAggregateSortsByConnectionCountWhenRequested() {
+        // 流量字节在接上 QueryStats 前恒 0（access log 不含字节数），按流量排序是假排序。
+        // UI 侧改用连接次数维度；字节有真实来源后再切回 .traffic。
+        let conns = [
+            conn("one.com", route: "PROXY", up: 9_999, down: 9_999),   // 流量大但只 1 次
+            conn("many.com", route: "PROXY"),
+            conn("many.com", route: "PROXY"),
+            conn("many.com", route: "PROXY")
+        ]
+        let stats = DomainAnalyzer.aggregate(conns, sortBy: .connections)
+        XCTAssertEqual(stats.map(\.domain), ["many.com", "one.com"])
+        // 默认仍按流量（保持旧行为，供未来切回）
+        XCTAssertEqual(DomainAnalyzer.aggregate(conns).first?.domain, "one.com")
+    }
+
     func testAggregateMarksMixedRoute() {
         let conns = [
             conn("x.com", route: "PROXY"),

@@ -77,8 +77,19 @@ public enum DomainAnalyzer {
 
     // MARK: - 聚合
 
-    /// 把连接按主域名聚合成统计，按总流量降序。
-    public static func aggregate(_ connections: [Connection]) -> [DomainStat] {
+    /// 聚合结果的排序维度。
+    ///
+    /// `.traffic` 是设计上的最终形态，但在接上 xray QueryStats 之前 per-连接字节恒 0
+    /// （access log 不含字节数），按流量排序等于按域名字母排序还谎称「按流量」。
+    /// UI 当前用 `.connections`（诚实展示），字节有真实来源后切回 `.traffic`。
+    public enum SortDimension: Sendable {
+        case traffic       // 总字节降序（需要真实流量数据）
+        case connections   // 连接次数降序
+    }
+
+    /// 把连接按主域名聚合成统计，按 `sortBy` 维度降序（同值按域名字典序）。
+    public static func aggregate(_ connections: [Connection],
+                                 sortBy: SortDimension = .traffic) -> [DomainStat] {
         var map: [String: DomainStat] = [:]
         for c in connections {
             let domain = registrableDomain(c.targetHost)
@@ -101,16 +112,25 @@ public enum DomainAnalyzer {
                 )
             }
         }
-        return map.values.sorted {
-            $0.totalBytes != $1.totalBytes ? $0.totalBytes > $1.totalBytes : $0.domain < $1.domain
+        switch sortBy {
+        case .traffic:
+            return map.values.sorted {
+                $0.totalBytes != $1.totalBytes ? $0.totalBytes > $1.totalBytes : $0.domain < $1.domain
+            }
+        case .connections:
+            return map.values.sorted {
+                $0.connectionCount != $1.connectionCount
+                    ? $0.connectionCount > $1.connectionCount : $0.domain < $1.domain
+            }
         }
     }
 
     /// 按天分组的每日汇总，最近的在前。
-    public static func daily(_ connections: [Connection], calendar: Calendar = .current) -> [DailyDigest] {
+    public static func daily(_ connections: [Connection], calendar: Calendar = .current,
+                             sortBy: SortDimension = .traffic) -> [DailyDigest] {
         let groups = Dictionary(grouping: connections) { calendar.startOfDay(for: $0.openedAt) }
         return groups.map { day, conns in
-            let stats = aggregate(conns)
+            let stats = aggregate(conns, sortBy: sortBy)
             return DailyDigest(
                 day: day,
                 domains: stats,
