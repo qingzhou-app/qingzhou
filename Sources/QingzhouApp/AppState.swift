@@ -76,8 +76,15 @@ public final class AppState {
     /// 待确认的恢复候选（启动检查发现云端更新 / 用户从版本列表选了一份）。非 nil 时 UI 弹
     /// 确认 alert，alert 里会展示来源设备 / 时间 / 内容计数 —— 「0 订阅」一眼可见，防误恢复。
     public internal(set) var cloudRestoreOffer: VaultRestoreCandidate?
-    /// 「立即恢复」的版本选择列表（云端当前版 + 最近几份历史版本）。非 nil 时 UI 弹选择 sheet。
-    public internal(set) var cloudVersionOptions: [VaultRestoreCandidate]?
+    /// 「立即恢复」的版本选择 sheet 状态。非 nil = sheet 在屏：点击瞬间置 .loading **立即
+    /// 呈现**（iCloud 读取要 coordinated read / 可能触发下载，秒级 —— 不能让用户对着按钮
+    /// 干等 sheet 出现），读取完成再变 .loaded / .failed（失败在 sheet 内展示 + 可重试）。
+    public internal(set) var cloudVersionLoad: CloudVersionLoadState?
+    /// 已加载出的版本列表（.loaded 时非 nil）。选择 / 关闭逻辑与测试读这个，别自己解包枚举。
+    public var cloudVersionOptions: [VaultRestoreCandidate]? {
+        if case .loaded(let options) = cloudVersionLoad { return options }
+        return nil
+    }
     /// 版本选择 sheet 里刚点选、等 sheet 完全收起后再进确认弹窗的候选。
     /// ⚠️ 不能在点选的同一刻直接置 `cloudRestoreOffer`：iOS 上 alert 会在 sheet 收起动画
     /// 进行中呈现 → 呈现层冲突，alert 被系统吞掉（真机现象：确认弹窗第一次自动消失、
@@ -509,20 +516,36 @@ public final class AppState {
 
     /// 设置页「立即恢复 iCloud 数据」：列出云端当前版 + 最近几份历史版本（含来源设备 /
     /// 时间 / 内容计数），让用户挑 —— 即使主文档被某台设备的空数据覆盖，旧版本仍可找回。
+    ///
+    /// sheet **立即**呈现（.loading），iCloud 读取异步填充 —— 之前在呈现前同步 await
+    /// 读取，真机上按钮点了却要等一两秒 sheet 才出现（复验 #18 反馈）。
     public func requestManualCloudRestore() async {
+        cloudVersionLoad = .loading            // 先呈现 sheet，别让用户干等
+        await loadCloudVersionOptions()
+    }
+
+    /// 读取云端版本列表填充 sheet；sheet 内「重试」也走这里。
+    /// 结果只在 sheet 还在屏时落地 —— 用户中途关掉 sheet，迟到的结果不能把 sheet 复活。
+    public func loadCloudVersionOptions() async {
+        guard cloudVersionLoad != nil else { return }   // sheet 已被关掉
+        cloudVersionLoad = .loading
+        let result = await fetchCloudVersionOptions()
+        guard cloudVersionLoad != nil else { return }   // await 期间被关掉 → 丢弃迟到结果
+        cloudVersionLoad = result
+    }
+
+    /// 纯读取：把云端主文档 + 历史备份拼成候选列表，不碰 UI 状态。
+    private func fetchCloudVersionOptions() async -> CloudVersionLoadState {
         guard await cloudVault.isAvailable() else {
-            showToast("iCloud 不可用（未登录或未开启 iCloud Drive）")
-            return
+            return .failed("iCloud 不可用（未登录或未开启 iCloud Drive）")
         }
         let mainHeader: VaultHeader?
         do {
             mainHeader = try await cloudVault.loadHeader()
         } catch let error as CloudVaultStore.StoreError where error == .notYetDownloaded {
-            showToast("iCloud 数据还在下载中，稍等片刻再试")
-            return
+            return .failed("iCloud 数据还在下载中，稍等片刻再试")
         } catch {
-            showToast("读取 iCloud 数据失败：\(error.localizedDescription)")
-            return
+            return .failed("读取 iCloud 数据失败：\(error.localizedDescription)")
         }
         var options: [VaultRestoreCandidate] = []
         if let mainHeader, mainHeader.schemaVersion <= VaultDocument.currentSchemaVersion {
@@ -533,18 +556,16 @@ public final class AppState {
             && backup.header.revision != mainHeader?.revision {
             options.append(VaultRestoreCandidate(header: backup.header, backupFileName: backup.fileName))
         }
-        switch options.count {
-        case 0:
-            if mainHeader != nil {
-                showToast("iCloud 数据来自更新版本的轻舟，请先升级 App")
-            } else {
-                showToast("iCloud 上没有找到备份")
-            }
-        case 1:
-            cloudRestoreOffer = options[0]     // 只有一份，直接进确认弹窗
-        default:
-            cloudVersionOptions = options      // 多份 → 弹版本选择列表
+        guard !options.isEmpty else {
+            // 也走 .failed 留在 sheet 内展示（带重试）—— iCloud 元数据可能还没同步完，
+            // 稍后重试常常就有了；比 toast 一闪而过可操作性强。
+            return .failed(mainHeader != nil
+                ? "iCloud 数据来自更新版本的轻舟，请先升级 App"
+                : "iCloud 上没有找到备份")
         }
+        // 只有一份也在列表里展示（点一下即进确认弹窗）——sheet 已经在屏了，
+        // 自动收起再弹 alert 反而突兀。
+        return .loaded(options)
     }
 
     /// 用户在版本列表里选了一份 → 先收起 sheet，候选暂存；等 sheet 的 onDismiss
@@ -556,7 +577,7 @@ public final class AppState {
     /// 走一遍流程（真机踩过：确认弹窗第一次自动消失，第二次才正常）。
     public func chooseCloudRestoreCandidate(_ candidate: VaultRestoreCandidate) {
         pendingCloudRestoreCandidate = candidate
-        cloudVersionOptions = nil
+        cloudVersionLoad = nil
     }
 
     /// 版本选择 sheet 的 onDismiss 回调：呈现层已空闲，暂存的候选此刻才进确认弹窗。
@@ -567,9 +588,10 @@ public final class AppState {
         cloudRestoreOffer = candidate
     }
 
-    /// 关闭版本选择列表。
+    /// 关闭版本选择列表（含加载中 / 失败态）。在途的读取结果会被 loadCloudVersionOptions
+    /// 的 guard 丢弃，不会把 sheet 复活。
     public func dismissCloudVersionOptions() {
-        cloudVersionOptions = nil
+        cloudVersionLoad = nil
     }
 
     /// 开关 iCloud 同步。开 → 立刻跑一次启动检查（可能提示恢复 / 补镜像）；关 → 取消在途镜像。

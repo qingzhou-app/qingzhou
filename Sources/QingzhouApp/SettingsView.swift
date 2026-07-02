@@ -271,38 +271,65 @@ public struct SettingsView: View {
 
     private var cloudVersionSheetBinding: Binding<Bool> {
         Binding(
-            get: { state.cloudVersionOptions != nil },
+            get: { state.cloudVersionLoad != nil },
             set: { if !$0 { state.dismissCloudVersionOptions() } }
         )
     }
 
+    /// 版本选择 sheet 三态：点击瞬间以 .loading 呈现（iCloud 读取秒级，sheet 不能干等），
+    /// 读完切列表；失败留在 sheet 内展示 + 重试。
     private var cloudVersionPicker: some View {
         NavigationStack {
-            List(state.cloudVersionOptions ?? []) { option in
-                Button {
-                    state.chooseCloudRestoreCandidate(option)
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(option.backupFileName == nil ? "云端当前版本" : "历史版本")
-                                .font(.subheadline.weight(.semibold))
-                            Spacer()
-                            Text("r\(option.header.revision)")
-                                .font(.caption.monospaced()).foregroundStyle(.secondary)
-                        }
-                        // 内容计数醒目展示 —— 空数据（0 订阅）一眼可见
-                        Text(option.header.contentSummary)
-                            .font(.subheadline)
-                            .foregroundStyle(
-                                (option.header.nodeCount ?? 1) == 0 ? AnyShapeStyle(.orange)
-                                                                    : AnyShapeStyle(.primary))
-                        Text("\(option.header.deviceName) · "
-                             + option.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))
-                            .font(.caption).foregroundStyle(.secondary)
+            Group {
+                switch state.cloudVersionLoad {
+                case nil, .loading:
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("正在读取 iCloud 版本…")
+                            .font(.subheadline).foregroundStyle(.secondary)
                     }
-                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .failed(let message):
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.icloud")
+                            .font(.largeTitle).foregroundStyle(.secondary)
+                        Text(message)
+                            .font(.subheadline).multilineTextAlignment(.center)
+                        Button("重试") {
+                            Task { await state.loadCloudVersionOptions() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .loaded(let options):
+                    List(options) { option in
+                        Button {
+                            state.chooseCloudRestoreCandidate(option)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(option.backupFileName == nil ? "云端当前版本" : "历史版本")
+                                        .font(.subheadline.weight(.semibold))
+                                    Spacer()
+                                    Text("r\(option.header.revision)")
+                                        .font(.caption.monospaced()).foregroundStyle(.secondary)
+                                }
+                                // 内容计数醒目展示 —— 空数据（0 订阅）一眼可见
+                                Text(option.header.contentSummary)
+                                    .font(.subheadline)
+                                    .foregroundStyle(
+                                        (option.header.nodeCount ?? 1) == 0 ? AnyShapeStyle(.orange)
+                                                                            : AnyShapeStyle(.primary))
+                                Text("\(option.header.deviceName) · "
+                                     + option.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
             }
             .navigationTitle("选择要恢复的版本")
             .toolbar {

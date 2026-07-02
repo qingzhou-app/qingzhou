@@ -314,6 +314,11 @@ final class AppStateCloudVaultTests: XCTestCase {
         return CloudVaultStore(containerProvider: { dir })
     }
 
+    /// 可变的容器指针：模拟「先未登录 iCloud（容器 nil）→ 登录后容器出现」的重试场景。
+    private final class ContainerBox: @unchecked Sendable {
+        var url: URL?
+    }
+
     /// 按 host 返回固定延迟的假探针 —— 恢复后会自动全量测速，测试不能真发 TCP 探测
     /// （*.example.com 解析失败 + 5s 超时会把测试拖爆）。
     private struct FakeLatencyProber: LatencyProber {
@@ -567,6 +572,84 @@ final class AppStateCloudVaultTests: XCTestCase {
         state.presentPendingCloudRestoreOffer()  // sheet onDismiss 无条件触发
         XCTAssertNil(state.cloudRestoreOffer, "没选任何版本，不该弹确认")
         XCTAssertNil(state.pendingCloudRestoreCandidate)
+    }
+
+    /// 复验 #18：点「立即恢复」后 sheet 出现有可感知延迟 —— 旧实现在呈现 sheet 前同步
+    /// await 了 iCloud 读取。新实现：点击瞬间置 .loading（sheet 立即呈现），读取异步填充。
+    func testManualRestoreLoadsAsyncIntoAlreadyPresentedSheet() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+        try await store.save(VaultDocument(revision: 2, modifiedAt: Date(), deviceName: "phone", snapshot: Persistence.Snapshot()))
+
+        let state = makeState(store: store)
+        // .loading 中间态由 requestManualCloudRestore 第一行同步置入 —— sheet 的呈现
+        // 不等任何 await（这正是修复点）；读取完成后落到 .loaded。
+        await state.requestManualCloudRestore()
+        XCTAssertEqual(state.cloudVersionOptions?.count, 2)
+        if case .loaded = state.cloudVersionLoad {} else {
+            XCTFail("读取完成后应为 .loaded，实际 \(String(describing: state.cloudVersionLoad))")
+        }
+    }
+
+    /// 只有一份可恢复版本：也进列表（点一下即确认弹窗）—— sheet 已经在屏，
+    /// 不再走旧的「跳过 sheet 直进确认弹窗」路径（sheet 自动收起再弹 alert 很突兀）。
+    func testManualRestoreSingleVersionShowsInSheetList() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+
+        let state = makeState(store: store)
+        await state.requestManualCloudRestore()
+        XCTAssertEqual(state.cloudVersionOptions?.count, 1, "单版本也应显示在列表里")
+        XCTAssertNil(state.cloudRestoreOffer, "sheet 在屏时不能直接弹确认（会撞呈现层）")
+    }
+
+    /// iCloud 不可用 → 错误留在 sheet 内展示（不再是 toast 一闪而过）；
+    /// 「重试」在容器恢复后应加载出列表。
+    func testManualRestoreFailureShownInSheetAndRetryRecovers() async throws {
+        // 先往云端目录写好一份文档（供重试成功时读到）
+        let seeded = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await seeded.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+
+        // 容器先不可用（未登录 iCloud 的效果）
+        let box = ContainerBox()
+        let state = makeState(store: CloudVaultStore(containerProvider: { box.url }))
+        await state.requestManualCloudRestore()
+        guard case .failed(let message) = state.cloudVersionLoad else {
+            return XCTFail("不可用应变 .failed，实际 \(String(describing: state.cloudVersionLoad))")
+        }
+        XCTAssertTrue(message.contains("iCloud 不可用"), "错误文案要说清原因：\(message)")
+        XCTAssertNil(state.cloudVersionOptions)
+
+        // 用户登录了 iCloud → 点 sheet 内「重试」
+        box.url = cloudDir
+        await state.loadCloudVersionOptions()
+        XCTAssertEqual(state.cloudVersionOptions?.count, 1, "重试成功应填充列表")
+    }
+
+    /// 云端空空如也：错误信息也留在 sheet 内（iCloud 元数据可能还没同步完，重试常常就有了）。
+    func testManualRestoreEmptyCloudShowsFailedInSheet() async throws {
+        let state = makeState(store: makeStore())
+        await state.requestManualCloudRestore()
+        XCTAssertEqual(state.cloudVersionLoad, .failed("iCloud 上没有找到备份"))
+    }
+
+    /// 用户在读取完成前就关掉了 sheet → 迟到的结果必须被丢弃，不能把 sheet 复活。
+    func testDismissedSheetDropsLateLoadResult() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+
+        let state = makeState(store: store)
+        state.dismissCloudVersionOptions()       // sheet 不在屏（等价于读取中途被关掉）
+        await state.loadCloudVersionOptions()
+        XCTAssertNil(state.cloudVersionLoad, "sheet 已关，迟到的读取结果不能复活 sheet")
     }
 
     /// 恢复成功后应与「首次添加订阅」一致：自动全量测速 + 择优选延迟最低节点，
