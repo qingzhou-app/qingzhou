@@ -59,7 +59,7 @@ let package = Package(
         .testTarget(name: "QingzhouRulesTests",        dependencies: ["QingzhouRules"]),
         .testTarget(name: "QingzhouSpeedTestTests",    dependencies: ["QingzhouSpeedTest"]),
         .testTarget(name: "QingzhouLoggingTests",      dependencies: ["QingzhouLogging"]),
-        .testTarget(name: "QingzhouAppTests",          dependencies: ["QingzhouApp"]),
+        .testTarget(name: "QingzhouAppTests",          dependencies: ["QingzhouApp", "QingzhouSpeedTest"]),
         .testTarget(name: "XrayConfigTests",      dependencies: ["XrayConfig"]),
 
         // ─────────────────────────────────────────────────────────────────────

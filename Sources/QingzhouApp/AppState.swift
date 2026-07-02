@@ -78,6 +78,11 @@ public final class AppState {
     public internal(set) var cloudRestoreOffer: VaultRestoreCandidate?
     /// 「立即恢复」的版本选择列表（云端当前版 + 最近几份历史版本）。非 nil 时 UI 弹选择 sheet。
     public internal(set) var cloudVersionOptions: [VaultRestoreCandidate]?
+    /// 版本选择 sheet 里刚点选、等 sheet 完全收起后再进确认弹窗的候选。
+    /// ⚠️ 不能在点选的同一刻直接置 `cloudRestoreOffer`：iOS 上 alert 会在 sheet 收起动画
+    /// 进行中呈现 → 呈现层冲突，alert 被系统吞掉（真机现象：确认弹窗第一次自动消失、
+    /// 第二次才正常）。sheet 的 onDismiss 回调 `presentPendingCloudRestoreOffer()` 接棒。
+    public internal(set) var pendingCloudRestoreCandidate: VaultRestoreCandidate?
 
     public let logger: Logger
     public let subscriptionFetcher: SubscriptionFetcher
@@ -460,7 +465,11 @@ public final class AppState {
         Task { await reapplyRunningTunnel() }
         let now = Date()
         logger.info("Restored from iCloud vault rev \(document.revision) (\(document.deviceName))", category: "cloud")
-        showToast("已从 iCloud 恢复（\(snapshot.subscriptions.count) 个订阅、\(snapshot.nodes.count) 个节点）")
+        if snapshot.nodes.isEmpty {
+            showToast("已从 iCloud 恢复（\(snapshot.subscriptions.count) 个订阅、0 个节点）")
+        } else {
+            showToast("已恢复（\(snapshot.subscriptions.count) 个订阅、\(snapshot.nodes.count) 个节点），正在测速择优…")
+        }
 
         if candidate?.backupFileName != nil {
             // 恢复的是历史版本：云端主文档还是那份「更新但错误」的（比如被删空的）。
@@ -479,6 +488,17 @@ public final class AppState {
                 name: Self.vaultSyncStateName
             )
             cloudSyncStatus = .synced(now)
+        }
+
+        // 恢复回来的节点没有本机延迟数据（上云前瞬态字段已剥离）—— 跟「首次添加订阅」
+        // 一致：自动全量测速 + 择优，别留一列裸节点让用户手动挨个测。
+        // 择优只改瞬态字段，persist 的防抖镜像会被内容去重跳过，不产生新 revision。
+        // VPN 在跑且择优命中不同节点会热切换 —— 预期行为。
+        if !nodes.isEmpty {
+            await autoSelectBestNode()
+            if let best = currentNode {
+                showToast("已为你选择延迟最优节点：\(best.name)")
+            }
         }
     }
 
@@ -527,9 +547,23 @@ public final class AppState {
         }
     }
 
-    /// 用户在版本列表里选了一份 → 进入确认弹窗。
+    /// 用户在版本列表里选了一份 → 先收起 sheet，候选暂存；等 sheet 的 onDismiss
+    /// （收起动画完成、呈现层空闲）再经 `presentPendingCloudRestoreOffer()` 进确认弹窗。
+    ///
+    /// ⚠️ 不能在这里直接置 `cloudRestoreOffer`：确认 alert 挂在 RootView，sheet 还在收起
+    /// 时呈现 alert 会撞呈现层 —— iOS 上 alert 被系统吞掉 / 自动消失，且系统 dismiss 会经
+    /// isPresented binding 的 set(false) 调 declineCloudRestore() 把候选也清掉，用户得再
+    /// 走一遍流程（真机踩过：确认弹窗第一次自动消失，第二次才正常）。
     public func chooseCloudRestoreCandidate(_ candidate: VaultRestoreCandidate) {
+        pendingCloudRestoreCandidate = candidate
         cloudVersionOptions = nil
+    }
+
+    /// 版本选择 sheet 的 onDismiss 回调：呈现层已空闲，暂存的候选此刻才进确认弹窗。
+    /// 取消关闭（没点选任何版本）时没有暂存候选，这里自然是 no-op。
+    public func presentPendingCloudRestoreOffer() {
+        guard let candidate = pendingCloudRestoreCandidate else { return }
+        pendingCloudRestoreCandidate = nil
         cloudRestoreOffer = candidate
     }
 

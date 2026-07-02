@@ -250,8 +250,13 @@ public struct SettingsView: View {
                  + "\(CloudVaultStore.maxBackups) 份历史版本。不含连接记录与流量统计。")
                 .font(.caption2).foregroundStyle(.secondary)
         }
-        // 「立即恢复」的版本选择：云端当前版 + 历史版本，各带设备 / 时间 / 内容计数
-        .sheet(isPresented: cloudVersionSheetBinding) {
+        // 「立即恢复」的版本选择：云端当前版 + 历史版本，各带设备 / 时间 / 内容计数。
+        // onDismiss：sheet 完全收起后才把点选的候选交给确认 alert（挂在 RootView）——
+        // 在 sheet 收起动画中就置 cloudRestoreOffer 会撞呈现层，iOS 上 alert 被吞掉
+        // （真机现象：确认弹窗第一次自动消失，第二次才正常）。
+        .sheet(isPresented: cloudVersionSheetBinding, onDismiss: {
+            state.presentPendingCloudRestoreOffer()
+        }) {
             cloudVersionPicker
         }
     }
