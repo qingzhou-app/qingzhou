@@ -110,8 +110,10 @@ public final class AppState {
     private var domainHistoryDirty = false
     /// internal 供测试注入 0 关掉节流做确定性断言。
     var domainHistorySaveInterval: TimeInterval = 10
-    /// appex 写的「假 IP → 域名」映射（FakeDNS），把 access log 的 198.18.x.x 翻回域名。
-    private var fakeDNSMap: [String: String] = [:]
+    /// appex 写的「IP → 域名」映射，把 access log 的裸 IP 翻回域名。里面既有 fakedns
+    /// 假 IP（198.18.x.x）也有真实 DNS 应答的 IP（rule 模式下 CN 域名走 AliDNS 拿真实 IP）。
+    /// internal 供单测直接注入（backfillDomainNames 用例）。
+    var fakeDNSMap: [String: String] = [:]
     /// content filter 扩展提供的「源端口 → 来源 App bundle id」（仅 macOS）。
     private var sourceAppMap: [String: String] = [:]
     #if os(macOS)
@@ -1112,6 +1114,9 @@ public final class AppState {
             if let map = AppGroupStorage.read([String: String].self, from: "fakedns-map") {
                 fakeDNSMap = map
             }
+            // 回翻：连接常在 map 落盘（appex 每秒才写一次）之前就被 ingest，只在解析那刻
+            // 查一次会让这批连接永远顶着裸 IP（按域名搜不到、开「忽略 IP」时整行被藏）。
+            backfillDomainNames()
             #if os(macOS)
             // 来源 App 标注暂时搁置（见 FeatureFlags.sourceAppLabeling）。开启时才走 XPC + 回填。
             if FeatureFlags.sourceAppLabeling {
@@ -1147,6 +1152,32 @@ public final class AppState {
         }
     }
     #endif
+
+    /// 用最新的「IP → 域名」映射，把已摄入连接里还是裸 IP 的 targetHost 回翻成域名。
+    ///
+    /// 为什么需要：appex 的 fakedns-map 每秒才落盘一次，连接（access log 行）常在对应
+    /// DNS 应答进 map 之前就被 ingest —— 只在解析那刻查一次，这批连接会永远顶着裸 IP：
+    /// 按域名搜不到、开「忽略 IP」时整行被藏（zhihu 验收反馈的可修部分）。
+    ///
+    /// 只改 targetHost（搜索/聚合用）并重算 matchedRule（host 变了命中会变）；
+    /// targetAddress 保留 ip:port 原样 —— 那一行本来就该显示真实地址，
+    /// 且 ConnectionTracker 的身份索引 key 是 ingest 时算好的字符串，不受字段就地修改影响。
+    /// 已经落进 DomainDailyHistory 的按 IP 记录不回改（历史口径以 ingest 时刻为准）。
+    /// internal 供单测直接驱动。
+    func backfillDomainNames() {
+        guard !fakeDNSMap.isEmpty else { return }
+        var resolver: MatchedRuleResolver?
+        for i in connectionTracker.connections.indices {
+            guard let domain = fakeDNSMap[connectionTracker.connections[i].targetHost] else { continue }
+            connectionTracker.connections[i].targetHost = domain
+            let r = resolver ?? currentMatchedRuleResolver()
+            resolver = r
+            connectionTracker.connections[i].matchedRule = r.resolve(
+                host: domain,
+                route: DomainAnalyzer.routeCategory(connectionTracker.connections[i].route)
+            )
+        }
+    }
 
     private func ingestAccessLog() {
         defer {
