@@ -257,12 +257,9 @@ public enum DomainAnalyzer {
         return isUnmatchedRule(existing) && !new.isEmpty ? new : existing
     }
 
-    private static let cnKnownDomains: Set<String> = [
-        "baidu.com", "qq.com", "taobao.com", "tmall.com", "jd.com", "weibo.com",
-        "bilibili.com", "163.com", "alipay.com", "douyin.com", "alicdn.com", "qpic.cn"
-    ]
-
+    /// CN 归属判定：内置后缀表（geosite:cn 高频子集）+ 中国 TLD 规则，见 `CNDomains`。
+    /// （替代了早期的 12 域名硬编码。）
     private static func isLikelyCN(_ domain: String) -> Bool {
-        domain.hasSuffix(".cn") || cnKnownDomains.contains(domain)
+        CNDomains.isLikelyCN(domain)
     }
 }

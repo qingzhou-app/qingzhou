@@ -23,7 +23,8 @@ let package = Package(
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0")
     ],
     targets: [
-        .target(name: "QingzhouCore"),
+        // resources: cn-domains.txt —— CN 域名归属判定的内置后缀表（见 CNDomains.swift）
+        .target(name: "QingzhouCore", resources: [.copy("Resources/cn-domains.txt")]),
         .target(
             name: "QingzhouProtocols",
             dependencies: [

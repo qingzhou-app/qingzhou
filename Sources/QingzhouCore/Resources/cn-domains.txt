@@ -1,0 +1,366 @@
+# 常见中国大陆域名后缀表（CNDomains.suffixes 的数据源）
+#
+# 来源：v2fly/domain-list-community（geosite:cn = tld-cn + geolocation-cn）的高频子集，
+#      人工按「国内主流互联网服务 + 其 CDN/静态资源域」挑选，
+#      并用 scripts/update-cn-domains.py 逐条校验仍在上游 geosite:cn 内。
+# 更新：python3 scripts/update-cn-domains.py  —— 拉取上游、递归解析 include，
+#      报告本表中已不在 geosite:cn 的条目（删掉）；新增条目手工追加后重跑校验。
+# 约定：一行一个 registrable domain（后缀匹配，子域名自动覆盖）；全小写；
+#      **不收 .cn / .中国 结尾的域名** —— 代码里的 TLD 规则已整体覆盖，收了是冗余。
+# 规模：几百条、几 KB，远小于 100KB 预算；宁缺毋滥，拿不准归属的不收。
+
+# ---- 百度系 ----
+baidu.com
+bdstatic.com
+bdimg.com
+baidubce.com
+bcebos.com
+baidupcs.com
+baiduyuncdn.com
+hao123.com
+
+# ---- 腾讯系 ----
+qq.com
+gtimg.com
+tencent.com
+tencent-cloud.net
+tencentcs.com
+myqcloud.com
+qcloud.com
+wechat.com
+weixinbridge.com
+tenpay.com
+idqqimg.com
+smtcdns.net
+soso.com
+
+# ---- 阿里系 ----
+taobao.com
+tmall.com
+alibaba.com
+alibabagroup.com
+alibaba-inc.com
+aliyun.com
+alicdn.com
+alikunlun.com
+alipay.com
+alipayobjects.com
+mmstat.com
+1688.com
+ele.me
+cainiao.com
+amap.com
+autonavi.com
+dingtalk.com
+youku.com
+tudou.com
+alimama.com
+taobaocdn.com
+tbcache.com
+ucweb.com
+goofish.com
+fliggy.com
+alidns.com
+etao.com
+
+# ---- 字节系 ----
+douyin.com
+douyinpic.com
+douyinstatic.com
+douyincdn.com
+douyinvod.com
+toutiao.com
+toutiaoimg.com
+snssdk.com
+bytedance.com
+byteimg.com
+bytecdn.com
+ixigua.com
+ixiguavideo.com
+amemv.com
+pstatp.com
+zijieapi.com
+doubao.com
+
+# ---- 网易系 ----
+163.com
+126.com
+126.net
+127.net
+netease.com
+163yun.com
+lofter.com
+youdao.com
+ydstatic.com
+
+# ---- 新浪 / 微博 ----
+sina.com
+weibo.com
+weibocdn.com
+
+# ---- 搜狐 / 搜狗 ----
+sohu.com
+sohucs.com
+sogou.com
+sogoucdn.com
+go2map.com
+56.com
+
+# ---- 京东 ----
+jd.com
+360buyimg.com
+jdcloud.com
+jdpay.com
+
+# ---- 拼多多 ----
+pinduoduo.com
+yangkeduo.com
+pddpic.com
+
+# ---- 美团 / 点评 ----
+meituan.com
+meituan.net
+dianping.com
+dpfile.com
+sankuai.com
+
+# ---- 滴滴 ----
+xiaojukeji.com
+didistatic.com
+
+# ---- 快手 ----
+kuaishou.com
+kwimgs.com
+yximgs.com
+gifshow.com
+
+# ---- B 站 ----
+bilibili.com
+bilivideo.com
+hdslb.com
+biligame.com
+b23.tv
+acg.tv
+acgvideo.com
+
+# ---- 爱奇艺 / 优酷外的视频平台 ----
+iqiyi.com
+iqiyipic.com
+qiyi.com
+qy.net
+mgtv.com
+hunantv.com
+pptv.com
+le.com
+letv.com
+
+# ---- 直播 ----
+douyu.com
+douyutv.com
+huya.com
+msstatic.com
+yy.com
+
+# ---- 知乎 / 豆瓣 / 小红书 / 社区 ----
+zhihu.com
+zhimg.com
+douban.com
+doubanio.com
+xiaohongshu.com
+xhscdn.com
+hupu.com
+jianshu.com
+jianshuapi.com
+renren.com
+
+# ---- 音频 / 音乐 ----
+kugou.com
+ximalaya.com
+xmcdn.com
+lizhi.fm
+qingting.fm
+
+# ---- 手机 / 硬件厂商 ----
+xiaomi.com
+xiaomi.net
+mi.com
+miui.com
+mi-img.com
+huawei.com
+hicloud.com
+hihonor.com
+vmall.com
+dbankcdn.com
+oppo.com
+coloros.com
+heytap.com
+oppomobile.com
+vivo.com
+lenovo.com
+meizu.com
+dji.com
+hikvision.com
+
+# ---- 360 / 金山 / 工具软件 ----
+360.com
+360safe.com
+qihucdn.com
+so.com
+qihoo.com
+2345.com
+kingsoft.com
+iciba.com
+ijinshan.com
+cmcm.com
+xunlei.com
+sandai.net
+meitu.com
+meipai.com
+
+# ---- 银行 / 支付 / 金融 ----
+ccb.com
+abchina.com
+bankofchina.com
+bankcomm.com
+cmbchina.com
+cmbimg.com
+cebbank.com
+psbc.com
+pingan.com
+unionpay.com
+95516.com
+unionpayintl.com
+antgroup.com
+citicbank.com
+caixin.com
+eastmoney.com
+hexun.com
+xueqiu.com
+
+# ---- 运营商 ----
+chinamobile.com
+chinaunicom.com
+21cn.com
+
+# ---- 新闻 / 媒体 ----
+xinhuanet.com
+cctv.com
+huanqiu.com
+ifeng.com
+ifengimg.com
+china.com
+yicai.com
+jiemian.com
+
+# ---- 旅行 / 出行 ----
+ctrip.com
+c-ctrip.com
+qunar.com
+qunarzz.com
+tuniu.com
+ly.com
+
+# ---- 房产 / 生活服务 ----
+lianjia.com
+ke.com
+fang.com
+anjuke.com
+58.com
+ganji.com
+zhuanzhuan.com
+aihuishou.com
+kuaidi100.com
+sf-express.com
+zto.com
+yundaex.com
+
+# ---- 汽车 ----
+che168.com
+yiche.com
+bitauto.com
+dongchedi.com
+xiaopeng.com
+byd.com
+geely.com
+lixiang.com
+
+# ---- 招聘 ----
+zhaopin.com
+51job.com
+liepin.com
+lagou.com
+zhipin.com
+
+# ---- 电商（其他）----
+suning.com
+vip.com
+vipstatic.com
+dangdang.com
+kaola.com
+mogu.com
+jumei.com
+yhd.com
+smzdm.com
+
+# ---- 游戏 ----
+mihoyo.com
+yuanshen.com
+wanmei.com
+sdo.com
+4399.com
+7k7k.com
+changyou.com
+yxdown.com
+
+# ---- 开发者 / 技术社区 ----
+csdn.net
+cnblogs.com
+oschina.net
+gitee.com
+coding.net
+segmentfault.com
+51cto.com
+iteye.com
+kanxue.com
+ruanmei.com
+ithome.com
+
+# ---- 云 / CDN / 基础设施 ----
+qiniu.com
+qiniucdn.com
+qnssl.com
+clouddn.com
+upyun.com
+upaiyun.com
+ksyun.com
+wangsu.com
+chinanetcenter.com
+volcengine.com
+volccdn.com
+huaweicloud.com
+dnspod.com
+doh.pub
+
+# ---- 办公 / 协作 ----
+yuque.com
+shimo.im
+tower.im
+
+# ---- 教育 / 医疗 ----
+icourse163.org
+xuetangx.com
+chaoxing.com
+zhihuishu.com
+haodf.com
+dxy.com
+
+# ---- AI ----
+deepseek.com
+iflytek.com
+minimaxi.com
+baichuan-ai.com
+kimi.com
+
+# ---- 其他常见 ----
+boohee.com
+babytree.com
