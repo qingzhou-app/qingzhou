@@ -68,6 +68,13 @@ public final class AppState {
     public var lastSpeedTestReport: SpeedTestReport?
     /// 正在测速的节点 id 集合 —— UI 据此在对应行显示旋转 loading。
     public var measuringNodeIds: Set<UUID> = []
+    /// 正在测「经代理延迟」的节点 id 集合（VPN 开启时经隧道扩展 libXray Ping 真实走节点测）。
+    /// 与 measuringNodeIds 独立 —— 两个维度可以各测各的。
+    public var proxiedMeasuringNodeIds: Set<UUID> = []
+    /// xray 内置 per-outbound 流量统计快照（代理/直连/拒绝拆分）。扩展每 2 秒经 App Group
+    /// 上报；VPN 停了或数据过期时为 nil。与 TUN 层总量（trafficHistory）口径不同：
+    /// 这里是应用层 payload 字节，供占比展示，不驱动波形。
+    public internal(set) var outboundStats: XrayOutboundStats?
     public var isVPNRunning: Bool = false
     /// 热切换窗口标志：VPN 运行中切节点/模式触发全量重启（stop→start）期间为 true。
     /// UI 用它把开关滑到"关"、显示"切换中…"——跟真实断流窗口一致，不做假动画。
@@ -784,6 +791,7 @@ public final class AppState {
                 showToast("已开启定时：\(AutoStopPresets.label(for: settings.autoStopSeconds))后自动断开")
             }
             scheduleIPRefresh()   // 隧道生效后刷新公网 IP → 落到「节点出口」那栏
+            watchTunnelStartFailure()   // 扩展启动失败（配置错误等）→ 把可读原因端给用户
             // 冲突防呆：系统代理（Clash 等）开着会在轻舟之前劫走流量 → 部分 App 联不上。
             // 只读检测、不改系统设置，检出就提示用户去关掉系统代理。
             if let warn = SystemProxyChecker.conflictWarning() {
@@ -798,6 +806,35 @@ public final class AppState {
             // 再 stop() 释放可能半开的隧道，让系统回收 TUN / 路由，避免"半死状态卡住全网"。
             try? await tunnelManager.setOnDemandEnabled(false)
             tunnelManager.stop()
+        }
+    }
+
+    /// 启动后的失败哨兵：`startVPNTunnel()` 只表示「启动请求已提交」，扩展里 xray 配置
+    /// 构建失败 / 起不来时 NE **不会**把错误回给主 App，只是状态默默回到 disconnected ——
+    /// 这就是「配置错误只能看日志」的根因。这里轮询启动窗口：连上了收工；断开了就用
+    /// `fetchLastDisconnectError`（iOS 16+/macOS 13+，系统会保存扩展 completionHandler
+    /// 带回的错误）把可读原因端上 UI。
+    private func watchTunnelStartFailure() {
+        Task { @MainActor [weak self] in
+            // 先给 1 秒缓冲：start 刚提交时状态还可能停留在 disconnected，别误判。
+            try? await Task.sleep(for: .seconds(1))
+            for _ in 0..<40 {   // 最多观察 ~20 秒（规则模式加载 geo 就要几秒）
+                guard let self, self.isVPNRunning, !self.isSwitchingTunnel else { return }
+                let status = self.tunnelManager.status
+                if status == .connected { return }
+                if status == .disconnected || status == .invalid {
+                    let reason = await self.tunnelManager.lastDisconnectError()
+                    self.isVPNRunning = false
+                    self.connectedSince = nil
+                    self.tunnelError = "VPN 启动失败：\(reason ?? "扩展未报告原因，可在设置→日志查看")"
+                    self.logger.error("Tunnel start failed after submit: \(reason ?? "unknown")", category: "tunnel")
+                    // 与 startTunnel 失败路径同款收尾：防 On-Demand 拿坏配置反复重连。
+                    try? await self.tunnelManager.setOnDemandEnabled(false)
+                    self.tunnelManager.stop()
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
         }
     }
 
@@ -852,6 +889,20 @@ public final class AppState {
               let shareLink = NodeEncoder.shareLink(node) else { return }
         isSwitchingTunnel = true
         defer { isSwitchingTunnel = false }
+        // 配置预检：趁旧隧道还在跑，先让扩展用同款构建流程校验新节点的配置（libXray
+        // TestXray）。配置非法 → 不拆在跑的隧道，直接报错返回 —— 否则坏配置会把好隧道
+        // 换成起不来的新会话，用户直接断网。预检本身没跑成（超时等）不拦：尽力而为继续切。
+        do {
+            try await tunnelManager.testNodeConfig(
+                node: node, mode: settings.proxyMode, shareLink: shareLink, rules: effectiveUserRules
+            )
+        } catch VPNTunnelManager.TunnelError.configRejected(let reason) {
+            tunnelError = "已保持当前节点连接不变。切换目标节点配置无效：\(reason)"
+            logger.error("Pre-switch config test rejected \(node.name): \(reason)", category: "tunnel")
+            return   // 旧隧道原样保留
+        } catch {
+            logger.warn("Pre-switch config test unavailable (\(error)) — continuing switch", category: "tunnel")
+        }
         // ⚠️ 原地无感重配（reconfigureInPlace + 扩展 handleAppMessage）暂时禁用 —— 实测在
         // 某些切换（规则→全局）上会让 xray 卡死、之后连全量重启都救不回来，疑似 xray-core
         // 在同一扩展进程内 stop→run 有全局状态没干净复位。扩展侧代码保留待查，这里先走全量重启。
@@ -960,6 +1011,63 @@ public final class AppState {
             }
         }
         persist()
+    }
+
+    // MARK: - 经代理延迟（VPN 开启时经隧道扩展 libXray Ping 真实走节点测）
+
+    /// 给单个节点测「经代理延迟」：隧道扩展起临时 xray 实例、真实通过该节点发一次
+    /// HTTP HEAD，量到的是「本机→节点→目标站点」全链路毫秒数 —— 与直连 TCP 握手 RTT
+    ///（lastLatencyMs）是两个维度。只在 VPN 运行时可用（libXray 只在扩展进程里）；
+    /// VPN 关闭时 UI 应引导用户用普通测速（直连维度）。
+    /// - Returns: 成功时的毫秒数；失败返回 nil（并在 `showToastOnError` 时 toast 错误）。
+    @discardableResult
+    public func measureProxiedLatency(_ node: Node, showToastOnError: Bool = true) async -> Int? {
+        guard isVPNRunning else {
+            if showToastOnError { showToast("经代理测速需要 VPN 运行中（直连延迟请用普通测速）") }
+            return nil
+        }
+        proxiedMeasuringNodeIds.insert(node.id)
+        defer { proxiedMeasuringNodeIds.remove(node.id) }
+        do {
+            let ms = try await tunnelManager.pingNode(node: node)
+            if let i = nodes.firstIndex(where: { $0.id == node.id }) {
+                nodes[i].lastProxiedLatencyMs = ms
+                nodes[i].lastProxiedTestedAt = Date()
+            }
+            persist()
+            return ms
+        } catch {
+            // 失败也记录测试时间、清掉旧值 —— 「上次测出 80ms」挂在已坏节点上会误导。
+            if let i = nodes.firstIndex(where: { $0.id == node.id }) {
+                nodes[i].lastProxiedLatencyMs = nil
+                nodes[i].lastProxiedTestedAt = Date()
+            }
+            persist()
+            if showToastOnError {
+                showToast("经代理测速失败：\((error as? LocalizedError)?.errorDescription ?? "\(error)")")
+            }
+            logger.warn("Proxied ping failed for \(node.name): \(error)", category: "tunnel")
+            return nil
+        }
+    }
+
+    /// 批量测所有未排除节点的「经代理延迟」。**串行**逐个测 —— 扩展进程同一时刻只跑
+    /// 一个临时 xray 实例（iOS NE 50MB 内存硬上限），并发毫无意义还有 jetsam 风险。
+    /// 进度通过 `proxiedMeasuringNodeIds` 递减反映（UI 显示 n/total）。
+    public func measureAllProxiedLatencies() async {
+        guard isVPNRunning else {
+            showToast("经代理测速需要 VPN 运行中")
+            return
+        }
+        let targets = nodes.filter { !$0.isExcluded }
+        proxiedMeasuringNodeIds = Set(targets.map(\.id))
+        defer { proxiedMeasuringNodeIds = [] }
+        for node in targets {
+            // 中途 VPN 停了 / 用户切走导致任务取消 → 立刻收工
+            if Task.isCancelled || !isVPNRunning { break }
+            _ = await measureProxiedLatency(node, showToastOnError: false)
+            proxiedMeasuringNodeIds.remove(node.id)
+        }
     }
 
     // MARK: - 订阅
@@ -1470,6 +1578,15 @@ public final class AppState {
                     // VPN 不是从本 App 关的（系统设置里关 / 扩展崩溃）也走这里 —— 一并关掉连接
                     markAllConnectionsClosed()
                 }
+            }
+            // xray per-outbound 拆分（代理/直连占比）。扩展每 2 秒写一次，5 秒新鲜窗口；
+            // 过期（VPN 停了 / 本会话没开 metrics）就收起，不显示残留数据。
+            // "xray-stats" 与 XrayCore.TunnelAppGroup.xrayStatsName 一致（两模块互不依赖）。
+            if let xs = AppGroupStorage.read(XrayOutboundStats.self, from: "xray-stats"),
+               abs(xs.sampledAt.timeIntervalSinceNow) <= 5 {
+                outboundStats = xs
+            } else if outboundStats != nil {
+                outboundStats = nil
             }
         }
     }

@@ -22,6 +22,9 @@ public final class VPNTunnelManager {
         case configurationPermissionDenied
         case configurationStale
         case configurationDisabled
+        /// 扩展预检（testNode）明确判定配置非法 —— 与「预检本身没跑成」（超时/无会话）
+        /// 区分开：前者应中止热切换保住在跑的隧道，后者尽力而为继续切。
+        case configRejected(String)
         case underlying(Error)
 
         public var errorDescription: String? {
@@ -43,6 +46,8 @@ public final class VPNTunnelManager {
                 return "VPN 配置过期了。先在系统设置里把旧 VPN 删掉重试。"
             case .configurationDisabled:
                 return "VPN 配置被禁用了（系统设置里 toggle 是关闭状态）。"
+            case .configRejected(let msg):
+                return "节点配置预检未通过：\(msg)"
             case .underlying(let e):
                 return e.localizedDescription
             }
@@ -212,6 +217,63 @@ public final class VPNTunnelManager {
         )
     }
 
+    /// 「经代理延迟」：让**运行中**的扩展给指定节点起临时 xray 实例、真实走该节点测一次
+    /// HTTP 延迟（扩展 handleAppMessage "pingNode"）。返回毫秒数。
+    /// VPN 没开（拿不到会话）/ 扩展回错 / 超时都 throws —— 调用方降级为直连 TCP 测速。
+    /// 超时给足 timeout+启动余量：临时实例启动 <1s + HTTP 最长 timeout 秒 + 串行排队缓冲。
+    public func pingNode(node: Node, timeoutSeconds: Int = 5) async throws -> Int {
+        let reply = try await sendCommandForReply(
+            [
+                "command": "pingNode",
+                "nodeJSON": Self.encodeNodeJSON(node),
+                "timeout": String(timeoutSeconds)
+            ],
+            timeoutSeconds: Double(timeoutSeconds) + 8,
+            timeoutLabel: "经代理测速超时", failureLabel: "经代理测速失败"
+        )
+        guard let ms = (reply["delayMs"] as? NSNumber)?.intValue else {
+            throw TunnelError.underlying(NSError(
+                domain: "qingzhou.tunnel", code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "扩展回执缺少 delayMs"]))
+        }
+        return ms
+    }
+
+    /// 配置预检：让**运行中**的扩展用与真实连接同款的 compose+xray 构建流程校验节点配置
+    /// （扩展 handleAppMessage "testNode"）。
+    /// - 扩展明确回「配置非法」→ 抛 `TunnelError.configRejected(可读错误)`；
+    /// - 预检本身没跑成（无会话 / 超时）→ 抛其他错误 —— 调用方应视为「无法预检」尽力继续。
+    public func testNodeConfig(node: Node, mode: ProxyMode, shareLink: String, rules: [Rule] = []) async throws {
+        var msg: [String: String] = [
+            "command": "testNode",
+            "nodeJSON": Self.encodeNodeJSON(node),
+            "shareLink": shareLink,
+            "proxyMode": mode.rawValue
+        ]
+        switch makeRulesPayload(rules) {
+        case .inline(let gz):  msg["userRulesGZ"] = gz.base64EncodedString()
+        case .file(let path):  msg["userRulesPath"] = path
+        case .none:            break
+        }
+        let reply = try await sendCommandForReply(
+            msg, timeoutSeconds: 8,
+            timeoutLabel: "配置预检超时", failureLabel: "配置预检失败",
+            rejectionAsConfigError: true
+        )
+        _ = reply
+    }
+
+    /// 系统记录的最近一次隧道断开原因（含扩展 startTunnel completionHandler 带回的错误）。
+    /// 连接失败时主 App 靠它拿到可读错误文本 —— NE 不会把 start 失败直接回给 startVPNTunnel。
+    public func lastDisconnectError() async -> String? {
+        guard let conn = manager?.connection else { return nil }
+        return await withCheckedContinuation { cont in
+            conn.fetchLastDisconnectError { error in
+                cont.resume(returning: error?.localizedDescription)
+            }
+        }
+    }
+
     /// 向运行中的扩展发一条 JSON 命令并等回执。超时 / 回执 {ok:false} 都抛错。
     private func sendCommand(
         _ msg: [String: String],
@@ -219,6 +281,23 @@ public final class VPNTunnelManager {
         timeoutLabel: String,
         failureLabel: String
     ) async throws {
+        _ = try await sendCommandForReply(
+            msg, timeoutSeconds: timeoutSeconds,
+            timeoutLabel: timeoutLabel, failureLabel: failureLabel
+        )
+    }
+
+    /// 同 sendCommand，但把扩展回执解析成字典返回（无回执时空字典）。
+    /// `rejectionAsConfigError`：{ok:false} 回执抛 `.configRejected`（预检语义），
+    /// 否则抛 `.underlying`（一般命令失败语义）。
+    @discardableResult
+    private func sendCommandForReply(
+        _ msg: [String: String],
+        timeoutSeconds: Double,
+        timeoutLabel: String,
+        failureLabel: String,
+        rejectionAsConfigError: Bool = false
+    ) async throws -> [String: Any] {
         guard let session = manager?.connection as? NETunnelProviderSession else {
             throw TunnelError.managerNotLoaded
         }
@@ -242,14 +321,20 @@ public final class VPNTunnelManager {
                             userInfo: [NSLocalizedDescriptionKey: timeoutLabel]))) }
             }
         }
-        // 扩展回执：{ok: false, error: ...} 表示执行失败，抛错让上层降级。
-        if let reply,
-           let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
-           obj["ok"] as? Bool == false {
-            throw TunnelError.underlying(NSError(
-                domain: "qingzhou.tunnel", code: -2,
-                userInfo: [NSLocalizedDescriptionKey: (obj["error"] as? String) ?? failureLabel]))
+        guard let reply,
+              let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any] else {
+            return [:]
         }
+        // 扩展回执：{ok: false, error: ...} 表示执行失败，抛错让上层降级。
+        if obj["ok"] as? Bool == false {
+            let message = (obj["error"] as? String) ?? failureLabel
+            throw rejectionAsConfigError
+                ? TunnelError.configRejected(message)
+                : TunnelError.underlying(NSError(
+                    domain: "qingzhou.tunnel", code: -2,
+                    userInfo: [NSLocalizedDescriptionKey: message]))
+        }
+        return obj
     }
 
     // MARK: - 用户规则 payload

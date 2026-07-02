@@ -82,6 +82,23 @@ public enum TunnelAppGroup {
         }
     }
 
+    // MARK: - xray 内置流量统计（Extension 写、主 App 轮询读）—— per-outbound 拆分
+
+    /// 主 App 侧用 AppGroupStorage.read(XrayOutboundStats.self, from: "xray-stats") 同名读取。
+    public static let xrayStatsName = "xray-stats"
+
+    private static var xrayStatsURL: URL? {
+        containerURL?.appendingPathComponent(xrayStatsName).appendingPathExtension("json")
+    }
+
+    /// Extension 调：把 xray QueryStats 解析出的 per-outbound 计数（已 encode 成 JSON 串）
+    /// 写进共享容器。主 App 用它显示「代理 / 直连」流量占比。失败静默 —— 观测缺席不影响 VPN。
+    @discardableResult
+    public static func writeXrayStats(_ json: String) -> Bool {
+        guard let url = xrayStatsURL else { return false }
+        return (try? json.write(to: url, atomically: true, encoding: .utf8)) != nil
+    }
+
     // MARK: - access log（xray 写、主 App 增量读解析成真实连接）
 
     public static let accessLogName = "access.log"

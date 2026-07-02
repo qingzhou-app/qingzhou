@@ -380,6 +380,14 @@ public struct HomeView: View {
                 statRow("总上行", value: ByteFormatter.format(latest?.uploadBytes ?? 0))
                 statRow("总下行", value: ByteFormatter.format(latest?.downloadBytes ?? 0))
                 statRow("当前速率", value: "↑ \(ByteFormatter.format(latest?.uploadSpeedBps ?? 0))/s · ↓ \(ByteFormatter.format(latest?.downloadSpeedBps ?? 0))/s")
+                // 代理/直连拆分：xray 内置 per-outbound 统计（QueryStats）。应用层 payload
+                // 口径，与上面 TUN 层总量不必对得上；只在扩展有新鲜上报时显示（规则模式
+                // 下最有价值 —— 一眼看出多少流量真走了代理）。
+                if let xs = state.outboundStats {
+                    statRow("代理 / 直连",
+                            value: "\(ByteFormatter.format(xs.proxy.totalBytes)) / \(ByteFormatter.format(xs.direct.totalBytes))"
+                                + (xs.proxyShare.map { String(format: "（代理 %.0f%%）", $0 * 100) } ?? ""))
+                }
                 #if os(iOS)
                 // 连接页在 iOS 上不占 tab，从这里 push（macOS 侧栏有独立「连接」项，不重复放）
                 HStack {

@@ -74,6 +74,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// 随 reportTrafficStats 一起写进 App Group，主 App 用它把 access log 的假 IP 翻回域名。
     private let fakeDNSMap = OSAllocatedUnfairLock(initialState: [String: String]())
 
+    /// xray 内置流量统计（stats/metrics）的 expvar 端口。bringUpXray 前向内核要一个
+    /// 空闲端口传给 compose；拿不到（罕见）就 nil = 本会话不开统计，VPN 照常起。
+    /// 只在 startTunnel / reconfigure / bringUpXray 的串行流程里写，statsQueue 上只读。
+    private var metricsPort: Int?
+    /// 统计轮询节流：每 2 个 stats tick（≈2 秒）查一次 QueryStats，别每秒都 GET。
+    private var statsTickCount = 0
+
+    /// 「经代理延迟」（pingNode）/「配置预检」（testNode）专用串行队列。
+    /// - 串行 = 同一时刻至多一个短命 xray 实例在跑（NE 50MB 内存预算的硬要求）；
+    /// - 独立队列 = ping 阻塞最长 timeout 秒，绝不能占 bridgeQueue（packet 拷贝）或
+    ///   statsQueue（每秒统计定时器）。
+    private let probeQueue = DispatchQueue(label: "com.sbraveyoung.qingzhou.tunnel.probe", qos: .utility)
+
     /// 定时自动关闭（防忘关）：倒计时**必须**在扩展进程里跑 —— iOS 主 App 随时会被系统
     /// 回收，主 App 侧 Timer 靠不住。一次性 DispatchSourceTimer，内存开销可忽略（NE 50MB 预算）。
     /// 挂 statsQueue（轻量定时器专用队列，绝不能上 bridgeQueue —— 那里的阻塞 read 会饿死它）。
@@ -128,6 +141,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let geo = resolveGeoData()
         self.activeGeoDir = geo.dir
 
+        // xray 内置流量统计的 expvar 端口（loopback）。拿不到就不开统计，绝不挡 VPN 启动。
+        self.metricsPort = (try? XrayCore.getFreePorts(1))?.first
+
         // 转换 Node → outbounds JSON
         let xrayJSON: String
         do {
@@ -139,7 +155,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 mode: mode,
                 accessLogPath: TunnelAppGroup.accessLogPath(),
                 userRules: userRules,
-                hasFullGeoIP: geo.isFull
+                hasFullGeoIP: geo.isFull,
+                metricsPort: self.metricsPort
             )
         } catch {
             os_log("share link → xray config 转换失败: %{public}@",
@@ -551,6 +568,30 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         // 内存观测顺带跑（同在 statsQueue，一次 mach call）—— 50MB jetsam 线的哨兵
         reportMemoryStats(at: now)
+        // xray 内置 per-outbound 统计：每 2 tick（≈2 秒）查一次（进程内 loopback HTTP GET，
+        // 微秒级；节流只是不想每秒都序列化一遍 expvar 的 memstats 大 JSON）
+        statsTickCount += 1
+        if statsTickCount % 2 == 0 {
+            reportXrayOutboundStats(at: now)
+        }
+    }
+
+    /// QueryStats（metrics expvar）→ per-outbound 计数 → App Group。statsQueue 上跑。
+    /// 任何一步失败都静默跳过 —— 统计是增量观测，绝不影响 VPN 本体。
+    private func reportXrayOutboundStats(at now: Date) {
+        guard let port = metricsPort else { return }
+        guard let expvar = try? XrayCore.queryStats(metricsPort: port) else { return }
+        let parsed = XrayCore.parseOutboundStats(expvar)
+        guard !parsed.isEmpty else { return }
+        var stats = XrayOutboundStats(sampledAt: now)
+        for (tag, c) in parsed {
+            stats.outbounds[tag] = XrayOutboundStats.Counter(uplinkBytes: c.uplink, downlinkBytes: c.downlink)
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601   // 与主 App AppGroupStorage.read 的解码策略一致
+        if let data = try? encoder.encode(stats), let json = String(data: data, encoding: .utf8) {
+            TunnelAppGroup.writeXrayStats(json)
+        }
     }
 
     /// 内存采样 + 上报（statsQueue 上跑）。
@@ -654,6 +695,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         // 但保留原地重配路径的正确性 —— 一旦重新启用不至于用错数据）。
         let geo = resolveGeoData()
         self.activeGeoDir = geo.dir
+        // 重配 = 新 xray 实例，metrics 端口重新要一个（旧实例可能还没放掉旧端口）。
+        self.metricsPort = (try? XrayCore.getFreePorts(1))?.first
         let xrayJSON: String
         do {
             let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
@@ -662,7 +705,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 mode: mode,
                 accessLogPath: TunnelAppGroup.accessLogPath(),
                 userRules: userRules,
-                hasFullGeoIP: geo.isFull
+                hasFullGeoIP: geo.isFull,
+                metricsPort: self.metricsPort
             )
         } catch {
             os_log("reconfigure: build config failed, keep old xray: %{public}@",
@@ -673,6 +717,86 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         _ = XrayCore.stop()
         tearDownBridge()
         bringUpXray(configJSON: xrayJSON, completionHandler: reply)
+    }
+
+    // MARK: - 经代理延迟（pingNode）/ 配置预检（testNode）—— probeQueue 上串行跑
+
+    /// 「经代理延迟」：给节点起一个临时 xray 实例（socks inbound + 该节点 outbound），
+    /// 真实走节点发一次 HTTP HEAD，返回全链路毫秒数。
+    /// 与主 App 的直连 TCP 探测是两个维度 —— 这里量的是「本机→节点→目标」代理链路。
+    /// probeQueue 串行保证同一时刻至多一个临时实例（NE 50MB 内存预算）。
+    private func performPing(nodeJSON: String, url: String, timeoutSeconds: Int) -> Result<Int, Swift.Error> {
+        // 内存余量护栏：iOS 上 footprint 已逼近 jetsam 线时拒绝再起临时实例 ——
+        // 测个延迟把隧道整个搞断划不来。macOS 无硬上限（platformLimitBytes = 0），不拦。
+        if MemoryFootprint.platformLimitBytes > 0,
+           let fp = MemoryFootprint.currentFootprint(),
+           fp > 38 * 1024 * 1024 {
+            return .failure(NSError(
+                domain: "com.sbraveyoung.qingzhou.tunnel", code: 1005,
+                userInfo: [NSLocalizedDescriptionKey: "扩展内存余量不足（\(fp / 1024 / 1024)MB/50MB），暂缓经代理测速"]))
+        }
+        do {
+            guard let data = nodeJSON.data(using: .utf8) else {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1006,
+                              userInfo: [NSLocalizedDescriptionKey: "nodeJSON 为空"])
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let node = try decoder.decode(Node.self, from: data)
+            let outbound = try NodeConverter.toOutboundDict(node)
+            guard let port = try XrayCore.getFreePorts(1).first else {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1007,
+                              userInfo: [NSLocalizedDescriptionKey: "拿不到空闲端口"])
+            }
+            // 极简 ping 配置：socks in + 节点 out，无 routing / dns / geo —— 临时实例
+            // 不加载 geo 数据，起得快（<100ms）、内存占用最小。Go http client 经 socks5
+            // 把域名透传给 xray，由节点侧解析，无需本地 DNS。
+            let config: [String: Any] = [
+                "log": ["loglevel": "warning"],
+                "inbounds": [[
+                    "tag": "ping-in",
+                    "protocol": "socks",
+                    "listen": "127.0.0.1",
+                    "port": port,
+                    "settings": ["udp": false] as [String: Any]
+                ] as [String: Any]],
+                "outbounds": [outbound]
+            ]
+            let configJSON = String(
+                data: try JSONSerialization.data(withJSONObject: config),
+                encoding: .utf8) ?? "{}"
+            let ms = try XrayCore.ping(
+                configJSON: configJSON,
+                socksPort: port,
+                url: url,
+                timeoutSeconds: timeoutSeconds,
+                datDir: activeGeoDir ?? ""
+            )
+            return .success(ms)
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// 配置预检：用与真实连接**完全相同**的 compose 产物（同 mode / 用户规则 / geo 数据）
+    /// 走一遍 xray 的配置解析 + 组件构建，把 xray-core 原生错误文本带回主 App。
+    /// 不写 access log（会清空在跑会话的日志）、不配 metrics（预检无需统计）。
+    private func performTest(nodeJSON: String, shareLink: String, mode: ProxyMode, userRules: [Rule]) -> Swift.Error? {
+        let geo = resolveGeoData()
+        do {
+            let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
+            let xrayJSON = try XrayConfigComposer.compose(
+                outboundsJSON: outboundsJSON,
+                mode: mode,
+                accessLogPath: nil,
+                userRules: userRules,
+                hasFullGeoIP: geo.isFull
+            )
+            try XrayCore.testConfig(configJSON: xrayJSON, datDir: geo.dir)
+            return nil
+        } catch {
+            return error
+        }
     }
 
     override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)?) {
@@ -702,6 +826,41 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             let seconds = TimeInterval(obj["seconds"] ?? "") ?? 0
             armAutoStop(seconds: seconds)
             completionHandler?(try? JSONSerialization.data(withJSONObject: ["ok": true]))
+        case "pingNode":
+            // 「经代理延迟」：probeQueue 串行跑（阻塞最长 timeout 秒），回 {ok, delayMs}。
+            let nodeJSON = obj["nodeJSON"] ?? ""
+            let url = obj["url"] ?? "https://www.google.com/generate_204"
+            let timeout = min(max(Int(obj["timeout"] ?? "") ?? 5, 1), 15)
+            probeQueue.async { [weak self] in
+                guard let self else { completionHandler?(nil); return }
+                let payload: [String: Any]
+                switch self.performPing(nodeJSON: nodeJSON, url: url, timeoutSeconds: timeout) {
+                case .success(let ms):
+                    payload = ["ok": true, "delayMs": ms]
+                case .failure(let error):
+                    payload = ["ok": false, "error": error.localizedDescription]
+                }
+                completionHandler?(try? JSONSerialization.data(withJSONObject: payload))
+            }
+        case "testNode":
+            // 配置预检：热切换前主 App 先问一声「新配置合法吗」，不合法就不拆在跑的隧道。
+            let nodeJSON = obj["nodeJSON"] ?? ""
+            let shareLink = obj["shareLink"] ?? ""
+            let mode = ProxyMode(rawValue: obj["proxyMode"] ?? "") ?? .global
+            let userRules = loadUserRules(inlineData: nil,
+                                          base64: obj["userRulesGZ"],
+                                          path: obj["userRulesPath"])
+            probeQueue.async { [weak self] in
+                guard let self else { completionHandler?(nil); return }
+                let payload: [String: Any]
+                if let error = self.performTest(nodeJSON: nodeJSON, shareLink: shareLink,
+                                                mode: mode, userRules: userRules) {
+                    payload = ["ok": false, "error": error.localizedDescription]
+                } else {
+                    payload = ["ok": true]
+                }
+                completionHandler?(try? JSONSerialization.data(withJSONObject: payload))
+            }
         default:
             completionHandler?(nil)
         }

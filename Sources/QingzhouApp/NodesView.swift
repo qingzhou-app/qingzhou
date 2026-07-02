@@ -13,6 +13,9 @@ public struct NodesView: View {
     @State private var detailNode: Node?
     @State private var isMeasuring = false
     @State private var isAutoSelecting = false
+    /// 批量「经代理延迟」测速中（VPN 开启时经隧道扩展逐个真实走节点测）。
+    @State private var isProxiedMeasuring = false
+    @State private var proxiedMeasureTotal = 0
     /// 本轮批量测速的总数（开测那刻的非排除节点数）。配合 measuringNodeIds 的
     /// 剩余量算出「12/47」进度 —— measuringNodeIds 只知道还剩几个，不知道总共几个。
     @State private var measureTotal = 0
@@ -96,6 +99,46 @@ public struct NodesView: View {
                 .disabled(state.nodes.isEmpty || isMeasuring || isAutoSelecting)
                 .help("先测速再选延迟最低的节点为当前节点")
             }
+            ToolbarItem {
+                Menu {
+                    Button {
+                        Task { await runBatchProxiedMeasure() }
+                    } label: {
+                        if isProxiedMeasuring {
+                            Label("经代理测速中 \(proxiedMeasureDone)/\(proxiedMeasureTotal)…",
+                                  systemImage: "point.3.connected.trianglepath.dotted")
+                        } else {
+                            Label("测全部经代理延迟", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
+                    }
+                    .disabled(!state.isVPNRunning || isProxiedMeasuring || state.nodes.isEmpty)
+                    if !state.isVPNRunning {
+                        Text("经代理测速需要 VPN 运行中")
+                    }
+                    Divider()
+                    Button {
+                        let text = NodeEncoder.shareLinks(state.nodes)
+                        guard !text.isEmpty else { return }
+                        copyLink(text)
+                        state.showToast("已复制 \(text.split(separator: "\n").count) 条节点分享链接")
+                    } label: {
+                        Label("导出全部节点链接（复制）", systemImage: "square.and.arrow.up.on.square")
+                    }
+                    .disabled(state.nodes.isEmpty)
+                } label: {
+                    if isProxiedMeasuring {
+                        HStack(spacing: 4) {
+                            ProgressView().controlSize(.small)
+                            Text("\(proxiedMeasureDone)/\(proxiedMeasureTotal)")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Label("更多", systemImage: "ellipsis.circle")
+                    }
+                }
+                .help("批量操作：经代理测速 / 导出全部节点")
+            }
         }
         .sheet(isPresented: $showAdd) { addSheet }
         .sheet(item: $qrShareNode) { node in qrShareSheet(node) }
@@ -126,6 +169,19 @@ public struct NodesView: View {
     /// 已测完个数 = 总数 - 还在测的。钳位到 0 防御 total 没记上的边界。
     private var measureDone: Int {
         max(0, measureTotal - state.measuringNodeIds.count)
+    }
+
+    /// 批量经代理测速（串行逐个，扩展同一时刻只跑一个临时 xray 实例）。
+    private func runBatchProxiedMeasure() async {
+        guard !isProxiedMeasuring else { return }
+        isProxiedMeasuring = true
+        proxiedMeasureTotal = state.nodes.filter { !$0.isExcluded }.count
+        await state.measureAllProxiedLatencies()
+        isProxiedMeasuring = false
+    }
+
+    private var proxiedMeasureDone: Int {
+        max(0, proxiedMeasureTotal - state.proxiedMeasuringNodeIds.count)
     }
 
     private var filtered: [Node] {
@@ -273,13 +329,18 @@ public struct NodesView: View {
 
     /// 复制到剪贴板（跨平台）。
     private func copyLink(_ text: String) {
-        #if canImport(AppKit)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #elseif canImport(UIKit)
-        UIPasteboard.general.string = text
-        #endif
+        copyToPasteboard(text)
     }
+}
+
+/// 复制到剪贴板（跨平台）—— NodesView / NodeRow 共用。
+private func copyToPasteboard(_ text: String) {
+    #if canImport(AppKit)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    #elseif canImport(UIKit)
+    UIPasteboard.general.string = text
+    #endif
 }
 
 private struct NodeRow: View {
@@ -309,6 +370,13 @@ private struct NodeRow: View {
                     .font(.caption.monospaced()).foregroundStyle(.secondary)
             }
             Spacer()
+            // 两个延迟维度并排：左「经代理」（VPN 开着时真实走节点测的全链路延迟）、
+            // 右「直连」（TCP 握手 RTT）。经代理列只在测过 / 测速中才占位。
+            if state.proxiedMeasuringNodeIds.contains(node.id) {
+                ProgressView().controlSize(.small)
+            } else if let pms = node.lastProxiedLatencyMs {
+                proxiedLatencyChip(pms)
+            }
             if state.measuringNodeIds.contains(node.id) {
                 ProgressView().controlSize(.small)
             } else {
@@ -331,6 +399,22 @@ private struct NodeRow: View {
             } label: {
                 Label("分享二维码", systemImage: "qrcode")
             }
+            Button {
+                if let link = NodeEncoder.shareLink(node) {
+                    copyToPasteboard(link)
+                    state.showToast("已复制分享链接")
+                }
+            } label: {
+                Label("复制分享链接", systemImage: "doc.on.doc")
+            }
+            Divider()
+            Button {
+                Task { await state.measureProxiedLatency(node) }
+            } label: {
+                Label(state.isVPNRunning ? "测经代理延迟" : "测经代理延迟（需 VPN 运行中）",
+                      systemImage: "point.3.connected.trianglepath.dotted")
+            }
+            .disabled(!state.isVPNRunning || state.proxiedMeasuringNodeIds.contains(node.id))
             Divider()
             Button(role: .destructive) {
                 state.removeNode(node)
@@ -379,9 +463,30 @@ private struct NodeRow: View {
         }
     }
 
+    /// 「经代理延迟」chip：icon 区分维度；阈值比直连宽（全链路含 TLS+HTTP，天然更长）。
+    private func proxiedLatencyChip(_ ms: Int) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .font(.system(size: 8))
+            Text("\(ms) ms")
+                .font(.caption.monospaced())
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(proxiedColor(for: ms).opacity(0.18))
+        .foregroundStyle(proxiedColor(for: ms))
+        .clipShape(Capsule())
+        .help("经代理延迟：真实通过该节点访问网站的全链路耗时")
+    }
+
     private func color(for ms: Int) -> Color {
         if ms < 200 { return .green }
         if ms < 500 { return .orange }
+        return .red
+    }
+
+    private func proxiedColor(for ms: Int) -> Color {
+        if ms < 600 { return .green }
+        if ms < 1500 { return .orange }
         return .red
     }
 }

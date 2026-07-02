@@ -43,13 +43,19 @@ public enum XrayConfigComposer {
     ///     global / direct 模式忽略 —— 全局/直连的语义就是不吃分流规则。
     ///   - hasFullGeoIP: 完整版 geoip.dat 是否就位（扩展检查 App Group 后传入）。
     ///     true 时外国 GEOIP 码的用户规则不再跳过（见 RoutingRuleConverter）。
+    ///   - metricsPort: 非 nil 时开启 xray 内置流量统计（stats + policy + metrics），
+    ///     在 127.0.0.1:metricsPort 起 expvar 服务（/debug/vars），扩展进程内自查
+    ///     per-outbound 流量拆分（proxy / direct / reject）。只监听 loopback。
+    ///     端口由扩展启动时向内核要（XrayCore.getFreePorts），避免写死端口被占用
+    ///     导致 xray 起不来。nil = 不开（默认，配置与旧版完全一致）。
     /// - Returns: 可以直接喂给 `XrayCore.run(configJSON:)` 的完整 xray JSON
     public static func compose(
         outboundsJSON: String,
         mode: ProxyMode,
         accessLogPath: String? = nil,
         userRules: [Rule] = [],
-        hasFullGeoIP: Bool = false
+        hasFullGeoIP: Bool = false,
+        metricsPort: Int? = nil
     ) throws -> String {
         guard let data = outboundsJSON.data(using: .utf8),
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -85,7 +91,7 @@ public enum XrayConfigComposer {
 
         // tun inbound：MTU 跟 PacketTunnelProvider 里 setTunnelNetworkSettings 保持一致。
         // sniffing 开启：让 xray 从 TLS SNI / HTTP Host 提取真实域名，便于按域名路由。
-        let inbounds: [[String: Any]] = [[
+        var inbounds: [[String: Any]] = [[
             "tag": "tun-in",
             "protocol": "tun",
             "settings": [
@@ -99,6 +105,28 @@ public enum XrayConfigComposer {
             ]
         ]]
 
+        var routing = buildRouting(mode: mode, userRules: userRules, hasFullGeoIP: hasFullGeoIP)
+
+        // xray 内置流量统计：metrics 的 expvar 服务经典接法（xray 文档同款）——
+        // 一个 loopback 上的 dokodemo-door inbound + 一条 inboundTag→"metrics" 的路由规则
+        //（metrics 段会注册一个同名 tag 的特殊 outbound handler）。规则插在最前：
+        // 它按 inboundTag 精确匹配不会误吞别的流量，但绝不能排在 catch-all 之后。
+        if let metricsPort {
+            inbounds.append([
+                "tag": "metrics-in",
+                "protocol": "dokodemo-door",
+                "listen": "127.0.0.1",
+                "port": metricsPort,
+                "settings": ["address": "127.0.0.1"] as [String: Any]
+            ])
+            var rules = (routing["rules"] as? [[String: Any]]) ?? []
+            rules.insert(
+                ["type": "field", "inboundTag": ["metrics-in"], "outboundTag": "metrics"],
+                at: 0
+            )
+            routing["rules"] = rules
+        }
+
         // 开了 access log，xray 会把每条连接（from src accepted net:host:port [in -> out]）
         // 追加写到这个文件；主 App 读出来解析成真实连接（AccessLogParser）。sniffing 已开，
         // 所以 host 是嗅探出的域名而非 IP。
@@ -107,11 +135,11 @@ public enum XrayConfigComposer {
             logSection["access"] = accessLogPath
         }
 
-        let config: [String: Any] = [
+        var config: [String: Any] = [
             "log": logSection,
             "inbounds": inbounds,
             "outbounds": outbounds,
-            "routing": buildRouting(mode: mode, userRules: userRules, hasFullGeoIP: hasFullGeoIP),
+            "routing": routing,
             "dns": buildDNS(mode: mode),
             // FakeDNS：给每个域名分配一个 198.18.x.x 假 IP。App 连这个假 IP → TUN → xray 靠
             // sniffing 的 fakedns 反查回真域名，于是 access log / 路由都拿到域名，**不依赖 TLS SNI**
@@ -122,6 +150,20 @@ public enum XrayConfigComposer {
                 ["ipPool": "fc00::/18", "poolSize": 65535] as [String: Any]
             ]
         ]
+
+        if metricsPort != nil {
+            // stats + policy：让 xray 给每个 outbound 记 uplink/downlink 计数器。
+            // 只开 outbound 侧（proxy/direct/reject 拆分要的就是它），inbound 侧
+            // TUN 层已有权威计数（traffic-stats.json），不重复记省一份计数器开销。
+            config["stats"] = [:] as [String: Any]
+            config["policy"] = [
+                "system": [
+                    "statsOutboundUplink": true,
+                    "statsOutboundDownlink": true
+                ] as [String: Any]
+            ]
+            config["metrics"] = ["tag": "metrics"]
+        }
 
         let out = try JSONSerialization.data(
             withJSONObject: config,

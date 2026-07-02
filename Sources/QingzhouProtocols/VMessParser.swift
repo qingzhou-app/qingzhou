@@ -45,8 +45,10 @@ enum VMessParser {
         let scy = stringValue(obj["scy"]) ?? "auto"
         let name = stringValue(obj["ps"]) ?? "\(host):\(port)"
 
+        // "v"（链接格式版本号）不进 parameters —— 它是 vmess:// 编码格式的元数据，
+        // 不是节点属性；NodeEncoder 导出时固定写 "v":"2"，两边约定一致 round-trip 才干净。
         var params: [String: String] = [:]
-        for key in ["net", "type", "host", "path", "tls", "sni", "alpn", "fp", "v"] {
+        for key in ["net", "type", "host", "path", "tls", "sni", "alpn", "fp"] {
             if let v = stringValue(obj[key]), !v.isEmpty {
                 params[key] = v
             }

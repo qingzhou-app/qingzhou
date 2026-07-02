@@ -282,6 +282,46 @@ final class XrayConfigComposerTests: XCTestCase {
                        "allowInsecure 必须从最终配置里彻底消失，否则这版 xray-core 起不来")
     }
 
+    // MARK: - xray 内置流量统计（metricsPort）
+
+    /// metricsPort 非 nil：stats + policy + metrics 三段齐活，metrics inbound 只听 loopback，
+    /// 且 inboundTag→metrics 的路由规则插在最前（不能被 catch-all 吞掉）。
+    func testComposeWithMetricsPortEnablesStats() throws {
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule, metricsPort: 18888))
+
+        XCTAssertNotNil(json["stats"])
+        XCTAssertEqual((json["metrics"] as? [String: Any])?["tag"] as? String, "metrics")
+        let policy = (json["policy"] as? [String: Any])?["system"] as? [String: Any]
+        XCTAssertEqual(policy?["statsOutboundUplink"] as? Bool, true)
+        XCTAssertEqual(policy?["statsOutboundDownlink"] as? Bool, true)
+
+        let inbounds = json["inbounds"] as! [[String: Any]]
+        let metricsIn = inbounds.first(where: { $0["tag"] as? String == "metrics-in" })
+        XCTAssertNotNil(metricsIn, "缺 metrics inbound")
+        XCTAssertEqual(metricsIn?["listen"] as? String, "127.0.0.1", "metrics 只能听 loopback")
+        XCTAssertEqual(metricsIn?["port"] as? Int, 18888)
+        XCTAssertEqual(metricsIn?["protocol"] as? String, "dokodemo-door")
+
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        let first = rules.first!
+        XCTAssertEqual(first["inboundTag"] as? [String], ["metrics-in"])
+        XCTAssertEqual(first["outboundTag"] as? String, "metrics")
+    }
+
+    /// 默认（nil）：配置与旧版完全一致 —— 不带 stats/policy/metrics，也没有第二个 inbound。
+    func testComposeWithoutMetricsPortKeepsLegacyShape() throws {
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .global))
+        XCTAssertNil(json["stats"])
+        XCTAssertNil(json["policy"])
+        XCTAssertNil(json["metrics"])
+        let inbounds = json["inbounds"] as! [[String: Any]]
+        XCTAssertEqual(inbounds.count, 1)
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertNil(rules.first?["inboundTag"], "没开 metrics 时不该有 inboundTag 规则")
+    }
+
     // MARK: - 错误路径
 
     func testComposeRejectsInvalidJSON() {

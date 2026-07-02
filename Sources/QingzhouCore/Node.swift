@@ -21,6 +21,11 @@ public struct Node: Identifiable, Codable, Sendable, Hashable {
     public var isExcluded: Bool           // 是否排除在自动择优外
     public var lastLatencyMs: Int?        // 最近一次测速延迟（毫秒），nil 表示未测或失败
     public var lastTestedAt: Date?
+    /// 最近一次「经代理延迟」（毫秒）：VPN 开启时由隧道扩展用 libXray Ping 起一个临时
+    /// xray 实例、真实走该节点发 HTTP 请求测得 —— 与 `lastLatencyMs`（直连 TCP 握手 RTT）
+    /// 是两个维度：直连快 ≠ 代理链路快。nil 表示未测或失败。
+    public var lastProxiedLatencyMs: Int?
+    public var lastProxiedTestedAt: Date?
     public var subscriptionId: UUID?      // 来自哪条订阅；nil 表示手动添加
 
     public init(
@@ -37,6 +42,8 @@ public struct Node: Identifiable, Codable, Sendable, Hashable {
         isExcluded: Bool = false,
         lastLatencyMs: Int? = nil,
         lastTestedAt: Date? = nil,
+        lastProxiedLatencyMs: Int? = nil,
+        lastProxiedTestedAt: Date? = nil,
         subscriptionId: UUID? = nil
     ) {
         self.id = id
@@ -52,6 +59,8 @@ public struct Node: Identifiable, Codable, Sendable, Hashable {
         self.isExcluded = isExcluded
         self.lastLatencyMs = lastLatencyMs
         self.lastTestedAt = lastTestedAt
+        self.lastProxiedLatencyMs = lastProxiedLatencyMs
+        self.lastProxiedTestedAt = lastProxiedTestedAt
         self.subscriptionId = subscriptionId
     }
 }

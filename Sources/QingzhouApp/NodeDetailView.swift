@@ -159,11 +159,41 @@ public struct NodeDetailView: View {
         Section("状态") {
             Toggle("排除（不参与自动择优）", isOn: $draft.isExcluded)
             if let ms = draft.lastLatencyMs {
-                LabeledContent("最近延迟", value: "\(ms) ms")
+                LabeledContent("直连延迟", value: "\(ms) ms")
             }
             if let t = draft.lastTestedAt {
                 LabeledContent("最近测速", value: t.formatted(date: .abbreviated, time: .shortened))
             }
+            if let pms = draft.lastProxiedLatencyMs {
+                LabeledContent("经代理延迟", value: "\(pms) ms")
+            } else if draft.lastProxiedTestedAt != nil {
+                LabeledContent("经代理延迟", value: "上次测试失败")
+            }
+            if let pt = draft.lastProxiedTestedAt {
+                LabeledContent("最近经代理测速", value: pt.formatted(date: .abbreviated, time: .shortened))
+            }
+            Button {
+                Task {
+                    if let ms = await state.measureProxiedLatency(draft) {
+                        draft.lastProxiedLatencyMs = ms
+                        draft.lastProxiedTestedAt = Date()
+                    } else if state.isVPNRunning {
+                        draft.lastProxiedLatencyMs = nil
+                        draft.lastProxiedTestedAt = Date()
+                    }
+                }
+            } label: {
+                if state.proxiedMeasuringNodeIds.contains(draft.id) {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("经代理测速中…")
+                    }
+                } else {
+                    Label(state.isVPNRunning ? "测经代理延迟" : "测经代理延迟（需 VPN 运行中）",
+                          systemImage: "point.3.connected.trianglepath.dotted")
+                }
+            }
+            .disabled(!state.isVPNRunning || state.proxiedMeasuringNodeIds.contains(draft.id))
         }
     }
 
