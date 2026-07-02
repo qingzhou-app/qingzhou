@@ -117,7 +117,7 @@ gomobile bind -v \
   -target=ios,iossimulator,macos \
   -ldflags='-s -w' \
   -tags='with_clash_api,with_quic,with_wireguard,with_utls,with_gvisor,with_dhcp,with_ech' \
-  -o ~/code/src/github.com/sbraveyoung/qingzhou/Frameworks/SingBox.xcframework \
+  -o ~/code/src/github.com/qingzhou-app/qingzhou/Frameworks/SingBox.xcframework \
   ./experimental/libbox
 ```
 
@@ -126,7 +126,7 @@ gomobile bind -v \
 ### B4. 验证产物
 
 ```bash
-cd ~/code/src/github.com/sbraveyoung/qingzhou
+cd ~/code/src/github.com/qingzhou-app/qingzhou
 ls -la Frameworks/SingBox.xcframework
 # 应该看到一个 ~80-120 MB 的目录，含 ios-arm64 / ios-arm64_x86_64-simulator / macos-arm64_x86_64 三个子目录
 ```

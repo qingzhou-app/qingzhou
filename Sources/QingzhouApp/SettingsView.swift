@@ -293,7 +293,7 @@ public struct SettingsView: View {
         Section("关于") {
             LabeledContent("App 版本", value: appVersion)
             LabeledContent("数据目录", value: dataDir).font(.caption.monospaced())
-            Link("GitHub 仓库", destination: URL(string: "https://github.com/sbraveyoung/qingzhou")!)
+            Link("GitHub 仓库", destination: URL(string: "https://github.com/qingzhou-app/qingzhou")!)
         }
     }
 

@@ -38,7 +38,7 @@
 >
 > App 代码 MIT 开源,你能看清它到底做了什么。名字取自"轻舟已过万重山" —— 轻盈地越过阻碍,而不必把阻碍画在脸上。
 >
-> 即将上架国际区 App Store。源码与进展:github.com/sbraveyoung/qingzhou
+> 即将上架国际区 App Store。源码与进展:github.com/qingzhou-app/qingzhou
 
 **English (~120 words):**
 > **Qingzhou — a network utility for people who care about privacy *and* craft.**
@@ -51,14 +51,14 @@
 > waveforms, per-domain analytics, auto latency-testing, hot-switch on node/mode change, and
 > Shortcuts/Siri toggles. MIT-licensed and auditable.
 >
-> Coming soon to the international App Store. Source: github.com/sbraveyoung/qingzhou
+> Coming soon to the international App Store. Source: github.com/qingzhou-app/qingzhou
 
 ---
 
 ## 4. 社交媒体 / 论坛 tagline
 
 - **Product Hunt**: Qingzhou — a native, zero-data-collection network utility for iOS & macOS. Bring your own nodes.
-- **Twitter/X**: 零数据收集 · 开源 · 原生 SwiftUI。你的节点,你的规则,什么都不离开设备。轻舟 → github.com/sbraveyoung/qingzhou
+- **Twitter/X**: 零数据收集 · 开源 · 原生 SwiftUI。你的节点,你的规则,什么都不离开设备。轻舟 → github.com/qingzhou-app/qingzhou
 - **Reddit (r/iOSProgramming 等)**: I built a native, open-source, zero-telemetry network utility for iOS/macOS with live traffic + per-domain analytics. BYO nodes.
 
 ---

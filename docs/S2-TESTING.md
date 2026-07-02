@@ -43,7 +43,7 @@ cd Apps
 ### 1. 生成 Xcode 工程
 
 ```bash
-cd /Users/sbraveyoung/code/src/github.com/sbraveyoung/qingzhou/Apps
+cd /Users/sbraveyoung/code/src/github.com/qingzhou-app/qingzhou/Apps
 xcodegen generate
 open Qingzhou.xcodeproj
 ```

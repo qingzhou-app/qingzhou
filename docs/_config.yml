@@ -4,11 +4,11 @@
 #   GitHub repo → Settings → Pages → Source: Deploy from a branch
 #   Branch: main, folder: /docs → Save
 # 第一次大约等 30 秒~1 分钟,Pages 上线后访问：
-#   https://sbraveyoung.github.io/qingzhou/
+#   https://qingzhou-app.github.io/qingzhou/
 
 title: 轻舟 / Qingzhou
 description: 跨平台 iOS / macOS 网络配置工具 — 节点订阅、路由规则、本机 VPN 客户端
-url: "https://sbraveyoung.github.io"
+url: "https://qingzhou-app.github.io"
 baseurl: "/qingzhou"
 
 # Cayman 是 GitHub 原生支持的几款主题之一,简洁、无任何外部依赖、中文渲染没问题

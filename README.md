@@ -25,7 +25,7 @@
 **零数据收集**。所有节点 / 订阅 / 规则只在你设备本地 (`Documents/VPN/state.json`),不上传任何服务器。
 不接第三方 SDK(Firebase / Analytics / Sentry 之类全部没有)。
 
-完整隐私政策见 [docs/PRIVACY.md](docs/PRIVACY.md) 或线上版 https://sbraveyoung.github.io/qingzhou/PRIVACY 。
+完整隐私政策见 [docs/PRIVACY.md](docs/PRIVACY.md) 或线上版 https://qingzhou-app.github.io/qingzhou/PRIVACY 。
 
 ## 平台
 
@@ -56,7 +56,7 @@
 ## 编译
 
 ```bash
-git clone https://github.com/sbraveyoung/qingzhou.git
+git clone https://github.com/qingzhou-app/qingzhou.git
 cd qingzhou
 
 # 第一步:构建 LibXray.xcframework(~10 分钟,只用做一次)
@@ -131,4 +131,4 @@ Sponsors who opt in will be credited below (anonymous by default).
 
 ## 反馈
 
-[GitHub Issues](https://github.com/sbraveyoung/qingzhou/issues)
+[GitHub Issues](https://github.com/qingzhou-app/qingzhou/issues)

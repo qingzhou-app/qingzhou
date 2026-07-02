@@ -77,7 +77,7 @@
 
 ### 九、联系方式
 
-GitHub Issues: https://github.com/sbraveyoung/qingzhou/issues
+GitHub Issues: https://github.com/qingzhou-app/qingzhou/issues
 
 ---
 
@@ -149,7 +149,7 @@ Updates to this policy will be committed to this repository and noted in the App
 
 ### 9. Contact
 
-GitHub Issues: https://github.com/sbraveyoung/qingzhou/issues
+GitHub Issues: https://github.com/qingzhou-app/qingzhou/issues
 
 ---
 
