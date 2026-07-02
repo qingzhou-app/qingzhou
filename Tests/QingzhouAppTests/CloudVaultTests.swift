@@ -2,6 +2,7 @@ import XCTest
 import QingzhouCore
 import QingzhouProtocols
 import QingzhouLogging
+import QingzhouSpeedTest
 @testable import QingzhouApp
 
 // MARK: - 纯决策逻辑
@@ -313,10 +314,29 @@ final class AppStateCloudVaultTests: XCTestCase {
         return CloudVaultStore(containerProvider: { dir })
     }
 
-    private func makeState(store: CloudVaultStore, localDirName: String = "local") -> AppState {
+    /// 可变的容器指针：模拟「先未登录 iCloud（容器 nil）→ 登录后容器出现」的重试场景。
+    private final class ContainerBox: @unchecked Sendable {
+        var url: URL?
+    }
+
+    /// 按 host 返回固定延迟的假探针 —— 恢复后会自动全量测速，测试不能真发 TCP 探测
+    /// （*.example.com 解析失败 + 5s 超时会把测试拖爆）。
+    private struct FakeLatencyProber: LatencyProber {
+        var latencyByHost: [String: Int] = [:]
+        func probe(_ url: URL, timeout: TimeInterval) async -> LatencyResult {
+            LatencyResult(url: url, latencyMs: latencyByHost[url.host ?? ""] ?? 42)
+        }
+    }
+
+    private func makeState(
+        store: CloudVaultStore,
+        localDirName: String = "local",
+        latencyByHost: [String: Int] = [:]
+    ) -> AppState {
         AppState(
             logger: Logger(capacity: 100, minimumLevel: .debug),
             persistence: Persistence(directory: tmpDir.appendingPathComponent(localDirName, isDirectory: true)),
+            nodeSelector: NodeSelector(prober: FakeLatencyProber(latencyByHost: latencyByHost)),
             cloudVault: store
         )
     }
@@ -440,10 +460,12 @@ final class AppStateCloudVaultTests: XCTestCase {
             "删空前的历史版本应在列表里")
 
         // 4) 选历史版本 → 确认恢复 → 节点找回。
-        //    严格按真机 UI 时序：alert 呈现时捕获 presenting 值 → dismiss 先清 offer →
+        //    严格按真机 UI 时序：选中先收 sheet（候选暂存）→ sheet onDismiss 才呈现 alert →
+        //    alert 呈现时捕获 presenting 值 → dismiss 先清 offer →
         //    恢复 Task 才执行（拿捕获值，不能再读 offer）
         state.chooseCloudRestoreCandidate(goodBackup)
         XCTAssertNil(state.cloudVersionOptions)
+        state.presentPendingCloudRestoreOffer()          // sheet onDismiss
         XCTAssertEqual(state.cloudRestoreOffer, goodBackup)
         let presented = state.cloudRestoreOffer          // alert 的 presenting 捕获
         state.declineCloudRestore()                      // dismiss：isPresented → false
@@ -481,8 +503,10 @@ final class AppStateCloudVaultTests: XCTestCase {
         XCTAssertEqual(good.header.contentSummary, "1 个订阅 · 30 个节点")
         XCTAssertNotNil(good.backupFileName, "1/30 那份是历史版本，不是主文档")
 
-        // 用户点选 → alert 呈现（presenting 捕获）→ 点「恢复」→ dismiss 先清 offer → Task 执行
+        // 用户点选 → sheet 收起（onDismiss 呈现 alert，presenting 捕获）→ 点「恢复」→
+        // dismiss 先清 offer → Task 执行
         state.chooseCloudRestoreCandidate(good)
+        state.presentPendingCloudRestoreOffer()          // sheet onDismiss
         let presented = state.cloudRestoreOffer
         state.declineCloudRestore()                      // 真机上先于恢复 Task 发生
         XCTAssertNil(state.cloudRestoreOffer, "复现前提：恢复执行时 offer 已被 dismiss 清空")
@@ -499,6 +523,220 @@ final class AppStateCloudVaultTests: XCTestCase {
         let persisted = state.persistence.loadSnapshot()
         XCTAssertEqual(persisted.nodes.count, 30)
         XCTAssertEqual(persisted.subscriptions.count, 1)
+    }
+
+    /// 真机事故 #3：版本选择 sheet 里点选 → 确认 alert 第一次弹出后自动消失，再来一遍才正常。
+    /// 根因：chooseCloudRestoreCandidate 在 sheet 开始收起的同一刻就置 cloudRestoreOffer，
+    /// alert 在 sheet dismiss 动画进行中呈现 → iOS 呈现层冲突把 alert 吞掉；且系统 dismiss
+    /// 走 isPresented binding 的 set(false) 顺手 declineCloudRestore() 清掉了 offer。
+    /// 修复后：候选暂存在 pendingCloudRestoreCandidate，sheet 的 onDismiss（呈现层已空闲）
+    /// 才经 presentPendingCloudRestoreOffer() 进确认弹窗。
+    func testChooseCandidateDefersConfirmAlertUntilSheetDismissed() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+        try await store.save(VaultDocument(revision: 2, modifiedAt: Date(), deviceName: "phone", snapshot: Persistence.Snapshot()))
+
+        let state = makeState(store: store)
+        await state.requestManualCloudRestore()
+        let options = try XCTUnwrap(state.cloudVersionOptions, "两个版本应弹选择列表")
+        let good = try XCTUnwrap(options.first(where: { $0.header.nodeCount == 1 }))
+
+        // 点选：sheet 收起、候选暂存 —— 此刻绝不能置 offer（alert 会被收起中的 sheet 吞掉）
+        state.chooseCloudRestoreCandidate(good)
+        XCTAssertNil(state.cloudVersionOptions, "选中后 sheet 应收起")
+        XCTAssertNil(state.cloudRestoreOffer, "sheet 收起动画期间不能呈现确认 alert（iOS 会吞掉）")
+        XCTAssertEqual(state.pendingCloudRestoreCandidate, good)
+
+        // sheet onDismiss（收起完成、呈现层空闲）→ 确认弹窗此刻才呈现
+        state.presentPendingCloudRestoreOffer()
+        XCTAssertEqual(state.cloudRestoreOffer, good)
+        XCTAssertNil(state.pendingCloudRestoreCandidate, "候选已交接给确认弹窗")
+    }
+
+    /// 版本选择 sheet 被取消（点「取消」/ 下滑关闭）→ onDismiss 照样触发，但没有暂存候选，
+    /// 不该凭空弹出确认弹窗。
+    func testCancelledVersionSheetPresentsNothingOnDismiss() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+        try await store.save(VaultDocument(revision: 2, modifiedAt: Date(), deviceName: "phone", snapshot: Persistence.Snapshot()))
+
+        let state = makeState(store: store)
+        await state.requestManualCloudRestore()
+        XCTAssertNotNil(state.cloudVersionOptions)
+
+        state.dismissCloudVersionOptions()       // 用户取消
+        state.presentPendingCloudRestoreOffer()  // sheet onDismiss 无条件触发
+        XCTAssertNil(state.cloudRestoreOffer, "没选任何版本，不该弹确认")
+        XCTAssertNil(state.pendingCloudRestoreCandidate)
+    }
+
+    /// 复验 #18：点「立即恢复」后 sheet 出现有可感知延迟 —— 旧实现在呈现 sheet 前同步
+    /// await 了 iCloud 读取。新实现：点击瞬间置 .loading（sheet 立即呈现），读取异步填充。
+    func testManualRestoreLoadsAsyncIntoAlreadyPresentedSheet() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+        try await store.save(VaultDocument(revision: 2, modifiedAt: Date(), deviceName: "phone", snapshot: Persistence.Snapshot()))
+
+        let state = makeState(store: store)
+        // .loading 中间态由 requestManualCloudRestore 第一行同步置入 —— sheet 的呈现
+        // 不等任何 await（这正是修复点）；读取完成后落到 .loaded。
+        await state.requestManualCloudRestore()
+        XCTAssertEqual(state.cloudVersionOptions?.count, 2)
+        if case .loaded = state.cloudVersionLoad {} else {
+            XCTFail("读取完成后应为 .loaded，实际 \(String(describing: state.cloudVersionLoad))")
+        }
+    }
+
+    /// 只有一份可恢复版本：也进列表（点一下即确认弹窗）—— sheet 已经在屏，
+    /// 不再走旧的「跳过 sheet 直进确认弹窗」路径（sheet 自动收起再弹 alert 很突兀）。
+    func testManualRestoreSingleVersionShowsInSheetList() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+
+        let state = makeState(store: store)
+        await state.requestManualCloudRestore()
+        XCTAssertEqual(state.cloudVersionOptions?.count, 1, "单版本也应显示在列表里")
+        XCTAssertNil(state.cloudRestoreOffer, "sheet 在屏时不能直接弹确认（会撞呈现层）")
+    }
+
+    /// iCloud 不可用 → 错误留在 sheet 内展示（不再是 toast 一闪而过）；
+    /// 「重试」在容器恢复后应加载出列表。
+    func testManualRestoreFailureShownInSheetAndRetryRecovers() async throws {
+        // 先往云端目录写好一份文档（供重试成功时读到）
+        let seeded = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await seeded.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+
+        // 容器先不可用（未登录 iCloud 的效果）
+        let box = ContainerBox()
+        let state = makeState(store: CloudVaultStore(containerProvider: { box.url }))
+        await state.requestManualCloudRestore()
+        guard case .failed(let message) = state.cloudVersionLoad else {
+            return XCTFail("不可用应变 .failed，实际 \(String(describing: state.cloudVersionLoad))")
+        }
+        XCTAssertTrue(message.contains("iCloud 不可用"), "错误文案要说清原因：\(message)")
+        XCTAssertNil(state.cloudVersionOptions)
+
+        // 用户登录了 iCloud → 点 sheet 内「重试」
+        box.url = cloudDir
+        await state.loadCloudVersionOptions()
+        XCTAssertEqual(state.cloudVersionOptions?.count, 1, "重试成功应填充列表")
+    }
+
+    /// 云端空空如也：错误信息也留在 sheet 内（iCloud 元数据可能还没同步完，重试常常就有了）。
+    func testManualRestoreEmptyCloudShowsFailedInSheet() async throws {
+        let state = makeState(store: makeStore())
+        await state.requestManualCloudRestore()
+        XCTAssertEqual(state.cloudVersionLoad, .failed("iCloud 上没有找到备份"))
+    }
+
+    /// 用户在读取完成前就关掉了 sheet → 迟到的结果必须被丢弃，不能把 sheet 复活。
+    func testDismissedSheetDropsLateLoadResult() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+
+        let state = makeState(store: store)
+        state.dismissCloudVersionOptions()       // sheet 不在屏（等价于读取中途被关掉）
+        await state.loadCloudVersionOptions()
+        XCTAssertNil(state.cloudVersionLoad, "sheet 已关，迟到的读取结果不能复活 sheet")
+        XCTAssertFalse(state.isCloudVersionSheetPresented)
+    }
+
+    /// 复验 #18 二次打回：sheet 弹出后立即自己沉下去。根因是 isPresented binding 依赖
+    /// 会中途变化的加载态（.loading→.loaded 落在呈现动画进行中，mid-transition 重渲染
+    /// 打断呈现簿记 / 重建 Form cell 的 hosting view）。修复后呈现开关是独立稳定 Bool：
+    /// **加载完成 / 失败都绝不能碰它**，只有显式关闭（取消 / 点选）才能关。
+    func testSheetPresenceStaysOnAcrossLoadTransitions() async throws {
+        // 成功路径：加载完成后呈现开关必须还开着
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+        let state = makeState(store: store)
+        XCTAssertFalse(state.isCloudVersionSheetPresented)
+        await state.requestManualCloudRestore()
+        XCTAssertTrue(state.isCloudVersionSheetPresented, ".loading→.loaded 不能收 sheet（弹出即沉的根因）")
+        XCTAssertNotNil(state.cloudVersionOptions)
+
+        // 失败路径（iCloud 不可用）：错误留在 sheet 内，呈现开关同样不能动
+        let state2 = makeState(
+            store: CloudVaultStore(containerProvider: { nil }), localDirName: "local2")
+        await state2.requestManualCloudRestore()
+        XCTAssertTrue(state2.isCloudVersionSheetPresented, ".loading→.failed 也不能收 sheet")
+        if case .failed = state2.cloudVersionLoad {} else {
+            XCTFail("应为 .failed，实际 \(String(describing: state2.cloudVersionLoad))")
+        }
+
+        // 只有显式关闭才关呈现开关
+        state.dismissCloudVersionOptions()
+        XCTAssertFalse(state.isCloudVersionSheetPresented)
+        XCTAssertNil(state.cloudVersionLoad)
+    }
+
+    /// 点选版本：呈现开关与内容态一起清（sheet 收起），候选暂存等 onDismiss 接棒。
+    func testChoosingCandidateClosesSheetPresence() async throws {
+        let store = makeStore()
+        var full = Persistence.Snapshot()
+        full.nodes = [try ProxyURLParser.parse("trojan://pw@a.example.com:443#n1")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "mac", snapshot: full))
+        let state = makeState(store: store)
+        await state.requestManualCloudRestore()
+        let option = try XCTUnwrap(state.cloudVersionOptions?.first)
+
+        state.chooseCloudRestoreCandidate(option)
+        XCTAssertFalse(state.isCloudVersionSheetPresented, "点选后 sheet 应收起")
+        XCTAssertNil(state.cloudVersionLoad)
+        XCTAssertEqual(state.pendingCloudRestoreCandidate, option)
+    }
+
+    /// 恢复成功后应与「首次添加订阅」一致：自动全量测速 + 择优选延迟最低节点，
+    /// 而不是留一列没有延迟数据的裸节点。
+    func testRestoreAutoMeasuresAndPicksBestNode() async throws {
+        let store = makeStore()
+        var snapshot = Persistence.Snapshot()
+        snapshot.nodes = [
+            try ProxyURLParser.parse("trojan://pw@slow.example.com:443#slow"),
+            try ProxyURLParser.parse("trojan://pw@fast.example.com:443#fast"),
+            try ProxyURLParser.parse("trojan://pw@mid.example.com:443#mid"),
+        ]
+        try await store.save(VaultDocument(revision: 3, modifiedAt: Date(), deviceName: "other", snapshot: snapshot))
+
+        let state = makeState(store: store, latencyByHost: [
+            "slow.example.com": 300, "fast.example.com": 20, "mid.example.com": 80,
+        ])
+        await state.runCloudVaultStartupCheck()
+        XCTAssertNotNil(state.cloudRestoreOffer)
+        await state.restoreFromCloud(candidate: state.cloudRestoreOffer)
+
+        XCTAssertTrue(state.nodes.allSatisfy { $0.lastLatencyMs != nil }, "恢复后应自动全量测速")
+        XCTAssertEqual(state.currentNode?.name, "fast", "应自动择优选中延迟最低的节点")
+        XCTAssertEqual(state.toast, "已为你选择延迟最优节点：fast")
+    }
+
+    /// 恢复出来是空快照（0 节点）→ 没什么可测的，不触发测速，toast 保持原样。
+    func testRestoreEmptySnapshotSkipsSpeedTest() async throws {
+        let store = makeStore()
+        try await store.save(VaultDocument(
+            revision: 1, modifiedAt: Date(), deviceName: "other", snapshot: Persistence.Snapshot()))
+
+        let state = makeState(store: store)
+        await state.runCloudVaultStartupCheck()
+        await state.restoreFromCloud(candidate: state.cloudRestoreOffer)
+
+        XCTAssertTrue(state.nodes.isEmpty)
+        XCTAssertNil(state.currentNodeId)
+        XCTAssertEqual(state.toast, "已从 iCloud 恢复（0 个订阅、0 个节点）")
     }
 
     /// 测速 / 自动择优只改瞬态字段（延迟 / 当前节点）→ 镜像应当被内容去重跳过，
@@ -566,16 +804,22 @@ final class AppStateCloudVaultTests: XCTestCase {
     }
 
     /// vault 不带瞬态字段 → 恢复时必须从本地回填，别把本机刚测的延迟 / 正在用的节点清掉。
+    /// 恢复后会自动全量测速：非排除节点随即拿到新鲜延迟（回填值被覆盖是预期）；
+    /// 排除节点不参与测速 —— 回填的本机数据必须原样保留（回填在新流水线下的可观察效果）。
     func testRestorePreservesLocalTransientData() async throws {
         let store = makeStore()
-        let state = makeState(store: store)
+        let state = makeState(store: store, latencyByHost: ["a.com": 55])
         try state.addNode(fromURL: "trojan://pw@a.com:443#n1")
+        try state.addNode(fromURL: "trojan://pw@b.com:443#n2")
+        state.nodes[1].isExcluded = true
         state.select(state.nodes[0])
         await state.cloudMirrorTask?.value
 
         // 本机测速结果 + 当前选择
         state.nodes[0].lastLatencyMs = 33
         state.nodes[0].lastTestedAt = Date()
+        state.nodes[1].lastLatencyMs = 33
+        state.nodes[1].lastTestedAt = Date()
         let localCurrentId = state.currentNodeId
 
         // 云端来了一份更新的规范化文档（同一批节点 + 新增规则），模拟另一台设备的编辑
@@ -589,8 +833,9 @@ final class AppStateCloudVaultTests: XCTestCase {
             header: VaultHeader(schemaVersion: 1, revision: 9, modifiedAt: Date(), deviceName: "other")))
 
         XCTAssertEqual(state.customRules.count, 1, "云端的实质变化要恢复进来")
-        XCTAssertEqual(state.nodes.first?.lastLatencyMs, 33, "本机延迟数据不应被恢复清掉")
-        XCTAssertNotNil(state.nodes.first?.lastTestedAt)
+        XCTAssertEqual(state.nodes[0].lastLatencyMs, 55, "非排除节点：恢复后自动重测，拿到新鲜延迟")
+        XCTAssertEqual(state.nodes[1].lastLatencyMs, 33, "排除节点不参与测速 —— 回填的本机延迟不应被清掉")
+        XCTAssertNotNil(state.nodes[1].lastTestedAt)
         XCTAssertEqual(state.currentNodeId, localCurrentId, "本机当前节点选择不应被恢复清掉")
     }
 

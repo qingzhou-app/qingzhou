@@ -119,6 +119,15 @@ public struct VaultRestoreCandidate: Equatable, Sendable, Identifiable {
     }
 }
 
+/// 「立即恢复」版本选择 sheet 的加载态。sheet 在点击的瞬间就呈现（.loading），
+/// iCloud 读取（列备份要 coordinated read、甚至触发下载，秒级）异步完成后再填充 ——
+/// 不能让用户对着按钮干等 sheet 出现。失败留在 sheet 内展示并可重试。
+public enum CloudVersionLoadState: Equatable, Sendable {
+    case loading
+    case failed(String)
+    case loaded([VaultRestoreCandidate])
+}
+
 /// 本机的同步进度（存本地 Persistence 目录，**不**上云 —— 每台设备各有一份）。
 public struct VaultSyncState: Codable, Sendable {
     /// 本机最后写入 / 恢复过的云端 revision。
