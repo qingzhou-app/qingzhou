@@ -13,6 +13,13 @@ import QingzhouLogging
 import UIKit
 #endif
 
+/// 顶层页面标识：iOS 是 TabView 的选中 tab，macOS 是侧栏选中项。
+/// 放进 AppState 是为了让任意视图能编程式切页 —— 首页空态的「去节点页选择」等
+/// 按钮要能跨 tab 跳转。不持久化（每次启动回到首页）。
+public enum AppSection: String, CaseIterable, Hashable, Sendable {
+    case home, nodes, subscriptions, rules, connections, logs, settings
+}
+
 /// 应用顶层状态容器。UI 通过 @Bindable 直接读 / 写；所有写入都会自动持久化。
 ///
 /// 设计要点：
@@ -23,6 +30,9 @@ import UIKit
 @MainActor
 @Observable
 public final class AppState {
+    /// 当前展示的顶层页面（iOS tab / macOS 侧栏选中项）。视图直接双向绑定；
+    /// 首页空态按钮等通过改它实现「跳到节点页 / 订阅页」。
+    public var activeSection: AppSection = .home
     public var subscriptions: [Subscription] = []
     public var nodes: [Node] = []
     public var currentNodeId: UUID?

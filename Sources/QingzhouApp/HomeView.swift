@@ -230,7 +230,9 @@ public struct HomeView: View {
                     }
                 }
             } else {
-                emptyCard(icon: "questionmark.circle", text: "未选择节点", cta: "去节点页选择")
+                emptyCard(icon: "questionmark.circle", text: "未选择节点", cta: "去节点页选择") {
+                    state.activeSection = .nodes
+                }
             }
         }
     }
@@ -238,7 +240,9 @@ public struct HomeView: View {
     private var subscriptionCard: some View {
         Card(title: "订阅", systemImage: "tray.full") {
             if state.subscriptions.isEmpty {
-                emptyCard(icon: "tray", text: "暂无订阅", cta: "去订阅页添加")
+                emptyCard(icon: "tray", text: "暂无订阅", cta: "去订阅页添加") {
+                    state.activeSection = .subscriptions
+                }
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(state.subscriptions.prefix(2)) { sub in
@@ -462,13 +466,20 @@ public struct HomeView: View {
         }
     }
 
-    private func emptyCard(icon: String, text: String, cta: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    /// 空态卡：说明文字 + 可点的 CTA 按钮（跳到对应页面）。
+    /// 早期 CTA 是灰色纯文字，新用户第一屏看到「去节点页选择」却无处可点 —— 死路。
+    private func emptyCard(icon: String, text: String, cta: String, action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: icon).foregroundStyle(.secondary)
                 Text(text).foregroundStyle(.secondary)
             }
-            Text(cta).font(.caption2).foregroundStyle(.secondary)
+            Button(action: action) {
+                Label(cta, systemImage: "arrow.right.circle.fill")
+                    .font(.caption)
+            }
+            // borderless：macOS 上带 bezel 的按钮在卡片里显得笨重，tint 色文字即可
+            .buttonStyle(.borderless)
         }
     }
 
