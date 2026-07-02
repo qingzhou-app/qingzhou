@@ -1050,6 +1050,33 @@ public final class AppState {
         return .added(domain: domain)
     }
 
+    /// 「可合并规则」建议的一键应用：删掉同域名的散规则，在第一条被替换规则的位置
+    /// 插入一条 `DOMAIN-SUFFIX,主域名,目标`（保住 first-match 优先级），
+    /// 走 addCustomRule 同款持久化 + 热切换路径。
+    /// 建议已过期（规则被删/被改）时不动任何东西，返回 false。
+    @discardableResult
+    public func applyRuleMerge(_ suggestion: RuleMergeSuggestion) -> Bool {
+        let ids = Set(suggestion.rules.map(\.id))
+        // 过期检查：建议里的规则必须**全部**还在且目标未变 —— 部分失效时语义已经变了
+        //（比如其中一条被改成了 REJECT），按过期处理让 UI 重新计算建议。
+        let live = customRules.filter { ids.contains($0.id) }
+        guard live.count == suggestion.rules.count,
+              live.allSatisfy({ $0.target == suggestion.target }),
+              let firstIdx = customRules.firstIndex(where: { ids.contains($0.id) }) else {
+            showToast("规则已变化，建议已过期")
+            return false
+        }
+        customRules.removeAll { ids.contains($0.id) }
+        let merged = Rule(type: .domainSuffix, value: suggestion.domain,
+                          target: suggestion.target, comment: "合并自 \(suggestion.rules.count) 条规则")
+        customRules.insert(merged, at: min(firstIdx, customRules.count))
+        logger.info("Merged \(suggestion.rules.count) rules into \(merged.lineForm)", category: "rules")
+        persist()
+        reapplyForRulesChange()
+        showToast("已合并 \(suggestion.rules.count) 条为 \(merged.lineForm)，规则已生效")
+        return true
+    }
+
     private static func quickRuleTargetName(_ t: RuleTarget) -> String {
         switch t {
         case .proxy:  return "代理"

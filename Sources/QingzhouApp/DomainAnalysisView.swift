@@ -43,12 +43,15 @@ public struct DomainAnalysisView: View {
         let digests = state.domainHistory.digests(excludingBareIPs: hideBareIPs)
             .compactMap { $0.filtered(byDomainKeyword: kw) }
         let suggestions = DomainAnalyzer.suggestions(stats)
+        // 「可合并规则」建议：来自自定义规则本身（与连接数据无关），跟随搜索关键字过滤
+        let merges = RuleConsolidator.mergeSuggestions(customRules: state.customRules)
+            .filter { kw.isEmpty || $0.domain.contains(kw) }
 
         List {
             Picker("", selection: $mode) {
                 Text("域名").tag(0)
                 Text("每日").tag(1)
-                Text("建议 \(suggestions.count)").tag(2)
+                Text("建议 \(suggestions.count + merges.count)").tag(2)
                 // 「应用」视角只在 macOS 有（iOS 拿不到进程归属，需 MDM 监督）。
                 // tab 常驻：来源 App 标注没开时不藏 tab，在 tab 内给开启指引 ——
                 // 藏起来用户不知道有这个能力（验收反馈定的交互）。
@@ -138,15 +141,23 @@ public struct DomainAnalysisView: View {
                     .foregroundStyle(.orange)
                     .listRowSeparator(.hidden)
                 }
-                if suggestions.isEmpty {
+                // 可合并规则：规则表自身的收敛建议，不依赖连接数据、不受代理模式影响（不弱化）
+                if !merges.isEmpty {
+                    Section("可合并的自定义规则") {
+                        ForEach(merges) { mergeRow($0) }
+                    }
+                }
+                if suggestions.isEmpty && merges.isEmpty {
                     if searching {
                         searchEmptyState
                     } else {
                         ContentUnavailableView("暂无优化建议", systemImage: "checkmark.seal",
                                                description: Text("当前域名的代理/直连分流看起来都合理。"))
                     }
-                } else {
-                    ForEach(suggestions) { suggestionRow($0).opacity(modeNotice == nil ? 1 : 0.55) }
+                } else if !suggestions.isEmpty {
+                    Section(merges.isEmpty ? "" : "分流建议") {
+                        ForEach(suggestions) { suggestionRow($0).opacity(modeNotice == nil ? 1 : 0.55) }
+                    }
                 }
             default:
                 #if os(macOS)
@@ -269,6 +280,32 @@ public struct DomainAnalysisView: View {
         }
     }
     #endif
+
+    /// 「可合并规则」行：列出将被替换的散规则 + 合并后形态，一键应用。
+    /// 合并是放宽匹配（DOMAIN 精确 → SUFFIX 覆盖子域名），文案里说明白，由用户决定。
+    private func mergeRow(_ m: RuleMergeSuggestion) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "arrow.triangle.merge").foregroundStyle(.purple).font(.title3)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(m.domain).font(.subheadline).fontWeight(.medium)
+                ForEach(m.rules) { r in
+                    Text(r.lineForm)
+                        .font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                Text("→ \(m.mergedLineForm)")
+                    .font(.caption2.monospaced()).foregroundStyle(.purple)
+                    .lineLimit(1).truncationMode(.middle)
+                Text("同域名 \(m.rules.count) 条同目标规则，可收敛为一条后缀规则（覆盖全部子域名）")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("合并") { state.applyRuleMerge(m) }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .padding(.vertical, 2)
+    }
 
     private func suggestionRow(_ s: RuleSuggestion) -> some View {
         let (icon, color) = badge(for: s.kind)
