@@ -49,11 +49,11 @@ public struct DomainAnalysisView: View {
                 Text("域名").tag(0)
                 Text("每日").tag(1)
                 Text("建议 \(suggestions.count)").tag(2)
-                // 「应用」视角只在 macOS 且「来源 App 标注」开启时有：来源 App 靠
-                // content filter 系统扩展标注，iOS 拿不到进程归属（需 MDM 监督），
-                // 扩展关着时也不给一个永远空的 tab。
+                // 「应用」视角只在 macOS 有（iOS 拿不到进程归属，需 MDM 监督）。
+                // tab 常驻：来源 App 标注没开时不藏 tab，在 tab 内给开启指引 ——
+                // 藏起来用户不知道有这个能力（验收反馈定的交互）。
                 #if os(macOS)
-                if appTabAvailable { Text("应用").tag(3) }
+                Text("应用").tag(3)
                 #endif
             }
             .pickerStyle(.segmented)
@@ -125,6 +125,19 @@ public struct DomainAnalysisView: View {
                     }
                 }
             case 2:
+                // 非规则模式：分流建议没有直接行动含义（全局=全走代理、直连=全直连都是
+                // 预期），顶部说明 + 条目弱化，但不吞掉数据 —— 连接可能是规则模式时期的
+                // 历史，建议的事实层仍有参考价值，切回规则模式立即恢复常态显示。
+                let modeNotice = Self.suggestionModeNotice(for: state.settings.proxyMode)
+                if let modeNotice {
+                    HStack(spacing: 4) {
+                        Image(systemName: "info.circle").imageScale(.small)
+                        Text(modeNotice)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .listRowSeparator(.hidden)
+                }
                 if suggestions.isEmpty {
                     if searching {
                         searchEmptyState
@@ -133,7 +146,7 @@ public struct DomainAnalysisView: View {
                                                description: Text("当前域名的代理/直连分流看起来都合理。"))
                     }
                 } else {
-                    ForEach(suggestions) { suggestionRow($0) }
+                    ForEach(suggestions) { suggestionRow($0).opacity(modeNotice == nil ? 1 : 0.55) }
                 }
             default:
                 #if os(macOS)
@@ -152,6 +165,7 @@ public struct DomainAnalysisView: View {
         #if os(macOS)
         .task {
             // 每次进入本页刷新一次开关状态（页面是 sheet，改设置必先关掉它，够新鲜）。
+            // tab 常驻，这个状态只用来区分「应用」tab 的两种空态：未开启 vs 已开启但暂无数据。
             // 必须走 loadFromPreferences 的版本 —— 冷启动后直接读 isEnabled 恒 false 会误判。
             // 注：不能写 `flag && (await …)`，&& 右侧是 autoclosure，不支持 await。
             if FeatureFlags.sourceAppLabeling {
@@ -159,10 +173,19 @@ public struct DomainAnalysisView: View {
             } else {
                 appTabAvailable = false
             }
-            // 正停在「应用」tab 时开关被关掉 → 切回「域名」，不留一个既无 tab 又无内容的悬空态
-            if !appTabAvailable && mode == 3 { mode = 0 }
         }
         #endif
+    }
+
+    /// 非规则模式下「建议」tab 顶部的说明（nil = 规则模式，不需要说明）。
+    /// 全局/直连模式不吃分流规则，「国内域名走了代理」这类建议是预期行为而非问题，
+    /// 不说明会误导（真实验收反馈）。static 纯函数，单测直接断言文案语义。
+    static func suggestionModeNotice(for mode: ProxyMode) -> String? {
+        switch mode {
+        case .rule:   return nil
+        case .global: return "全局模式下所有流量都走代理，分流建议仅供参考（切回规则模式后可按建议行动）"
+        case .direct: return "直连模式下所有流量都直连，分流建议仅供参考（切回规则模式后可按建议行动）"
+        }
     }
 
     // MARK: - rows
@@ -194,11 +217,23 @@ public struct DomainAnalysisView: View {
 
     @ViewBuilder private func appSections(_ connections: [Connection]) -> some View {
         let appStats = DomainAnalyzer.aggregateByApp(connections)
+        // 标注未开启：给开启指引（tab 常驻的代价是要在这里把「为什么没数据」说明白）。
+        // 优先级最高 —— 没开标注时搜索/数据状态都没意义。
+        // 不放「直达设置」按钮：设置页在主窗口导航里，本页是模态 sheet，跳转需要
+        // 关 sheet + 全局导航状态联动，改动面大于收益，指引文案已足够找到入口。
+        if !appTabAvailable {
+            ContentUnavailableView {
+                Label("来源 App 标注未开启", systemImage: "app.dashed")
+            } description: {
+                Text("开启后这里会按 App 分组展示各自访问的域名与连接次数。\n"
+                     + "入口：设置 → macOS 集成 → 启用来源 App 标注（首次需在系统设置批准扩展）。")
+            }
+        }
         // 搜索无结果时明确说「是搜索导致的空」——下面的「暂无来源 App 数据」会误导
-        if appStats.isEmpty && !keyword.trimmingCharacters(in: .whitespaces).isEmpty {
+        else if appStats.isEmpty && !keyword.trimmingCharacters(in: .whitespaces).isEmpty {
             searchEmptyState
         }
-        // 本 tab 只在扩展启用后可见，所以空态语义是「已启用但还没标注到」不是「去启用」
+        // 已开启但还没标注到任何连接（含完全没数据）
         else if appStats.allSatisfy({ $0.bundleID == nil }) {
             ContentUnavailableView {
                 Label("暂无来源 App 数据", systemImage: "app.badge.checkmark")
