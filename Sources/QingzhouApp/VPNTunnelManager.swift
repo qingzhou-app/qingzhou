@@ -101,11 +101,15 @@ public final class VPNTunnelManager {
     ///
     /// `rules`：用户规则（自定义 + 远程，自定义在前），压缩后内联进 providerConfiguration；
     /// 超大规则集降级为写 App Group 文件传路径（见 makeRulesPayload）。
+    ///
+    /// `autoStopSeconds`：定时自动关闭（防忘关），秒，0 = 不启用。倒计时在扩展进程里生效
+    /// —— iOS 主 App 随时会被系统回收，主 App 侧 Timer 靠不住。
     public func configure(
         node: Node,
         mode: ProxyMode,
         shareLink: String,
         rules: [Rule] = [],
+        autoStopSeconds: TimeInterval = 0,
         description: String = "VPN"
     ) async throws {
         if manager == nil { try await load() }
@@ -138,7 +142,10 @@ public final class VPNTunnelManager {
             "shareLink": shareLink,  // fallback 通道
             "nodeId": node.id.uuidString,
             "nodeName": node.name,
-            "proxyMode": mode.rawValue
+            "proxyMode": mode.rawValue,
+            // 定时自动关闭（秒，0=不启用）。**始终写**（而不是 >0 才写）——
+            // 覆盖掉上一次连接残留的旧值，否则关掉定时后旧配置还会到点断 VPN。
+            "autoStopSeconds": autoStopSeconds
         ]
         // 用户规则：压缩内联（Data 是合法 plist 类型）；超大时写 App Group 文件传路径。
         switch makeRulesPayload(rules) {
@@ -157,7 +164,13 @@ public final class VPNTunnelManager {
         // NEOnDemandRuleConnect 无 interfaceTypeMatch → 匹配所有网络（Wi-Fi / 蜂窝）。
         // ⚠️ 只在这里（=启动/连接路径）开启；用户主动关 VPN 时必须调 setOnDemandEnabled(false)
         // 并落盘，否则 On-Demand 会在 stop 后立刻把隧道拉回来，用户永远关不掉。
-        manager.isOnDemandEnabled = true
+        //
+        // ⚠️ 定时关闭（autoStopSeconds > 0）时**本次连接不开 On-Demand**：扩展到点
+        // cancelTunnelWithError(nil) 自停后，扩展进程改不了主 App 的 manager 配置，
+        // On-Demand 的 connect 规则会立刻把隧道拉回来 —— 定时就永远关不掉。
+        // 代价（如实告知）：定时会话期间若扩展异常退出（崩溃 / 内存超限），系统不会自动重连，
+        // 需要用户手动重开。定时本来就是「这段时间后我不要 VPN」，这个取舍成立。
+        manager.isOnDemandEnabled = autoStopSeconds <= 0
         manager.onDemandRules = [NEOnDemandRuleConnect()]
 
         do {
@@ -173,9 +186,6 @@ public final class VPNTunnelManager {
     /// 用于切代理模式 / 切节点时避免整条隧道 stop→start 造成的断连。
     /// 失败（拿不到会话 / 扩展报错 / 超时）时 throws —— 调用方据此回退到全量重启。
     public func reconfigureInPlace(node: Node, mode: ProxyMode, shareLink: String, rules: [Rule] = []) async throws {
-        guard let session = manager?.connection as? NETunnelProviderSession else {
-            throw TunnelError.managerNotLoaded
-        }
         var msg: [String: String] = [
             "command": "reconfigure",
             "nodeJSON": Self.encodeNodeJSON(node),
@@ -189,6 +199,29 @@ public final class VPNTunnelManager {
         case .file(let path):  msg["userRulesPath"] = path
         case .none:            break
         }
+        try await sendCommand(msg, timeoutSeconds: 5, timeoutLabel: "原地重配超时", failureLabel: "扩展重配失败")
+    }
+
+    /// 给**运行中**的扩展重设定时关闭（从现在起按新时长重新计时；0 = 取消定时）。
+    /// 不重启隧道、不断流。失败（拿不到会话 / 超时）throws —— 调用方降级为「下次连接生效」。
+    /// 注意：这只改扩展进程里的计时器；On-Demand 开关由调用方另行经 setOnDemandEnabled 落盘。
+    public func setAutoStop(seconds: TimeInterval) async throws {
+        try await sendCommand(
+            ["command": "setAutoStop", "seconds": String(seconds)],
+            timeoutSeconds: 3, timeoutLabel: "定时设置超时", failureLabel: "扩展定时设置失败"
+        )
+    }
+
+    /// 向运行中的扩展发一条 JSON 命令并等回执。超时 / 回执 {ok:false} 都抛错。
+    private func sendCommand(
+        _ msg: [String: String],
+        timeoutSeconds: Double,
+        timeoutLabel: String,
+        failureLabel: String
+    ) async throws {
+        guard let session = manager?.connection as? NETunnelProviderSession else {
+            throw TunnelError.managerNotLoaded
+        }
         let data = try JSONSerialization.data(withJSONObject: msg)
 
         let reply: Data? = try await withCheckedThrowingContinuation { cont in
@@ -201,21 +234,21 @@ public final class VPNTunnelManager {
                 once.run { cont.resume(throwing: error) }
                 return
             }
-            // 扩展崩了 / 卡住不回执时的兜底：超时即当失败，让上层回退到全量重启。
+            // 扩展崩了 / 卡住不回执时的兜底：超时即当失败，让上层走降级路径。
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(timeoutSeconds))
                 once.run { cont.resume(throwing: TunnelError.underlying(
                     NSError(domain: "qingzhou.tunnel", code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: "原地重配超时"]))) }
+                            userInfo: [NSLocalizedDescriptionKey: timeoutLabel]))) }
             }
         }
-        // 扩展回执：{ok: false, error: ...} 表示重配失败（xray 没起来），抛错让上层回退。
+        // 扩展回执：{ok: false, error: ...} 表示执行失败，抛错让上层降级。
         if let reply,
            let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
            obj["ok"] as? Bool == false {
             throw TunnelError.underlying(NSError(
                 domain: "qingzhou.tunnel", code: -2,
-                userInfo: [NSLocalizedDescriptionKey: (obj["error"] as? String) ?? "扩展重配失败"]))
+                userInfo: [NSLocalizedDescriptionKey: (obj["error"] as? String) ?? failureLabel]))
         }
     }
 

@@ -51,6 +51,10 @@ public struct Settings: Codable, Sendable {
     /// 把配置镜像到 iCloud Drive 文档容器（vault）—— 卸载不丢数据、换设备可恢复。
     /// 默认开：数据只进用户自己的 iCloud，重装即有「自动恢复」的体验。
     public var iCloudSyncEnabled: Bool
+    /// VPN 定时自动关闭（防忘关），秒。0 = 关闭（默认）。
+    /// 语义是「本次连接」的定时：到点断开后不自动重开，手动重开重新计时。
+    /// 倒计时在隧道扩展进程里生效 —— 主 App 被系统回收也照样到点关。
+    public var autoStopSeconds: TimeInterval
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -68,7 +72,8 @@ public struct Settings: Codable, Sendable {
         language: AppLanguage = .system,
         autoConnectOnAppLaunch: Bool = false,
         autoConnectApps: Set<String> = [],
-        iCloudSyncEnabled: Bool = true
+        iCloudSyncEnabled: Bool = true,
+        autoStopSeconds: TimeInterval = 0
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -86,6 +91,7 @@ public struct Settings: Codable, Sendable {
         self.autoConnectOnAppLaunch = autoConnectOnAppLaunch
         self.autoConnectApps = autoConnectApps
         self.iCloudSyncEnabled = iCloudSyncEnabled
+        self.autoStopSeconds = autoStopSeconds
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -98,6 +104,7 @@ public struct Settings: Codable, Sendable {
         case logLevel, theme, language
         case autoConnectOnAppLaunch, autoConnectApps
         case iCloudSyncEnabled
+        case autoStopSeconds
     }
 
     public init(from decoder: Decoder) throws {
@@ -119,5 +126,6 @@ public struct Settings: Codable, Sendable {
         self.autoConnectOnAppLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoConnectOnAppLaunch) ?? false
         self.autoConnectApps = try c.decodeIfPresent(Set<String>.self, forKey: .autoConnectApps) ?? []
         self.iCloudSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? true
+        self.autoStopSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoStopSeconds) ?? 0
     }
 }

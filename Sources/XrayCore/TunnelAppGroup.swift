@@ -100,6 +100,23 @@ public enum TunnelAppGroup {
         return url.path
     }
 
+    // MARK: - 隧道会话标记（Extension 写、主 App 读）—— 定时自动关闭的倒计时/自停标记
+
+    /// 主 App 侧用 AppGroupStorage.read(TunnelSessionInfo.self, from: "tunnel-session") 同名读取。
+    public static let tunnelSessionName = "tunnel-session"
+
+    private static var tunnelSessionURL: URL? {
+        containerURL?.appendingPathComponent(tunnelSessionName).appendingPathExtension("json")
+    }
+
+    /// Extension 调：把本次会话信息（TunnelSessionInfo 已 encode 成 JSON 串，ISO8601 日期）
+    /// 写进共享容器。主 App 用它推算「定时关闭」剩余时间、识别「已按定时自停」。
+    @discardableResult
+    public static func writeTunnelSession(_ json: String) -> Bool {
+        guard let url = tunnelSessionURL else { return false }
+        return (try? json.write(to: url, atomically: true, encoding: .utf8)) != nil
+    }
+
     // MARK: - FakeDNS 映射（Extension 写、主 App 读）
 
     /// 主 App 侧用 AppGroupStorage.read(from: "fakedns-map") 同名读取。

@@ -90,4 +90,29 @@ final class SettingsMigrationTests: XCTestCase {
         let reloaded = try JSONDecoder().decode(Settings.self, from: data)
         XCTAssertEqual(reloaded.autoMeasureIntervalSeconds, 15 * 60)
     }
+
+    // MARK: - autoStopSeconds（VPN 定时自动关闭）
+
+    /// 旧 JSON 没有 autoStopSeconds → 默认 0（关闭），解码不能崩。
+    func testDecodeWithoutAutoStopDefaultsToOff() throws {
+        let s = try decode("{}")
+        XCTAssertEqual(s.autoStopSeconds, 0)
+
+        let old = try decode("""
+        { "proxyMode": "global", "autoSelectTrigger": "off", "logLevel": "WARN" }
+        """)
+        XCTAssertEqual(old.autoStopSeconds, 0)
+    }
+
+    func testAutoStopRoundtrips() throws {
+        var s = Settings()
+        s.autoStopSeconds = 30 * 60
+        let data = try JSONEncoder().encode(s)
+        let reloaded = try JSONDecoder().decode(Settings.self, from: data)
+        XCTAssertEqual(reloaded.autoStopSeconds, 30 * 60)
+    }
+
+    func testAutoStopDefaultIsOff() {
+        XCTAssertEqual(Settings().autoStopSeconds, 0)
+    }
 }
