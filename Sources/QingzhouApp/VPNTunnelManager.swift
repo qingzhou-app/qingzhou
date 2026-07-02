@@ -141,6 +141,14 @@ public final class VPNTunnelManager {
         manager.localizedDescription = description
         manager.isEnabled = true
 
+        // On-Demand：让隧道在 App 被用户从后台划掉 / 进程被系统回收后，仍由系统独立保持并
+        // 自动重连（NEPacketTunnelProvider 本就是独立进程，不该随主 App 生死）。
+        // NEOnDemandRuleConnect 无 interfaceTypeMatch → 匹配所有网络（Wi-Fi / 蜂窝）。
+        // ⚠️ 只在这里（=启动/连接路径）开启；用户主动关 VPN 时必须调 setOnDemandEnabled(false)
+        // 并落盘，否则 On-Demand 会在 stop 后立刻把隧道拉回来，用户永远关不掉。
+        manager.isOnDemandEnabled = true
+        manager.onDemandRules = [NEOnDemandRuleConnect()]
+
         do {
             try await manager.saveToPreferences()
             try await manager.loadFromPreferences()  // 重读，否则 connection 是旧的
@@ -190,6 +198,24 @@ public final class VPNTunnelManager {
     public func stop() {
         manager?.connection.stopVPNTunnel()
         logger?.info("Tunnel stop requested", category: "tunnel")
+    }
+
+    /// 开 / 关 On-Demand 并落盘。
+    ///
+    /// **用户主动关 VPN 前必须先 `setOnDemandEnabled(false)`** —— 否则 On-Demand 的
+    /// connect 规则会在 `stop()` 之后立刻把隧道重连回来，用户永远关不掉。
+    /// 落盘（saveToPreferences）后重读，保持 connection 引用最新。
+    public func setOnDemandEnabled(_ enabled: Bool) async throws {
+        if manager == nil { try await load() }
+        guard let manager = manager else { throw TunnelError.managerNotLoaded }
+        manager.isOnDemandEnabled = enabled
+        do {
+            try await manager.saveToPreferences()
+            try await manager.loadFromPreferences()
+            logger?.info("On-Demand \(enabled ? "enabled" : "disabled")", category: "tunnel")
+        } catch let error as NSError {
+            throw Self.translate(error)
+        }
     }
 
     public var status: NEVPNStatus { manager?.connection.status ?? .invalid }
