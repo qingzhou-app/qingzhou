@@ -35,22 +35,41 @@ public struct TCPConnectLatencyProber: LatencyProber {
         else {
             return LatencyResult(url: url, latencyMs: nil, errorDescription: "invalid host:port")
         }
-        return await Self.tcpConnect(host: host, port: port, url: url, timeout: timeout)
+        // 关键：节点延迟必须测「直连 → 目标节点」，绝不能走当前生效的轻舟 VPN。
+        // VPN 开启时系统默认路由是 utun，普通 socket 的流量会被隧道捕获、经当前代理节点转发，
+        // 测出来的是「当前节点 → 目标节点」而非直连延迟，节点排序就错了。
+        // 这里在 NWParameters 上禁掉 VPN 接口（utun 在 Network.framework 里归类为 .other），
+        // 强制走 Wi-Fi / 有线 / 蜂窝等物理接口，从而绕过隧道。
+        let constrained = NWParameters.tcp
+        constrained.prohibitedInterfaceTypes = [.other]
+        let result = await Self.tcpConnect(host: host, port: port, url: url, timeout: timeout, parameters: constrained)
+
+        // 安全兜底：只有当受约束的连接「压根建立不起来」（例如没有任何物理接口满足约束、
+        // 或该约束在当前系统上不生效导致 .failed）才降级为不加约束的普通探针，
+        // 保证永不崩溃、总能返回一个 LatencyResult。
+        // 真正的 timeout 保持原样返回 —— 若某节点直连本就不可达，不能用代理转发的结果去掩盖它，
+        // 否则排序又会被污染。
+        if result.latencyMs == nil, result.errorDescription != "timeout" {
+            return await Self.tcpConnect(host: host, port: port, url: url, timeout: timeout, parameters: .tcp)
+        }
+        return result
     }
 
     /// NWConnection 异步 + completion 风格的 callback —— 包成 async：用一个 box 守 didResume 避免
     /// 双 resume（连接 ready / failed / timeout 三路都可能触发 cont.resume）。
     /// 所有 callback 都在同一个 dispatch queue 上跑，串行执行，不需要额外加锁。
+    /// `parameters` 决定走哪个网络接口 —— 传入禁掉 VPN 的参数即可绕过 utun 直连。
     private static func tcpConnect(
         host: String,
         port: NWEndpoint.Port,
         url: URL,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        parameters: NWParameters
     ) async -> LatencyResult {
         final class Box: @unchecked Sendable { var done = false }
         let box = Box()
 
-        let conn = NWConnection(host: NWEndpoint.Host(host), port: port, using: .tcp)
+        let conn = NWConnection(host: NWEndpoint.Host(host), port: port, using: parameters)
         let queue = DispatchQueue(label: "vpn.tcp-probe", qos: .userInitiated)
         let start = DispatchTime.now()
 
