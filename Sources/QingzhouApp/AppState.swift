@@ -34,6 +34,11 @@ public final class AppState {
     /// 正在测速的节点 id 集合 —— UI 据此在对应行显示旋转 loading。
     public var measuringNodeIds: Set<UUID> = []
     public var isVPNRunning: Bool = false
+    /// 热切换窗口标志：VPN 运行中切节点/模式触发全量重启（stop→start）期间为 true。
+    /// UI 用它把开关滑到"关"、显示"切换中…"——跟真实断流窗口一致，不做假动画。
+    /// 不翻转 isVPNRunning：那个承载"用户意图上 VPN 是开的"，被 reapply 入口 guard
+    /// 和 NetworkInfoService（公网 IP 写哪栏）依赖。internal(set) 供 @testable 测试写入。
+    public internal(set) var isSwitchingTunnel: Bool = false
     /// VPN 启停最近一次错误（拿不到 entitlement / 配置失败等）。UI 用 alert 展示。
     public var tunnelError: String?
     /// 当前 xray-core 版本。由 app 入口注入（QingzhouApp 库本身不依赖 XrayCore，避免拖进 380MB xcframework）。
@@ -267,9 +272,10 @@ public final class AppState {
     // MARK: - VPN 隧道
 
     /// 给 UI Toggle 用的 Binding：set 时异步启停 tunnel，并把 isVPNRunning 同步成实际状态。
+    /// get 在热切换窗口内返回 false —— 开关跟真实隧道状态走（切换期间确实断着）。
     public var vpnRunningBinding: Binding<Bool> {
         Binding(
-            get: { self.isVPNRunning },
+            get: { self.isVPNRunning && !self.isSwitchingTunnel },
             set: { newValue in
                 Task { @MainActor in
                     if newValue {

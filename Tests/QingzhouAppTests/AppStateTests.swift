@@ -234,4 +234,32 @@ final class AppStateTests: XCTestCase {
         state.stopSchedulers()
         // 不 crash 即可；任务取消是 happy path
     }
+
+    // MARK: - 隧道热切换的开关显示
+
+    func testSwitchingTunnelDefaultsFalse() {
+        let state = makeState()
+        XCTAssertFalse(state.isSwitchingTunnel)
+    }
+
+    func testVPNToggleShowsOffWhileSwitching() {
+        let state = makeState()
+        state.isVPNRunning = true
+        XCTAssertTrue(state.vpnRunningBinding.wrappedValue)
+
+        // 热切换窗口内：开关显示"关"（真实隧道确实断着）
+        state.isSwitchingTunnel = true
+        XCTAssertFalse(state.vpnRunningBinding.wrappedValue)
+
+        // 切换结束：滑回"开"
+        state.isSwitchingTunnel = false
+        XCTAssertTrue(state.vpnRunningBinding.wrappedValue)
+    }
+
+    func testVPNToggleStaysOffWhenNotRunningRegardlessOfSwitching() {
+        let state = makeState()
+        state.isVPNRunning = false
+        state.isSwitchingTunnel = true
+        XCTAssertFalse(state.vpnRunningBinding.wrappedValue)
+    }
 }
