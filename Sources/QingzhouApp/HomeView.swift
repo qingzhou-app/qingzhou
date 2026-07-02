@@ -112,27 +112,32 @@ public struct HomeView: View {
     private struct TunnelToggleStyle: ToggleStyle {
         var isSwitching: Bool
 
-        private static let trackWidth: CGFloat = 46
-        private static let trackHeight: CGFloat = 28
+        // 尺寸对齐各平台原生 Switch：macOS 的 NSSwitch 明显小于 iOS 的 UISwitch。
+        #if os(macOS)
+        private static let trackWidth: CGFloat = 38
+        private static let trackHeight: CGFloat = 22
+        #else
+        private static let trackWidth: CGFloat = 51
+        private static let trackHeight: CGFloat = 31
+        #endif
 
         func makeBody(configuration: Configuration) -> some View {
             let track: Color = isSwitching ? Color.orange.opacity(0.6)
-                : (configuration.isOn ? .green : Color.secondary.opacity(0.35))
-            Button {
-                configuration.isOn.toggle()
-            } label: {
-                ZStack(alignment: .leading) {
-                    Capsule().fill(track)
-                        .frame(width: Self.trackWidth, height: Self.trackHeight)
-                    Circle()
-                        .fill(.white)
-                        .frame(width: Self.trackHeight - 4, height: Self.trackHeight - 4)
-                        .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
-                        .padding(2)
-                        .offset(x: configuration.isOn ? Self.trackWidth - Self.trackHeight : 0)
-                }
+                : (configuration.isOn ? .green : Color.secondary.opacity(0.3))
+            // 不用 Button 承载：macOS 上 Button 自带 bezel / 焦点环，会在开关四周画出一圈框。
+            // 直接对形状挂 tap 手势，视觉上只剩轨道和圆钮。
+            ZStack(alignment: .leading) {
+                Capsule().fill(track)
+                    .frame(width: Self.trackWidth, height: Self.trackHeight)
+                Circle()
+                    .fill(.white)
+                    .frame(width: Self.trackHeight - 4, height: Self.trackHeight - 4)
+                    .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+                    .padding(2)
+                    .offset(x: configuration.isOn ? Self.trackWidth - Self.trackHeight : 0)
             }
-            .buttonStyle(.plain)
+            .contentShape(Capsule())
+            .onTapGesture { configuration.isOn.toggle() }
         }
     }
 
