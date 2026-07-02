@@ -129,6 +129,73 @@ final class XrayConfigComposerTests: XCTestCase {
         XCTAssertNotNil(alidns)
     }
 
+    // MARK: - 用户规则注入（自定义 + 远程规则真正生效的关键）
+
+    /// rule 模式：用户规则必须插在「DNS 拦截之后、内置 geosite/geoip 规则之前」——
+    /// xray 按序 first-match，这个位置 = 用户规则优先于内置规则，但不破坏 fakedns。
+    func testRuleModeInsertsUserRulesBeforeBuiltins() throws {
+        let userRules = [
+            Rule(type: .domainSuffix, value: "example.com", target: .reject),
+            Rule(type: .ipCIDR, value: "1.2.3.0/24", target: .direct)
+        ]
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule, userRules: userRules))
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+
+        // 第一条仍是 DNS 拦截（fakedns 的命脉）
+        XCTAssertEqual(rules[0]["outboundTag"] as? String, "dns-out")
+        // 紧随其后是用户规则，保持传入顺序
+        XCTAssertEqual(rules[1]["domain"] as? [String], ["domain:example.com"])
+        XCTAssertEqual(rules[1]["outboundTag"] as? String, "reject")
+        XCTAssertEqual(rules[2]["ip"] as? [String], ["1.2.3.0/24"])
+        XCTAssertEqual(rules[2]["outboundTag"] as? String, "direct")
+        // 内置规则在用户规则之后
+        let privateIdx = rules.firstIndex { ($0["ip"] as? [String])?.contains("geoip:private") ?? false }
+        XCTAssertNotNil(privateIdx)
+        XCTAssertGreaterThan(privateIdx!, 2, "内置规则必须排在所有用户规则之后")
+    }
+
+    /// global 模式维持现状：全局代理不吃分流规则（与主流客户端语义一致、行为可预期）。
+    func testGlobalModeIgnoresUserRules() throws {
+        let userRules = [Rule(type: .domainSuffix, value: "example.com", target: .reject)]
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .global, userRules: userRules))
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertFalse(rules.contains { ($0["domain"] as? [String])?.contains("domain:example.com") ?? false })
+    }
+
+    func testDirectModeIgnoresUserRules() throws {
+        let userRules = [Rule(type: .domainSuffix, value: "example.com", target: .proxy)]
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .direct, userRules: userRules))
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertFalse(rules.contains { ($0["domain"] as? [String]) != nil })
+    }
+
+    /// 用户 FINAL 规则覆盖 rule 模式内置兜底出口（"其余走代理" → 用户指定的出口）。
+    func testRuleModeUserFinalOverridesCatchAll() throws {
+        let userRules = [Rule(type: .final, value: "", target: .direct)]
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule, userRules: userRules))
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        let last = rules.last!
+        XCTAssertEqual(last["network"] as? String, "tcp,udp")
+        XCTAssertEqual(last["outboundTag"] as? String, "direct",
+                       "FINAL,DIRECT 应把内置 catch-all 的出口从 proxy 改成 direct")
+    }
+
+    /// 空用户规则集 = 现状不变（回归保护）。
+    func testRuleModeEmptyUserRulesKeepsBuiltinLayout() throws {
+        let withEmpty = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule, userRules: []))
+        let without = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule))
+        let r1 = (withEmpty["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        let r2 = (without["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertEqual(r1.count, r2.count)
+        XCTAssertEqual(r1.last?["outboundTag"] as? String, "proxy")
+    }
+
     // MARK: - 只有一个 tun inbound（本地代理已移除）
 
     func testComposeHasOnlyTunInbound() throws {

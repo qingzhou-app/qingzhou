@@ -38,8 +38,12 @@ extension AppState {
         let fetcher = RemoteRulesFetcher(logger: logger)
         do {
             let rules = try await fetcher.fetch(url)
+            // 内容级比较（lineForm）：每次 fetch 都会生成新 UUID，直接比 [Rule] 永远"变了"，
+            // 会让每次定时刷新都重启隧道。只有规则内容真变了才热切换。
+            let changed = rules.map(\.lineForm) != remoteRules.map(\.lineForm)
             remoteRules = rules
             remoteRulesStatus = .success(at: Date(), count: rules.count)
+            if changed { reapplyForRulesChange() }
         } catch {
             remoteRulesStatus = .failure(message: "\(error)")
             logger.error("Refresh remote rules failed: \(error)", category: "rules")

@@ -38,11 +38,15 @@ public enum XrayConfigComposer {
     /// - Parameters:
     ///   - outboundsJSON: libXray.convertShareLinks 的返回（顶层是 {"outbounds":[...]}）
     ///   - mode: 用户选的代理模式（global / rule / direct）
+    ///   - userRules: 用户规则（自定义 + 远程，**自定义在前**）。只在 rule 模式生效，
+    ///     插在内置 geosite/geoip 规则之前（xray 按序 first-match → 用户规则优先）。
+    ///     global / direct 模式忽略 —— 全局/直连的语义就是不吃分流规则。
     /// - Returns: 可以直接喂给 `XrayCore.run(configJSON:)` 的完整 xray JSON
     public static func compose(
         outboundsJSON: String,
         mode: ProxyMode,
-        accessLogPath: String? = nil
+        accessLogPath: String? = nil,
+        userRules: [Rule] = []
     ) throws -> String {
         guard let data = outboundsJSON.data(using: .utf8),
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -104,7 +108,7 @@ public enum XrayConfigComposer {
             "log": logSection,
             "inbounds": inbounds,
             "outbounds": outbounds,
-            "routing": buildRouting(mode: mode),
+            "routing": buildRouting(mode: mode, userRules: userRules),
             "dns": buildDNS(mode: mode),
             // FakeDNS：给每个域名分配一个 198.18.x.x 假 IP。App 连这个假 IP → TUN → xray 靠
             // sniffing 的 fakedns 反查回真域名，于是 access log / 路由都拿到域名，**不依赖 TLS SNI**
@@ -149,7 +153,7 @@ public enum XrayConfigComposer {
 
     // MARK: - Routing
 
-    private static func buildRouting(mode: ProxyMode) -> [String: Any] {
+    static func buildRouting(mode: ProxyMode, userRules: [Rule] = []) -> [String: Any] {
         switch mode {
         case .global:
             // 全局模式特意不引用 geoip / geosite，这样即使 geo .dat 文件加载失败
@@ -168,23 +172,27 @@ public enum XrayConfigComposer {
                 ]
             ]
         case .rule:
-            return [
-                "domainStrategy": "IPIfNonMatch",
-                "rules": [
-                    // DNS 查询 → dns-out（fakedns 处理），必须在最前
-                    ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"],
-                    // LAN
-                    ["type": "field", "ip": ["geoip:private"], "outboundTag": "direct"],
-                    // 中国 IP 段直连
-                    ["type": "field", "ip": ["geoip:cn"], "outboundTag": "direct"],
-                    // 中国域名直连
-                    ["type": "field", "domain": ["geosite:cn"], "outboundTag": "direct"],
-                    // 广告 / 隐私 / 恶意域名拒绝（geosite 自带分类）
-                    ["type": "field", "domain": ["geosite:category-ads-all"], "outboundTag": "reject"],
-                    // 其余走代理
-                    ["type": "field", "network": "tcp,udp", "outboundTag": "proxy"]
-                ]
+            var rules: [[String: Any]] = [
+                // DNS 查询 → dns-out（fakedns 处理），必须在最前 —— 用户规则也不能插到它前面，
+                // 否则 DOMAIN 类规则命中 DNS 包本身，fakedns 永远不触发、按域名路由全失效。
+                ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"]
             ]
+            // 用户规则（自定义 + 远程，自定义在前）优先于内置规则：xray 按序 first-match。
+            rules += RoutingRuleConverter.xrayRules(from: userRules)
+            rules += [
+                // LAN
+                ["type": "field", "ip": ["geoip:private"], "outboundTag": "direct"],
+                // 中国 IP 段直连
+                ["type": "field", "ip": ["geoip:cn"], "outboundTag": "direct"],
+                // 中国域名直连
+                ["type": "field", "domain": ["geosite:cn"], "outboundTag": "direct"],
+                // 广告 / 隐私 / 恶意域名拒绝（geosite 自带分类）
+                ["type": "field", "domain": ["geosite:category-ads-all"], "outboundTag": "reject"],
+                // 其余走代理；用户写了 FINAL 规则时用它的出口覆盖（FINAL = 兜底，不是普通规则）
+                ["type": "field", "network": "tcp,udp",
+                 "outboundTag": RoutingRuleConverter.finalOutboundTag(from: userRules) ?? "proxy"]
+            ]
+            return ["domainStrategy": "IPIfNonMatch", "rules": rules]
         case .direct:
             return [
                 "domainStrategy": "AsIs",

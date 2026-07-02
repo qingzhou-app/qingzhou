@@ -419,6 +419,8 @@ public final class AppState {
         }
         applySettingsSideEffects()
         persistence.saveSnapshotAsync(currentSnapshot())
+        // 恢复替换了节点 / 模式 / 规则 —— VPN 在跑就热切换到恢复后的配置（没跑时内部 guard 直接返回）
+        Task { await reapplyRunningTunnel() }
         let now = Date()
         logger.info("Restored from iCloud vault rev \(document.revision) (\(document.deviceName))", category: "cloud")
         showToast("已从 iCloud 恢复（\(snapshot.subscriptions.count) 个订阅、\(snapshot.nodes.count) 个节点）")
@@ -681,6 +683,7 @@ public final class AppState {
                 node: node,
                 mode: settings.proxyMode,
                 shareLink: shareLink,
+                rules: effectiveUserRules,
                 description: "轻舟 · \(node.name)"
             )
             try await tunnelManager.start()
@@ -762,6 +765,7 @@ public final class AppState {
                 node: node,
                 mode: settings.proxyMode,
                 shareLink: shareLink,
+                rules: effectiveUserRules,
                 description: "轻舟 · \(node.name)"
             )
             tunnelManager.stop()
@@ -939,15 +943,29 @@ public final class AppState {
 
     // MARK: - 规则
 
+    /// 进入 xray routing 的用户规则全集：**自定义在前 = 自定义优先于远程**
+    /// （xray routing.rules 按序 first-match）。
+    public var effectiveUserRules: [Rule] { customRules + remoteRules }
+
     public func addCustomRule(_ rule: Rule) {
         customRules.append(rule)
         logger.info("Added custom rule \(rule.lineForm)", category: "rules")
         persist()
+        reapplyForRulesChange()
     }
 
     public func removeCustomRule(_ rule: Rule) {
         customRules.removeAll { $0.id == rule.id }
         persist()
+        reapplyForRulesChange()
+    }
+
+    /// 规则集变了：VPN 在跑且是 rule 模式时热切换，让新规则立即对真实流量生效。
+    /// global / direct 模式不吃规则，改规则不值得为此断流重启隧道。
+    func reapplyForRulesChange() {
+        guard settings.proxyMode == .rule else { return }
+        // 没跑时 reapplyRunningTunnel 内部 guard 直接返回
+        Task { await reapplyRunningTunnel() }
     }
 
     public func currentRuleEngine() -> RuleEngine {
