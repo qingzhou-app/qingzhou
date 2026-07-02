@@ -81,8 +81,9 @@ struct VPNMacApp: App {
             StatusBarMenu(state: state)
                 .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
         } label: {
-            // 已连接时用满格三角，断开时用空心三角
-            Image(systemName: state.isVPNRunning ? "triangle.fill" : "triangle")
+            // 独立 View 才能建立 @Observable 观察 —— 在这个 Scene 闭包里直接读 state
+            // 不会触发重绘（状态变了图标不更新的历史 bug）。见 StatusBarIcon 注释。
+            StatusBarIcon(state: state)
         }
         .menuBarExtraStyle(.menu)
     }
