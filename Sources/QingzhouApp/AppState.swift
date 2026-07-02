@@ -1157,11 +1157,15 @@ public final class AppState {
             if let map = AppGroupStorage.read([String: String].self, from: "fakedns-map") {
                 fakeDNSMap = map
             }
+            // 核心摄入永远先跑 —— 来源 App 标注只是可选增强，它的 XPC 绝不能阻塞连接列表。
+            // （踩过的坑：filter 扩展关闭时 XPC await 悬死，循环卡在第一轮，连接页恒空。
+            //   ⚠️ merge 时别把 ingestAccessLog 挪回 XPC 之后，这个顺序丢过一次。）
+            ingestAccessLog()
             // 回翻：连接常在 map 落盘（appex 每秒才写一次）之前就被 ingest，只在解析那刻
             // 查一次会让这批连接永远顶着裸 IP（按域名搜不到、开「忽略 IP」时整行被藏）。
             backfillDomainNames()
             #if os(macOS)
-            // 来源 App 标注暂时搁置（见 FeatureFlags.sourceAppLabeling）。开启时才走 XPC + 回填。
+            // 来源 App 标注开启时才走 XPC + 回填（FilterControlClient 带 2 秒超时兜底）。
             if FeatureFlags.sourceAppLabeling {
                 // content filter 扩展（root）经 XPC 提供端口→App 映射；没启用/连不上则保持上次的值。
                 let fetched = await filterControl.fetchPortMap()
@@ -1173,7 +1177,6 @@ public final class AppState {
                 backfillSourceApps()
             }
             #endif
-            ingestAccessLog()
             // 停止浏览后 ingest 不再产出批次，这里兜底把最后一批脏的域名历史补写掉
             flushDomainHistoryIfNeeded()
         }
