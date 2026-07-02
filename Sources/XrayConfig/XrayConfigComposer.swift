@@ -41,12 +41,15 @@ public enum XrayConfigComposer {
     ///   - userRules: 用户规则（自定义 + 远程，**自定义在前**）。只在 rule 模式生效，
     ///     插在内置 geosite/geoip 规则之前（xray 按序 first-match → 用户规则优先）。
     ///     global / direct 模式忽略 —— 全局/直连的语义就是不吃分流规则。
+    ///   - hasFullGeoIP: 完整版 geoip.dat 是否就位（扩展检查 App Group 后传入）。
+    ///     true 时外国 GEOIP 码的用户规则不再跳过（见 RoutingRuleConverter）。
     /// - Returns: 可以直接喂给 `XrayCore.run(configJSON:)` 的完整 xray JSON
     public static func compose(
         outboundsJSON: String,
         mode: ProxyMode,
         accessLogPath: String? = nil,
-        userRules: [Rule] = []
+        userRules: [Rule] = [],
+        hasFullGeoIP: Bool = false
     ) throws -> String {
         guard let data = outboundsJSON.data(using: .utf8),
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -108,7 +111,7 @@ public enum XrayConfigComposer {
             "log": logSection,
             "inbounds": inbounds,
             "outbounds": outbounds,
-            "routing": buildRouting(mode: mode, userRules: userRules),
+            "routing": buildRouting(mode: mode, userRules: userRules, hasFullGeoIP: hasFullGeoIP),
             "dns": buildDNS(mode: mode),
             // FakeDNS：给每个域名分配一个 198.18.x.x 假 IP。App 连这个假 IP → TUN → xray 靠
             // sniffing 的 fakedns 反查回真域名，于是 access log / 路由都拿到域名，**不依赖 TLS SNI**
@@ -153,7 +156,7 @@ public enum XrayConfigComposer {
 
     // MARK: - Routing
 
-    static func buildRouting(mode: ProxyMode, userRules: [Rule] = []) -> [String: Any] {
+    static func buildRouting(mode: ProxyMode, userRules: [Rule] = [], hasFullGeoIP: Bool = false) -> [String: Any] {
         switch mode {
         case .global:
             // 全局模式特意不引用 geoip / geosite，这样即使 geo .dat 文件加载失败
@@ -178,7 +181,7 @@ public enum XrayConfigComposer {
                 ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"]
             ]
             // 用户规则（自定义 + 远程，自定义在前）优先于内置规则：xray 按序 first-match。
-            rules += RoutingRuleConverter.xrayRules(from: userRules)
+            rules += RoutingRuleConverter.xrayRules(from: userRules, hasFullGeoIP: hasFullGeoIP)
             rules += [
                 // LAN
                 ["type": "field", "ip": ["geoip:private"], "outboundTag": "direct"],

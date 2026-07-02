@@ -37,7 +37,10 @@ public enum RoutingRuleConverter {
 
     /// 用户规则 → xray routing rules（保序，相邻同类合并）。
     /// 不合法 / 不支持的规则被静默跳过（宁可少一条规则，不可让 xray 启动失败）。
-    public static func xrayRules(from rules: [Rule]) -> [[String: Any]] {
+    /// - Parameter hasFullGeoIP: 完整版 geoip.dat 是否就位（扩展检查 App Group 后传入）。
+    ///   true 时任意国家/地区码的 GEOIP 规则都透传；false（默认）只放行内置精简版
+    ///   包含的分类（cn/private），其余跳过 —— xray 对缺失分类直接启动失败。
+    public static func xrayRules(from rules: [Rule], hasFullGeoIP: Bool = false) -> [[String: Any]] {
         // 中间表示：一段 = 一条待产出的 xray rule
         struct Group {
             let kind: FieldKind
@@ -47,7 +50,7 @@ public enum RoutingRuleConverter {
         var groups: [Group] = []
 
         for rule in rules {
-            guard let (kind, entry) = convert(rule) else { continue }
+            guard let (kind, entry) = convert(rule, hasFullGeoIP: hasFullGeoIP) else { continue }
             let tag = outboundTag(for: rule.target)
             if var last = groups.last, last.kind == kind, last.tag == tag {
                 // 相邻同段：并进同一条 xray rule（数组内 OR，语义等价且省规则条数）
@@ -83,7 +86,7 @@ public enum RoutingRuleConverter {
     enum FieldKind { case domain, ip }
 
     /// 单条 Rule → (字段种类, 数组条目)。不支持 / 畸形返回 nil。
-    static func convert(_ rule: Rule) -> (FieldKind, String)? {
+    static func convert(_ rule: Rule, hasFullGeoIP: Bool = false) -> (FieldKind, String)? {
         let value = rule.value.trimmingCharacters(in: .whitespacesAndNewlines)
         switch rule.type {
         case .domain:
@@ -107,8 +110,9 @@ public enum RoutingRuleConverter {
             // 内置 geoip.dat 是精简版（only-cn-private，给 NE 50MB 内存预算省地）。
             // 缺失的分类**必须**跳过：xray 对 routing 规则里找不到的 geoip 分类直接
             // 启动失败（"country not found"），一条 GEOIP,us 规则就能让 VPN 起不来。
-            // UI 层（RulesView）对这类规则显示「规则不生效」提示。
-            guard GeoDataBundle.supportsGeoIP(value) else { return nil }
+            // UI 层（RulesView）对这类规则显示「需下载完整版 geo 数据」提示。
+            // 完整版（App Group 下载）就位时 hasFullGeoIP=true，全部分类码解锁。
+            guard hasFullGeoIP || GeoDataBundle.supportsGeoIP(value) else { return nil }
             return (.ip, "geoip:\(value.lowercased())")
         case .processName, .userAgent, .final:
             // PROCESS-NAME / USER-AGENT：xray 在 TUN 层无法匹配；FINAL 由 finalOutboundTag 处理

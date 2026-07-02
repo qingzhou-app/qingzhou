@@ -55,8 +55,9 @@ public struct TunnelMemoryStats: Codable, Sendable, Equatable {
 ///
 /// geoip.dat 用的是 v2fly 的 `geoip-only-cn-private.dat`（约 1.5 MB，替代 22 MB 全量版，
 /// 给 NE 扩展 50 MiB 内存预算省地）。内置规则只用 geoip:cn / geoip:private，行为不变；
-/// 用户自定义其他国家码的 GEOIP 规则会**不生效**（转换层跳过 —— xray 对缺失的
-/// geoip 分类会直接启动失败，绝不能透传）。完整版 geo 数据下载是后续任务。
+/// 用户自定义其他国家码的 GEOIP 规则默认**不生效**（转换层跳过 —— xray 对缺失的
+/// geoip 分类会直接启动失败，绝不能透传）。下载完整版 geoip.dat（GeoDataManager，
+/// 经 App Group 交给扩展）后转换层传 hasFullGeoIP=true，全部国家码解锁。
 public enum GeoDataBundle {
     /// 内置 geoip.dat 实际包含的分类码（小写）。
     public static let bundledGeoIPCategories: Set<String> = ["cn", "private"]
@@ -66,5 +67,29 @@ public enum GeoDataBundle {
         var v = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if v.hasPrefix("!") { v.removeFirst() }
         return bundledGeoIPCategories.contains(v)
+    }
+}
+
+/// 已下载的完整版 geo 数据的元信息。主 App（GeoDataManager）下载校验通过后写进
+/// App Group `xray-data/geo-data-info.json`，隧道扩展启动时读它来决定用哪份 geoip.dat：
+/// info 存在且 `sizeBytes` 与磁盘文件吻合 → 用 App Group 完整版；否则回退内置精简版。
+/// 编解码统一 ISO8601 日期（与 AppGroupStorage 的读写策略一致）。
+public struct GeoDataInfo: Codable, Sendable, Equatable {
+    /// geoip.dat 内容的 SHA-256（hex 小写）。下载校验记录 + "检查更新"的比较基准。
+    public var sha256: String
+    /// 文件字节数 —— 扩展侧用它做廉价的一致性检查（不用再算一遍 20 多 MB 的 sha）。
+    public var sizeBytes: Int64
+    /// 来源 id（"qingzhou" = 自建源 / "v2fly" = 官方源）。
+    public var sourceID: String
+    /// 来源展示名（"轻舟源" / "v2fly 官方"），UI 直接显示。
+    public var sourceName: String
+    public var downloadedAt: Date
+
+    public init(sha256: String, sizeBytes: Int64, sourceID: String, sourceName: String, downloadedAt: Date = Date()) {
+        self.sha256 = sha256
+        self.sizeBytes = sizeBytes
+        self.sourceID = sourceID
+        self.sourceName = sourceName
+        self.downloadedAt = downloadedAt
     }
 }

@@ -31,6 +31,13 @@ public enum AppGroupStorage {
         containerURL?.appendingPathComponent("access.log")
     }
 
+    /// xray 工作目录（完整版 geo 数据等）。目录名须与
+    /// XrayCore.TunnelAppGroup.ensureWorkingDirectory 一致（两模块互不依赖）：
+    /// 主 App（GeoDataManager）把下载好的 geoip.dat 放这里，扩展启动时优先加载。
+    public static var xrayDataDirectoryURL: URL? {
+        containerURL?.appendingPathComponent("xray-data", isDirectory: true)
+    }
+
     /// 把可编码值写到共享容器；entitlement 未配置时静默失败返回 false。
     @discardableResult
     public static func write<T: Encodable>(_ value: T, to name: String) -> Bool {

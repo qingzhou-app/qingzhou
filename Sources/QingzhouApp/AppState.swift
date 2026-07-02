@@ -121,6 +121,8 @@ public final class AppState {
     public let speedTestRunner: SpeedTestRunner
     public let persistence: Persistence
     public let tunnelManager: VPNTunnelManager
+    /// 完整版 geo 数据的下载/版本管理（主备源 + sha256 校验）。测试可注入假下载器。
+    public let geoData: GeoDataManager
     /// iCloud Drive vault 的读写层。测试可注入指向临时目录的假容器。
     let cloudVault: CloudVaultStore
     /// 镜像到 iCloud 的防抖任务（连续 persist 只留最后一次）。internal 供测试 await。
@@ -174,7 +176,8 @@ public final class AppState {
         nodeSelector: NodeSelector? = nil,
         speedTestRunner: SpeedTestRunner? = nil,
         tunnelManager: VPNTunnelManager? = nil,
-        cloudVault: CloudVaultStore? = nil
+        cloudVault: CloudVaultStore? = nil,
+        geoDataManager: GeoDataManager? = nil
     ) {
         self.logger = logger
         self.persistence = persistence
@@ -183,6 +186,7 @@ public final class AppState {
         self.speedTestRunner = speedTestRunner ?? SpeedTestRunner(logger: logger)
         self.tunnelManager = tunnelManager ?? VPNTunnelManager(logger: logger)
         self.cloudVault = cloudVault ?? CloudVaultStore()
+        self.geoData = geoDataManager ?? GeoDataManager()
 
         let snapshot = persistence.loadSnapshot()
         self.subscriptions = snapshot.subscriptions
@@ -1142,6 +1146,18 @@ public final class AppState {
         guard settings.proxyMode == .rule else { return }
         // 没跑时 reapplyRunningTunnel 内部 guard 直接返回
         Task { await reapplyRunningTunnel() }
+    }
+
+    /// 下载完整版 geo 数据；成功后走规则变更同款热切换 —— 扩展重启时发现 App Group
+    /// 里的完整版，datDir 切过去并解锁外国 GEOIP 码规则，用户不用手动关开 VPN。
+    public func downloadFullGeoData() async {
+        let ok = await geoData.downloadFullGeoIP()
+        if ok {
+            logger.info("完整版 geo 数据下载完成（来源：\(geoData.info?.sourceName ?? "?")）", category: "geo")
+            reapplyForRulesChange()
+        } else if case .failed(let message) = geoData.phase {
+            logger.error("完整版 geo 数据下载失败：\(message)", category: "geo")
+        }
     }
 
     public func currentRuleEngine() -> RuleEngine {

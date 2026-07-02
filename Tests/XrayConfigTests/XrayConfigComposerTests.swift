@@ -77,6 +77,28 @@ final class XrayConfigComposerTests: XCTestCase {
         })
     }
 
+    func testRuleModeFullGeoDataUnlocksForeignGeoIPRules() throws {
+        // 完整版 geoip.dat 就位（扩展传 hasFullGeoIP=true）：GEOIP,us 之类的用户规则
+        // 必须真实进入 routing —— 这正是"下载完整版"功能解锁的能力。
+        let userRules = [Rule(type: .geoip, value: "us", target: .proxy)]
+        let with = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule,
+            userRules: userRules, hasFullGeoIP: true))
+        let rulesWith = (with["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertTrue(rulesWith.contains { r in
+            (r["outboundTag"] as? String) == "proxy" &&
+            ((r["ip"] as? [String])?.contains("geoip:us") ?? false)
+        }, "hasFullGeoIP=true 时 GEOIP,us 应进入 routing")
+
+        // 默认（精简版）同一条规则必须被跳过 —— xray 对缺失分类直接启动失败。
+        let without = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule, userRules: userRules))
+        let rulesWithout = (without["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertFalse(rulesWithout.contains { r in
+            ((r["ip"] as? [String])?.contains("geoip:us") ?? false)
+        }, "精简版下 GEOIP,us 不得透传")
+    }
+
     func testRoutingRulesDirectModeSendsAllToDirect() throws {
         let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .direct))
         let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]

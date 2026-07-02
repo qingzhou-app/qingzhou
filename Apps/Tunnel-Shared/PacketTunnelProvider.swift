@@ -15,8 +15,9 @@
 //    - read(swiftFd) → 拆 4 字节头 → packetFlow.writePackets
 // 6. XrayCore.run() 启动 xray-core，它在 socketpair 另一端读写，跟操作 utun 一样
 //
-// xray 用的 geoip.dat / geosite.dat 打包在 Extension bundle 的 Resources 里，
-// 不需要从 AppGroup 读 —— 一次部署，路由数据库自带。
+// xray 用的 geoip.dat / geosite.dat 打包在 Extension bundle 的 Resources 里（geoip 为
+// 精简版 only-cn-private）。若主 App 已下载完整版 geoip.dat 到 App Group `xray-data/`
+//（GeoDataManager，含 sha256 校验），启动时优先用它 —— 见 resolveGeoData()。
 
 import Darwin
 import NetworkExtension
@@ -36,6 +37,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     /// 控制两个方向拷贝循环是否继续。stopTunnel 时设 false。读写竞争一两个 packet 无所谓。
     private var bridgeActive = false
+
+    /// 本次会话 xray 用的 geo 数据目录（datDir）。startTunnel / reconfigure 里由
+    /// resolveGeoData() 先行解析（App Group 完整版优先，否则内置 Resources），
+    /// bringUpXray 直接用 —— compose（要 hasFullGeoIP）和 XrayCore.run（要 datDir）
+    /// 必须口径一致，不能各查各的。
+    private var activeGeoDir: String?
 
     /// 调试：两个方向各打第一个 packet 的 log，方便确认流量真的在流。
     private var loggedFirstApplePacket = false
@@ -116,6 +123,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         os_log("starting tunnel for node: %{public}@ mode=%{public}@ userRules=%d",
                log: log, type: .default, nodeName, mode.rawValue, userRules.count)
 
+        // geo 数据源：App Group 完整版（主 App 下载）优先，否则内置精简版。
+        // 必须在 compose **之前**定：hasFullGeoIP 决定外国 GEOIP 码规则是否透传。
+        let geo = resolveGeoData()
+        self.activeGeoDir = geo.dir
+
         // 转换 Node → outbounds JSON
         let xrayJSON: String
         do {
@@ -126,7 +138,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 outboundsJSON: outboundsJSON,
                 mode: mode,
                 accessLogPath: TunnelAppGroup.accessLogPath(),
-                userRules: userRules
+                userRules: userRules,
+                hasFullGeoIP: geo.isFull
             )
         } catch {
             os_log("share link → xray config 转换失败: %{public}@",
@@ -163,6 +176,55 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
+    /// 决定本次会话用哪份 geo 数据：
+    /// - App Group `xray-data/` 里有主 App 下载的完整版 geoip.dat，且与 geo-data-info.json
+    ///   记录的字节数吻合（下载时已做过 sha256 全量校验，这里做廉价一致性检查即可）
+    ///   → 用完整版目录（顺手把 bundle 的 geosite.dat 补进同目录 —— xray 的 datDir 是单一目录）；
+    /// - 否则 → 内置 Resources 精简版。
+    /// 任何一步不满足都安静回退，绝不让 geo 数据问题挡 VPN 启动。
+    private func resolveGeoData() -> (dir: String, isFull: Bool) {
+        let bundleDir = Bundle.main.resourceURL?.path ?? NSTemporaryDirectory()
+        let fallback = (dir: bundleDir, isFull: false)
+        guard let workDir = TunnelAppGroup.ensureWorkingDirectory() else {
+            os_log("geo: App Group 容器不可用 → 内置精简版", log: log, type: .default)
+            return fallback
+        }
+        let fm = FileManager.default
+        let datPath = workDir.appendingPathComponent("geoip.dat").path
+        let infoURL = workDir.appendingPathComponent("geo-data-info.json")
+        guard let infoData = try? Data(contentsOf: infoURL) else {
+            os_log("geo: 未下载完整版 → 内置精简版 (%{public}@)", log: log, type: .default, bundleDir)
+            return fallback
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601   // 与主 App GeoDataManager 的编码策略一致
+        guard let info = try? decoder.decode(GeoDataInfo.self, from: infoData),
+              let attrs = try? fm.attributesOfItem(atPath: datPath),
+              (attrs[.size] as? NSNumber)?.int64Value == info.sizeBytes else {
+            os_log("geo: 完整版 info/文件不一致（下载中断或被清理）→ 内置精简版", log: log, type: .error)
+            return fallback
+        }
+        // xray 的 datDir 是单一目录：geosite.dat 也得在这。从 bundle 补拷（缺失或大小变了才拷，
+        // ~4MB 不值得每次启动都写一遍）。拷失败就整体回退内置目录 —— 半套数据是 rule 模式启动失败。
+        let bundleGeosite = bundleDir + "/geosite.dat"
+        let workGeosite = workDir.appendingPathComponent("geosite.dat").path
+        let bundleSize = (try? fm.attributesOfItem(atPath: bundleGeosite))?[.size] as? NSNumber
+        let workSize = (try? fm.attributesOfItem(atPath: workGeosite))?[.size] as? NSNumber
+        if bundleSize != workSize {
+            try? fm.removeItem(atPath: workGeosite)
+            do {
+                try fm.copyItem(atPath: bundleGeosite, toPath: workGeosite)
+            } catch {
+                os_log("geo: geosite.dat 补拷失败（%{public}@）→ 内置精简版", log: log, type: .error,
+                       error.localizedDescription)
+                return fallback
+            }
+        }
+        os_log("geo: 使用 App Group 完整版（来源 %{public}@，%lld 字节，%{public}@）",
+               log: log, type: .default, info.sourceName, info.sizeBytes, workDir.path)
+        return (dir: workDir.path, isFull: true)
+    }
+
     private func bringUpXray(configJSON: String, completionHandler: @escaping (Error?) -> Void) {
         os_log("bringUpXray: config bytes=%d", log: log, type: .default, configJSON.utf8.count)
 
@@ -189,8 +251,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             self?.runFdToWritePacketsLoop(swiftFd: pair.swift)
         }
 
-        // 5) 准备 xray 工作路径
-        let geoDir = Bundle.main.resourceURL?.path ?? NSTemporaryDirectory()
+        // 5) 准备 xray 工作路径。activeGeoDir 由 startTunnel / reconfigure 先行解析
+        //（App Group 完整版优先）；兜底走内置 Resources。
+        let geoDir = activeGeoDir ?? Bundle.main.resourceURL?.path ?? NSTemporaryDirectory()
         let cachesURL = FileManager.default
             .urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
@@ -587,6 +650,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                              reply: @escaping (Error?) -> Void) {
         os_log("reconfigure → node=%{public}@ mode=%{public}@ userRules=%d",
                log: log, type: .default, nodeName, mode.rawValue, userRules.count)
+        // 重配也重新解析 geo：可能刚下载完完整版（下载成功触发的热切换就是走这条链路的全量重启，
+        // 但保留原地重配路径的正确性 —— 一旦重新启用不至于用错数据）。
+        let geo = resolveGeoData()
+        self.activeGeoDir = geo.dir
         let xrayJSON: String
         do {
             let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
@@ -594,7 +661,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 outboundsJSON: outboundsJSON,
                 mode: mode,
                 accessLogPath: TunnelAppGroup.accessLogPath(),
-                userRules: userRules
+                userRules: userRules,
+                hasFullGeoIP: geo.isFull
             )
         } catch {
             os_log("reconfigure: build config failed, keep old xray: %{public}@",
