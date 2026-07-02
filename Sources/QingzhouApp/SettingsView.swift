@@ -206,8 +206,13 @@ public struct SettingsView: View {
             }
             .disabled(!state.settings.iCloudSyncEnabled)
             Text("配置（订阅、节点、规则、设置）会镜像到你 iCloud Drive 的「轻舟」文件夹，"
-                 + "卸载 App 不会丢失，重装或换设备时可一键恢复。不含连接记录与流量统计。")
+                 + "卸载 App 不会丢失，重装或换设备时可一键恢复。云端保留最近 "
+                 + "\(CloudVaultStore.maxBackups) 份历史版本。不含连接记录与流量统计。")
                 .font(.caption2).foregroundStyle(.secondary)
+        }
+        // 「立即恢复」的版本选择：云端当前版 + 历史版本，各带设备 / 时间 / 内容计数
+        .sheet(isPresented: cloudVersionSheetBinding) {
+            cloudVersionPicker
         }
     }
 
@@ -217,6 +222,53 @@ public struct SettingsView: View {
             get: { state.settings.iCloudSyncEnabled },
             set: { state.setCloudSyncEnabled($0) }
         )
+    }
+
+    private var cloudVersionSheetBinding: Binding<Bool> {
+        Binding(
+            get: { state.cloudVersionOptions != nil },
+            set: { if !$0 { state.dismissCloudVersionOptions() } }
+        )
+    }
+
+    private var cloudVersionPicker: some View {
+        NavigationStack {
+            List(state.cloudVersionOptions ?? []) { option in
+                Button {
+                    state.chooseCloudRestoreCandidate(option)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(option.backupFileName == nil ? "云端当前版本" : "历史版本")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text("r\(option.header.revision)")
+                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }
+                        // 内容计数醒目展示 —— 空数据（0 订阅）一眼可见
+                        Text(option.header.contentSummary)
+                            .font(.subheadline)
+                            .foregroundStyle(
+                                (option.header.nodeCount ?? 1) == 0 ? AnyShapeStyle(.orange)
+                                                                    : AnyShapeStyle(.primary))
+                        Text("\(option.header.deviceName) · "
+                             + option.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .navigationTitle("选择要恢复的版本")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { state.dismissCloudVersionOptions() }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 420, minHeight: 320)
+        #endif
     }
 
     private var aboutSection: some View {

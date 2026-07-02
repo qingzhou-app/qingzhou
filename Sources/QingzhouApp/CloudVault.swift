@@ -23,6 +23,10 @@ public struct VaultDocument: Codable, Sendable {
     public var revision: Int
     public var modifiedAt: Date
     public var deviceName: String
+    /// 内容计数冗余在头部 —— 恢复确认弹窗 / 版本列表不用解码整个 snapshot 就能展示
+    /// 「N 订阅 / M 节点」，用户看到「0 订阅」就不会误恢复空数据。optional：兼容旧文档。
+    public var subscriptionCount: Int?
+    public var nodeCount: Int?
     public var snapshot: Persistence.Snapshot
 
     public init(
@@ -36,6 +40,8 @@ public struct VaultDocument: Codable, Sendable {
         self.revision = revision
         self.modifiedAt = modifiedAt
         self.deviceName = deviceName
+        self.subscriptionCount = snapshot.subscriptions.count
+        self.nodeCount = snapshot.nodes.count
         self.snapshot = snapshot
     }
 
@@ -63,18 +69,52 @@ public struct VaultDocument: Codable, Sendable {
     }
 }
 
-/// 云文档的头部元数据（不含 snapshot）。启动检查 / 恢复提示只需要它。
+/// 云文档的头部元数据（不含 snapshot）。启动检查 / 恢复提示 / 版本列表只需要它。
 public struct VaultHeader: Codable, Sendable, Equatable {
     public var schemaVersion: Int
     public var revision: Int
     public var modifiedAt: Date
     public var deviceName: String
+    /// 旧文档没有计数字段 → nil，UI 显示「内容数量未知」。
+    public var subscriptionCount: Int?
+    public var nodeCount: Int?
 
-    public init(schemaVersion: Int, revision: Int, modifiedAt: Date, deviceName: String) {
+    public init(
+        schemaVersion: Int,
+        revision: Int,
+        modifiedAt: Date,
+        deviceName: String,
+        subscriptionCount: Int? = nil,
+        nodeCount: Int? = nil
+    ) {
         self.schemaVersion = schemaVersion
         self.revision = revision
         self.modifiedAt = modifiedAt
         self.deviceName = deviceName
+        self.subscriptionCount = subscriptionCount
+        self.nodeCount = nodeCount
+    }
+
+    /// 恢复确认弹窗 / 版本列表展示的内容摘要 —— 让「空数据」一眼可见。
+    public var contentSummary: String {
+        guard let subs = subscriptionCount, let nodes = nodeCount else {
+            return "内容数量未知（旧版本文档）"
+        }
+        return "\(subs) 个订阅 · \(nodes) 个节点"
+    }
+}
+
+/// 一个可恢复的云端版本：主 vault 文档（`backupFileName == nil`）或 backups/ 里的历史版本。
+public struct VaultRestoreCandidate: Equatable, Sendable, Identifiable {
+    public var header: VaultHeader
+    /// nil = 云端主文档；非 nil = `Documents/backups/` 下的历史版本文件名。
+    public var backupFileName: String?
+
+    public var id: String { backupFileName ?? "main" }
+
+    public init(header: VaultHeader, backupFileName: String? = nil) {
+        self.header = header
+        self.backupFileName = backupFileName
     }
 }
 
@@ -141,6 +181,8 @@ public enum CloudSyncStatus: Equatable, Sendable {
     case disabled
     /// iCloud 不可用（未登录 / 关了 iCloud Drive）。
     case unavailable
+    /// 本机和 iCloud 都还没有数据（新装机、还没添加配置）—— 有数据后会自动开始镜像。
+    case idle
     case syncing
     case synced(Date)
     /// 云文档来自更新版本的 App。
@@ -153,6 +195,7 @@ public enum CloudSyncStatus: Equatable, Sendable {
         case .unknown: return "检查中…"
         case .disabled: return "已关闭"
         case .unavailable: return "iCloud 不可用（未登录或未开启 iCloud Drive）"
+        case .idle: return "尚无可同步的数据"
         case .syncing: return "同步中…"
         case .synced(let date):
             return "最近同步 " + date.formatted(date: .abbreviated, time: .shortened)

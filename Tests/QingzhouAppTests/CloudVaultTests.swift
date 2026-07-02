@@ -94,6 +94,31 @@ final class VaultDocumentTests: XCTestCase {
         XCTAssertEqual(decoded.snapshot.currentNodeId, doc.snapshot.currentNodeId)
     }
 
+    func testHeaderCarriesContentCounts() throws {
+        // 计数冗余在头部：恢复弹窗 / 版本列表不解码 snapshot 也能显示「N 订阅 · M 节点」
+        let data = try makeDocument().encoded()
+        let header = try VaultDocument.decodeHeader(from: data)
+        XCTAssertEqual(header.subscriptionCount, 0)
+        XCTAssertEqual(header.nodeCount, 1)
+        XCTAssertEqual(header.contentSummary, "0 个订阅 · 1 个节点")
+    }
+
+    func testHeaderWithoutCountsShowsUnknown() throws {
+        // 计数字段引入前写的旧文档：显示「未知」而不是崩 / 显示 0
+        let json = """
+        {
+          "schemaVersion": 1,
+          "revision": 1,
+          "modifiedAt": "2026-07-01T00:00:00Z",
+          "deviceName": "old-device",
+          "snapshot": {}
+        }
+        """
+        let header = try VaultDocument.decodeHeader(from: Data(json.utf8))
+        XCTAssertNil(header.nodeCount)
+        XCTAssertEqual(header.contentSummary, "内容数量未知（旧版本文档）")
+    }
+
     func testHeaderDecodesWithoutFullSnapshot() throws {
         let doc = try makeDocument()
         let data = try doc.encoded()
@@ -175,6 +200,44 @@ final class CloudVaultStoreTests: XCTestCase {
         XCTAssertEqual(loaded?.revision, 1)
         XCTAssertEqual(loaded?.snapshot.nodes.count, 1)
     }
+
+    func testRollingBackupsKeptAndPruned() async throws {
+        let dir = tmpDir!
+        let store = CloudVaultStore(containerProvider: { dir })
+        var snapshot = Persistence.Snapshot()
+        snapshot.nodes = [try ProxyURLParser.parse("trojan://pw@a.com:443#n1")]
+        for rev in 1...(CloudVaultStore.maxBackups + 2) {
+            try await store.save(VaultDocument(
+                revision: rev, modifiedAt: Date(), deviceName: "dev", snapshot: snapshot))
+        }
+        let backups = await store.listBackups()
+        XCTAssertEqual(backups.count, CloudVaultStore.maxBackups, "历史版本应裁剪到最近 \(CloudVaultStore.maxBackups) 份")
+        XCTAssertEqual(backups.map(\.header.revision), [7, 6, 5, 4, 3], "按 revision 降序、保最新")
+        // 历史版本文件人类可读、名字带 revision 和设备
+        XCTAssertEqual(backups.first?.fileName, "qingzhou-vault-r7-dev.json")
+
+        // 从历史版本能读回完整文档
+        let doc = try await store.loadBackupDocument(fileName: "qingzhou-vault-r3-dev.json")
+        XCTAssertEqual(doc?.revision, 3)
+        XCTAssertEqual(doc?.snapshot.nodes.count, 1)
+    }
+
+    func testNotYetDownloadedPlaceholderIsNotTreatedAsMissing() async throws {
+        // 云端有文档但本机只有 .icloud 占位符（还没下载完）：必须报「下载中」，
+        // 不能当「没有文档」—— 否则启动检查会用空本地盖掉云端
+        let dir = tmpDir!
+        let docs = dir.appendingPathComponent("Documents")
+        try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: docs.appendingPathComponent(".qingzhou-vault.json.icloud"))
+
+        let store = CloudVaultStore(containerProvider: { dir })
+        do {
+            _ = try await store.loadHeader()
+            XCTFail("应当抛 notYetDownloaded")
+        } catch let error as CloudVaultStore.StoreError {
+            XCTAssertEqual(error, .notYetDownloaded)
+        }
+    }
 }
 
 // MARK: - AppState 集成（注入假容器）
@@ -249,8 +312,9 @@ final class AppStateCloudVaultTests: XCTestCase {
         let state = makeState(store: store)
         XCTAssertTrue(state.nodes.isEmpty)
         await state.runCloudVaultStartupCheck()
-        XCTAssertEqual(state.cloudRestoreOffer?.deviceName, "other-device")
-        XCTAssertEqual(state.cloudRestoreOffer?.revision, 5)
+        XCTAssertEqual(state.cloudRestoreOffer?.header.deviceName, "other-device")
+        XCTAssertEqual(state.cloudRestoreOffer?.header.revision, 5)
+        XCTAssertEqual(state.cloudRestoreOffer?.header.contentSummary, "0 个订阅 · 1 个节点")
 
         await state.restoreFromCloud()
         XCTAssertNil(state.cloudRestoreOffer)
@@ -297,6 +361,58 @@ final class AppStateCloudVaultTests: XCTestCase {
         let doc = try await store.loadDocument()
         XCTAssertEqual(doc?.revision, 6)
         XCTAssertEqual(doc?.snapshot.nodes.first?.name, "local-node")
+    }
+
+    /// 用户真机踩到的完整场景：删空 → 空数据镜像上云（LWW，主文档被覆盖）→
+    /// 「立即恢复」列出历史版本（计数可见）→ 选删空前那份 → 数据找回、云端主文档也被救回。
+    func testDeleteAllThenRecoverFromRollingBackup() async throws {
+        let store = makeStore()
+        let state = makeState(store: store)
+
+        // 1) 正常使用：两个节点，镜像 rev1（同时落历史版本 r1）
+        try state.addNode(fromURL: "trojan://pw@a.com:443#keep-1")
+        try state.addNode(fromURL: "trojan://pw@b.com:443#keep-2")
+        await state.cloudMirrorTask?.value
+
+        // 2) 用户删光所有节点 → 空快照以 rev2 覆盖云端主文档（这就是事故现场）
+        for node in state.nodes { state.removeNode(node) }
+        await state.cloudMirrorTask?.value
+        let mainDoc = try await store.loadDocument()
+        XCTAssertEqual(mainDoc?.snapshot.nodes.count, 0, "主文档确实被空数据覆盖（复现事故）")
+        let mainRev = try XCTUnwrap(mainDoc?.revision)
+
+        // 3) 「立即恢复」→ 版本列表：云端当前版（0 节点）+ 历史版本（2 节点），计数可见
+        await state.requestManualCloudRestore()
+        let options = try XCTUnwrap(state.cloudVersionOptions, "多个版本应弹选择列表")
+        XCTAssertEqual(options.first?.backupFileName, nil, "第一项是云端当前版")
+        XCTAssertEqual(options.first?.header.nodeCount, 0, "当前版计数 0 —— 用户一眼看出是空的")
+        let goodBackup = try XCTUnwrap(
+            options.first(where: { ($0.header.nodeCount ?? 0) == 2 }),
+            "删空前的历史版本应在列表里")
+
+        // 4) 选历史版本 → 确认恢复 → 节点找回
+        state.chooseCloudRestoreCandidate(goodBackup)
+        XCTAssertNil(state.cloudVersionOptions)
+        XCTAssertEqual(state.cloudRestoreOffer, goodBackup)
+        await state.restoreFromCloud()
+        XCTAssertEqual(state.nodes.count, 2)
+        XCTAssertEqual(Set(state.nodes.map(\.name)), ["keep-1", "keep-2"])
+
+        // 5) 云端主文档也被救回：恢复的内容以更高 revision 回推
+        let rescued = try await store.loadDocument()
+        XCTAssertEqual(rescued?.snapshot.nodes.count, 2, "云端主文档应被恢复内容回推救回")
+        XCTAssertGreaterThan(try XCTUnwrap(rescued?.revision), mainRev)
+    }
+
+    func testStartupWithEmptyLocalAndEmptyCloudDoesNotCreateEmptyVault() async throws {
+        // 新装机、云端也没有文档：没什么值得镜像的 —— 不要抢着写一份空 vault
+        //（iCloud 元数据可能还没同步完，写空文档有覆盖真数据的风险）
+        let store = makeStore()
+        let state = makeState(store: store)
+        await state.runCloudVaultStartupCheck()
+        XCTAssertEqual(state.cloudSyncStatus, .idle)
+        let doc = try await store.loadDocument()
+        XCTAssertNil(doc, "空本地 + 空云端不应写出空 vault")
     }
 
     func testUnavailableContainerDegradesGracefully() async throws {

@@ -23,8 +23,10 @@ public struct RootView: View {
                 Button("恢复") { Task { await state.restoreFromCloud() } }
                 Button("暂不恢复", role: .cancel) { state.declineCloudRestore() }
             } message: { offer in
-                Text("iCloud 中有一份配置备份（来自 \(offer.deviceName)，"
-                     + "\(offer.modifiedAt.formatted(date: .abbreviated, time: .shortened))）。"
+                // 内容计数放最前 —— 「0 个订阅 · 0 个节点」一眼可见，防止误恢复空数据
+                Text("内容：\(offer.header.contentSummary)\n"
+                     + "来自 \(offer.header.deviceName)，"
+                     + "\(offer.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))。\n"
                      + "恢复会用它覆盖本机配置；本机当前配置会先自动备份。")
             }
     }

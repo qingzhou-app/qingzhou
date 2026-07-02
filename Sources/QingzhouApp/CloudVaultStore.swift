@@ -15,10 +15,32 @@ public actor CloudVaultStore {
     /// `com.apple.developer.ubiquity-container-identifiers` 一致。
     public static let containerIdentifier = "iCloud.com.sbraveyoung.qingzhou"
     public static let fileName = "qingzhou-vault.json"
+    /// 历史版本目录（容器 Documents/ 下），文件名 `qingzhou-vault-r<revision>-<device>.json`。
+    /// 每次镜像同时落一份历史版本 —— 即使某台设备把「删空后的配置」推上主文档（LWW 陷阱），
+    /// 旧版本仍能从这里找回。
+    public static let backupsDirectoryName = "backups"
+    /// 历史版本保留份数（按 revision 保最新的 N 份）。
+    public static let maxBackups = 5
+    private static let backupPrefix = "qingzhou-vault-r"
 
-    public enum StoreError: LocalizedError {
+    public enum StoreError: LocalizedError, Equatable {
         case unavailable
-        public var errorDescription: String? { "iCloud 不可用（未登录或未开启 iCloud Drive）" }
+        /// 云端有文档但本机还没下载完（新装机 / 重装首启常见）。调用方应稍后重试，
+        /// **绝不能**把这种状态当「云端没有文档」而用本地（可能是空的）数据覆盖上去。
+        case notYetDownloaded
+
+        public var errorDescription: String? {
+            switch self {
+            case .unavailable: return "iCloud 不可用（未登录或未开启 iCloud Drive）"
+            case .notYetDownloaded: return "iCloud 数据还在下载中，稍后再试"
+            }
+        }
+    }
+
+    /// backups/ 里的一个历史版本。
+    public struct BackupEntry: Sendable, Equatable {
+        public var fileName: String
+        public var header: VaultHeader
     }
 
     private let containerProvider: @Sendable () -> URL?
@@ -69,6 +91,106 @@ public actor CloudVaultStore {
         }
         if let error = coordinationError { throw error }
         if let error = writeError { throw error }
+
+        // 滚动历史版本：主文档写成功后同步落一份到 backups/，再裁剪到最近 N 份。
+        // 尽力而为 —— 历史版本失败不影响主文档已写成功的事实。
+        writeBackupCopy(data: data, document: document)
+        pruneBackups()
+    }
+
+    // MARK: - 历史版本（滚动备份）
+
+    private func backupsDirectoryURL() -> URL? {
+        guard let container = containerProvider() else { return nil }
+        return container
+            .appendingPathComponent("Documents", isDirectory: true)
+            .appendingPathComponent(Self.backupsDirectoryName, isDirectory: true)
+    }
+
+    /// 设备名进文件名前清洗：路径分隔符 / 冒号 / 空白一律换成 "-"。
+    private static func sanitizedDeviceName(_ name: String) -> String {
+        let cleaned = String(name.map { ch -> Character in
+            (ch.isLetter || ch.isNumber) ? ch : "-"
+        })
+        let trimmed = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return trimmed.isEmpty ? "device" : trimmed
+    }
+
+    private func writeBackupCopy(data: Data, document: VaultDocument) {
+        guard let dir = backupsDirectoryURL() else { return }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = "\(Self.backupPrefix)\(document.revision)-\(Self.sanitizedDeviceName(document.deviceName)).json"
+        let url = dir.appendingPathComponent(name)
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(
+            writingItemAt: url, options: .forReplacing, error: &coordinationError
+        ) { actualURL in
+            try? data.write(to: actualURL, options: .atomic)
+        }
+    }
+
+    /// 从备份文件名解析 revision（`qingzhou-vault-r<revision>-...`）。
+    private static func revision(fromFileName name: String) -> Int? {
+        guard name.hasPrefix(backupPrefix) else { return nil }
+        let rest = name.dropFirst(backupPrefix.count)
+        let digits = rest.prefix(while: \.isNumber)
+        return digits.isEmpty ? nil : Int(digits)
+    }
+
+    /// 只保留 revision 最新的 `maxBackups` 份。
+    private func pruneBackups() {
+        guard let dir = backupsDirectoryURL(),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path)
+        else { return }
+        let backups = names
+            .compactMap { name -> (name: String, revision: Int)? in
+                guard let rev = Self.revision(fromFileName: name) else { return nil }
+                return (name, rev)
+            }
+            .sorted { $0.revision > $1.revision }
+        guard backups.count > Self.maxBackups else { return }
+        for stale in backups.dropFirst(Self.maxBackups) {
+            let url = dir.appendingPathComponent(stale.name)
+            var coordinationError: NSError?
+            NSFileCoordinator().coordinate(
+                writingItemAt: url, options: .forDeleting, error: &coordinationError
+            ) { actualURL in
+                try? FileManager.default.removeItem(at: actualURL)
+            }
+        }
+    }
+
+    /// 列出 backups/ 里的历史版本，按 revision 降序。读不出头部的文件跳过。
+    public func listBackups() -> [BackupEntry] {
+        guard let dir = backupsDirectoryURL(),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path)
+        else { return [] }
+        // 新设备 / 重装：备份文件可能还是未下载的占位符，先触发下载（本轮读不到就先缺席）
+        let fm = FileManager.default
+        return names
+            .filter { Self.revision(fromFileName: $0) != nil }
+            .compactMap { name -> BackupEntry? in
+                let url = dir.appendingPathComponent(name)
+                if fm.isUbiquitousItem(at: url) {
+                    try? fm.startDownloadingUbiquitousItem(at: url)
+                }
+                guard let data = try? Data(contentsOf: url),
+                      let header = try? VaultDocument.decodeHeader(from: data)
+                else { return nil }
+                return BackupEntry(fileName: name, header: header)
+            }
+            .sorted { $0.header.revision > $1.header.revision }
+    }
+
+    /// 读取指定历史版本的完整文档。
+    public func loadBackupDocument(fileName: String) throws -> VaultDocument? {
+        // 防路径穿越：只接受纯文件名
+        guard !fileName.contains("/"), !fileName.contains(".."),
+              let dir = backupsDirectoryURL()
+        else { return nil }
+        let url = dir.appendingPathComponent(fileName)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try VaultDocument.decode(from: data)
     }
 
     private func readData() throws -> Data? {
@@ -101,6 +223,15 @@ public actor CloudVaultStore {
             throw error
         }
         if let error = readError { throw error }
+        if data == nil {
+            // 读不到内容 ≠ 云端没有文档：可能只是还没从 iCloud 下载下来（占位符 .icloud 文件）。
+            // 误判成「没有」会让启动检查走 mirrorLocal，用空的本地数据把云端盖掉。
+            let placeholder = url.deletingLastPathComponent()
+                .appendingPathComponent(".\(url.lastPathComponent).icloud")
+            if fm.fileExists(atPath: placeholder.path) {
+                throw StoreError.notYetDownloaded
+            }
+        }
         return data
     }
 }

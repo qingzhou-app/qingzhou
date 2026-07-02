@@ -61,8 +61,11 @@ public final class AppState {
     public var toast: String?
     /// iCloud vault 同步状态（设置页展示）。
     public internal(set) var cloudSyncStatus: CloudSyncStatus = .unknown
-    /// 启动检查发现云端备份比本机新（或本机是新装机）→ 提示用户恢复。非 nil 时 UI 弹 alert。
-    public internal(set) var cloudRestoreOffer: VaultHeader?
+    /// 待确认的恢复候选（启动检查发现云端更新 / 用户从版本列表选了一份）。非 nil 时 UI 弹
+    /// 确认 alert，alert 里会展示来源设备 / 时间 / 内容计数 —— 「0 订阅」一眼可见，防误恢复。
+    public internal(set) var cloudRestoreOffer: VaultRestoreCandidate?
+    /// 「立即恢复」的版本选择列表（云端当前版 + 最近几份历史版本）。非 nil 时 UI 弹选择 sheet。
+    public internal(set) var cloudVersionOptions: [VaultRestoreCandidate]?
 
     public let logger: Logger
     public let subscriptionFetcher: SubscriptionFetcher
@@ -74,6 +77,8 @@ public final class AppState {
     let cloudVault: CloudVaultStore
     /// 镜像到 iCloud 的防抖任务（连续 persist 只留最后一次）。internal 供测试 await。
     var cloudMirrorTask: Task<Void, Never>?
+    /// 云端文档「还在下载中」时的延迟重试任务（新装机首启常见）。
+    private var cloudStartupRetryTask: Task<Void, Never>?
 
     private var schedulerTask: Task<Void, Never>?
     private var trafficPollingTask: Task<Void, Never>?
@@ -203,6 +208,17 @@ public final class AppState {
         let header: VaultHeader?
         do {
             header = try await cloudVault.loadHeader()
+        } catch let error as CloudVaultStore.StoreError where error == .notYetDownloaded {
+            // 云端有文档、本机还没下载完（新装机首启常见）：绝不能当「云端没有」去镜像覆盖。
+            // 显示同步中，15 秒后重试。
+            cloudSyncStatus = .syncing
+            cloudStartupRetryTask?.cancel()
+            cloudStartupRetryTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(15))
+                guard !Task.isCancelled else { return }
+                await self?.runCloudVaultStartupCheck()
+            }
+            return
         } catch {
             cloudSyncStatus = .error("\(error)")
             logger.warn("iCloud vault read failed: \(error)", category: "cloud")
@@ -213,9 +229,18 @@ public final class AppState {
             cloudHeader: header, lastSyncedRevision: lastSynced?.lastSyncedRevision
         ) {
         case .mirrorLocal:
-            await mirrorToCloudNow()
+            // 防呆：本机是空的且从没同步过（新装机）→ 没什么值得镜像的，也避免在 iCloud
+            // 元数据尚未同步完时把「空」推上去盖掉真数据。等用户真加了配置，persist 会镜像。
+            let snapshot = currentSnapshot()
+            let localHasContent = !snapshot.subscriptions.isEmpty || !snapshot.nodes.isEmpty
+                || !snapshot.customRules.isEmpty
+            if localHasContent || lastSynced != nil {
+                await mirrorToCloudNow()
+            } else {
+                cloudSyncStatus = .idle
+            }
         case .offerRestore(let cloud):
-            cloudRestoreOffer = cloud
+            cloudRestoreOffer = VaultRestoreCandidate(header: cloud)
             cloudSyncStatus = lastSynced.map { .synced($0.lastSyncedAt) } ?? .unknown
             logger.info("iCloud vault newer (rev \(cloud.revision) from \(cloud.deviceName)) — offering restore", category: "cloud")
         case .alreadyInSync:
@@ -276,12 +301,20 @@ public final class AppState {
         }
     }
 
-    /// 用户确认恢复：本地快照先备份，再整体替换为云端快照并落盘。
+    /// 用户确认恢复（`cloudRestoreOffer`）：本地快照先备份，再整体替换为所选版本并落盘。
+    /// 候选可能是云端主文档，也可能是 backups/ 里的历史版本。
     public func restoreFromCloud() async {
-        defer { cloudRestoreOffer = nil }
+        // 先摘掉 offer —— 后面若要回推镜像，mirrorToCloudNow 的 offer 防护不能被自己挡住
+        let candidate = cloudRestoreOffer
+        cloudRestoreOffer = nil
+
         let document: VaultDocument?
         do {
-            document = try await cloudVault.loadDocument()
+            if let fileName = candidate?.backupFileName {
+                document = try await cloudVault.loadBackupDocument(fileName: fileName)
+            } else {
+                document = try await cloudVault.loadDocument()
+            }
         } catch {
             showToast("读取 iCloud 数据失败：\(error.localizedDescription)")
             logger.error("iCloud vault restore read failed: \(error)", category: "cloud")
@@ -306,16 +339,23 @@ public final class AppState {
         settings = snapshot.settings
         currentNodeId = snapshot.currentNodeId
         applySettingsSideEffects()
-        // 直接落盘 + 记录同步进度，不走 persist()（那会立刻再镜像一次、白白 +1 revision）
         persistence.saveSnapshotAsync(currentSnapshot())
         let now = Date()
-        try? persistence.save(
-            VaultSyncState(lastSyncedRevision: document.revision, lastSyncedAt: now),
-            name: Self.vaultSyncStateName
-        )
-        cloudSyncStatus = .synced(now)
         logger.info("Restored from iCloud vault rev \(document.revision) (\(document.deviceName))", category: "cloud")
-        showToast("已从 iCloud 恢复（\(snapshot.nodes.count) 个节点、\(snapshot.subscriptions.count) 个订阅）")
+        showToast("已从 iCloud 恢复（\(snapshot.subscriptions.count) 个订阅、\(snapshot.nodes.count) 个节点）")
+
+        if candidate?.backupFileName != nil {
+            // 恢复的是历史版本：云端主文档还是那份「更新但错误」的（比如被删空的）。
+            // 立刻把恢复出来的状态以更高 revision 回推 —— 云端主文档也被救回。
+            await mirrorToCloudNow()
+        } else {
+            // 恢复的就是云端主文档：记录同步进度即可，不用再镜像（内容一致，白 +1 revision）
+            try? persistence.save(
+                VaultSyncState(lastSyncedRevision: document.revision, lastSyncedAt: now),
+                name: Self.vaultSyncStateName
+            )
+            cloudSyncStatus = .synced(now)
+        }
     }
 
     /// 用户拒绝恢复：只清掉提示（本次会话不再弹）。本地依旧权威 —— 下次本地编辑会覆盖云端。
@@ -323,25 +363,55 @@ public final class AppState {
         cloudRestoreOffer = nil
     }
 
-    /// 设置页「立即恢复 iCloud 数据」：读云端头部，存在则弹确认（复用启动时的恢复 alert）。
+    /// 设置页「立即恢复 iCloud 数据」：列出云端当前版 + 最近几份历史版本（含来源设备 /
+    /// 时间 / 内容计数），让用户挑 —— 即使主文档被某台设备的空数据覆盖，旧版本仍可找回。
     public func requestManualCloudRestore() async {
         guard await cloudVault.isAvailable() else {
             showToast("iCloud 不可用（未登录或未开启 iCloud Drive）")
             return
         }
+        let mainHeader: VaultHeader?
         do {
-            guard let header = try await cloudVault.loadHeader() else {
-                showToast("iCloud 上没有找到备份")
-                return
-            }
-            if header.schemaVersion > VaultDocument.currentSchemaVersion {
-                showToast("iCloud 数据来自更新版本的轻舟，请先升级 App")
-                return
-            }
-            cloudRestoreOffer = header
+            mainHeader = try await cloudVault.loadHeader()
+        } catch let error as CloudVaultStore.StoreError where error == .notYetDownloaded {
+            showToast("iCloud 数据还在下载中，稍等片刻再试")
+            return
         } catch {
             showToast("读取 iCloud 数据失败：\(error.localizedDescription)")
+            return
         }
+        var options: [VaultRestoreCandidate] = []
+        if let mainHeader, mainHeader.schemaVersion <= VaultDocument.currentSchemaVersion {
+            options.append(VaultRestoreCandidate(header: mainHeader))
+        }
+        for backup in await cloudVault.listBackups()
+        where backup.header.schemaVersion <= VaultDocument.currentSchemaVersion
+            && backup.header.revision != mainHeader?.revision {
+            options.append(VaultRestoreCandidate(header: backup.header, backupFileName: backup.fileName))
+        }
+        switch options.count {
+        case 0:
+            if mainHeader != nil {
+                showToast("iCloud 数据来自更新版本的轻舟，请先升级 App")
+            } else {
+                showToast("iCloud 上没有找到备份")
+            }
+        case 1:
+            cloudRestoreOffer = options[0]     // 只有一份，直接进确认弹窗
+        default:
+            cloudVersionOptions = options      // 多份 → 弹版本选择列表
+        }
+    }
+
+    /// 用户在版本列表里选了一份 → 进入确认弹窗。
+    public func chooseCloudRestoreCandidate(_ candidate: VaultRestoreCandidate) {
+        cloudVersionOptions = nil
+        cloudRestoreOffer = candidate
+    }
+
+    /// 关闭版本选择列表。
+    public func dismissCloudVersionOptions() {
+        cloudVersionOptions = nil
     }
 
     /// 开关 iCloud 同步。开 → 立刻跑一次启动检查（可能提示恢复 / 补镜像）；关 → 取消在途镜像。
