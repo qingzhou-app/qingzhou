@@ -153,6 +153,55 @@ final class VaultDocumentTests: XCTestCase {
     }
 }
 
+// MARK: - 镜像内容规范化
+
+final class VaultSnapshotNormalizerTests: XCTestCase {
+    private func makeSnapshot() throws -> Persistence.Snapshot {
+        var node = try ProxyURLParser.parse("trojan://pw@a.com:443#n1")
+        node.lastLatencyMs = 123
+        node.lastTestedAt = Date()
+        var sub = Subscription(name: "s", url: URL(string: "https://example.com/sub")!)
+        sub.lastUpdatedAt = Date()
+        sub.usedBytes = 1024
+        sub.totalBytes = 4096
+        var snapshot = Persistence.Snapshot()
+        snapshot.nodes = [node]
+        snapshot.subscriptions = [sub]
+        snapshot.currentNodeId = node.id
+        return snapshot
+    }
+
+    func testStripsDeviceLocalTransientFields() throws {
+        let normalized = VaultSnapshotNormalizer.normalized(try makeSnapshot())
+        XCTAssertNil(normalized.currentNodeId, "当前节点是设备本地选择，不上云")
+        XCTAssertNil(normalized.nodes.first?.lastLatencyMs)
+        XCTAssertNil(normalized.nodes.first?.lastTestedAt)
+        XCTAssertNil(normalized.subscriptions.first?.lastUpdatedAt)
+        XCTAssertNil(normalized.subscriptions.first?.usedBytes)
+        // 服务端事实保留
+        XCTAssertEqual(normalized.subscriptions.first?.totalBytes, 4096)
+        XCTAssertEqual(normalized.nodes.first?.name, "n1")
+    }
+
+    func testContentHashIgnoresTransientsButSeesRealChanges() throws {
+        let base = try makeSnapshot()
+        var latencyChanged = base
+        latencyChanged.nodes[0].lastLatencyMs = 999
+        latencyChanged.nodes[0].lastTestedAt = Date(timeIntervalSinceNow: 100)
+        latencyChanged.currentNodeId = nil
+        latencyChanged.subscriptions[0].usedBytes = 9999
+
+        let h1 = try VaultSnapshotNormalizer.contentHash(of: VaultSnapshotNormalizer.normalized(base))
+        let h2 = try VaultSnapshotNormalizer.contentHash(of: VaultSnapshotNormalizer.normalized(latencyChanged))
+        XCTAssertEqual(h1, h2, "只有瞬态字段不同 → 规范化后哈希应一致")
+
+        var ruleChanged = base
+        ruleChanged.customRules = [Rule(type: .domainSuffix, value: "example.com", target: .proxy)]
+        let h3 = try VaultSnapshotNormalizer.contentHash(of: VaultSnapshotNormalizer.normalized(ruleChanged))
+        XCTAssertNotEqual(h1, h3, "实质内容变化 → 哈希必须不同")
+    }
+}
+
 // MARK: - CloudVaultStore（用临时目录模拟 ubiquity 容器）
 
 final class CloudVaultStoreTests: XCTestCase {
@@ -450,6 +499,99 @@ final class AppStateCloudVaultTests: XCTestCase {
         let persisted = state.persistence.loadSnapshot()
         XCTAssertEqual(persisted.nodes.count, 30)
         XCTAssertEqual(persisted.subscriptions.count, 1)
+    }
+
+    /// 测速 / 自动择优只改瞬态字段（延迟 / 当前节点）→ 镜像应当被内容去重跳过，
+    /// 不产生新 revision、不写新备份（否则 5 份滚动备份很快全是雷同版本）。
+    func testLatencyAndSelectionChangesDoNotCreateNewRevision() async throws {
+        let store = makeStore()
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@a.com:443#n1")
+        try state.addNode(fromURL: "trojan://pw@b.com:443#n2")
+        await state.cloudMirrorTask?.value
+        let rev1 = try await store.loadHeader()?.revision
+        XCTAssertEqual(rev1, 1)
+
+        // 模拟自动测速落库：改延迟字段 + persist（measureAllNodes 的持久化路径就是这两步）
+        state.nodes[0].lastLatencyMs = 42
+        state.nodes[0].lastTestedAt = Date()
+        state.nodes[1].lastLatencyMs = 88
+        state.nodes[1].lastTestedAt = Date()
+        state.persist()
+        await state.cloudMirrorTask?.value
+        // 模拟自动择优：切换当前节点（也会 persist）
+        state.select(state.nodes[1])
+        await state.cloudMirrorTask?.value
+
+        let header = try await store.loadHeader()
+        XCTAssertEqual(header?.revision, 1, "只有瞬态字段变化不应产生新 revision")
+        let backups = await store.listBackups()
+        XCTAssertEqual(backups.count, 1, "不应写出新备份")
+        if case .synced = state.cloudSyncStatus {} else {
+            XCTFail("去重跳过也应显示已同步，实际 \(state.cloudSyncStatus)")
+        }
+    }
+
+    func testRealConfigChangeStillCreatesNewRevision() async throws {
+        let store = makeStore()
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@a.com:443#n1")
+        await state.cloudMirrorTask?.value
+        let revAfterAdd = try await store.loadHeader()?.revision
+        XCTAssertEqual(revAfterAdd, 1)
+
+        // 实质变化：加一条自定义规则 → 新 revision + 新备份
+        state.addCustomRule(Rule(type: .domainSuffix, value: "example.com", target: .proxy))
+        await state.cloudMirrorTask?.value
+        let revAfterRule = try await store.loadHeader()?.revision
+        XCTAssertEqual(revAfterRule, 2)
+        let backups = await store.listBackups()
+        XCTAssertEqual(backups.count, 2)
+    }
+
+    func testIdenticalContentMirroredOnlyOnce() async throws {
+        let store = makeStore()
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@a.com:443#n1")
+        await state.cloudMirrorTask?.value
+        // 内容没变，连续 persist 两次 → 不应产生新 revision
+        state.persist()
+        await state.cloudMirrorTask?.value
+        state.persist()
+        await state.cloudMirrorTask?.value
+        let revision = try await store.loadHeader()?.revision
+        XCTAssertEqual(revision, 1)
+        let backups = await store.listBackups()
+        XCTAssertEqual(backups.count, 1)
+    }
+
+    /// vault 不带瞬态字段 → 恢复时必须从本地回填，别把本机刚测的延迟 / 正在用的节点清掉。
+    func testRestorePreservesLocalTransientData() async throws {
+        let store = makeStore()
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@a.com:443#n1")
+        state.select(state.nodes[0])
+        await state.cloudMirrorTask?.value
+
+        // 本机测速结果 + 当前选择
+        state.nodes[0].lastLatencyMs = 33
+        state.nodes[0].lastTestedAt = Date()
+        let localCurrentId = state.currentNodeId
+
+        // 云端来了一份更新的规范化文档（同一批节点 + 新增规则），模拟另一台设备的编辑
+        var cloudSnapshot = VaultSnapshotNormalizer.normalized(
+            Persistence.Snapshot(nodes: state.nodes, settings: state.settings))
+        cloudSnapshot.customRules = [Rule(type: .domainSuffix, value: "example.com", target: .proxy)]
+        try await store.save(VaultDocument(
+            revision: 9, modifiedAt: Date(), deviceName: "other", snapshot: cloudSnapshot))
+
+        await state.restoreFromCloud(candidate: VaultRestoreCandidate(
+            header: VaultHeader(schemaVersion: 1, revision: 9, modifiedAt: Date(), deviceName: "other")))
+
+        XCTAssertEqual(state.customRules.count, 1, "云端的实质变化要恢复进来")
+        XCTAssertEqual(state.nodes.first?.lastLatencyMs, 33, "本机延迟数据不应被恢复清掉")
+        XCTAssertNotNil(state.nodes.first?.lastTestedAt)
+        XCTAssertEqual(state.currentNodeId, localCurrentId, "本机当前节点选择不应被恢复清掉")
     }
 
     func testStartupWithEmptyLocalAndEmptyCloudDoesNotCreateEmptyVault() async throws {
