@@ -312,9 +312,15 @@ public struct HomeView: View {
 
     private var networkCard: some View {
         Card(title: "公网 IP", systemImage: "globe") {
-            ipRow(title: "节点出口", info: state.proxyIPInfo, tint: .blue)
-            Divider().padding(.vertical, 4)
-            ipRow(title: "直连（不走节点）", info: state.directIPInfo, tint: .green)
+            // 按连接状态切换：未连接时不显示「节点出口」——那栏留着只会摆上一次会话的
+            // 缓存或直连 IP，误导用户以为还在走节点。连上了才有「节点出口」的语义。
+            if state.isVPNRunning {
+                ipRow(title: "节点出口", info: state.proxyIPInfo, tint: .blue)
+                Divider().padding(.vertical, 4)
+                ipRow(title: "直连（不走节点）", info: state.directIPInfo, tint: .green)
+            } else {
+                ipRow(title: "直连 IP（VPN 未连接）", info: state.directIPInfo, tint: .green)
+            }
             HStack {
                 Spacer()
                 Button {
