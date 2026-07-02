@@ -10,7 +10,13 @@ public struct DomainAnalysisView: View {
     public init(state: AppState) { self.state = state }
 
     public var body: some View {
-        let connections = state.connections
+        // 「忽略 IP」过滤（与连接页共享设置）：裸 IP 目标在聚合前剔除 ——
+        // FakeDNS 反查不到域名的连接对域名分析没有价值。
+        let hideIP = state.settings.hideBareIPConnections
+        let connections = hideIP
+            ? state.connections.filter { !HostClassifier.isBareIP($0.targetHost) }
+            : state.connections
+        let hiddenIPCount = state.connections.count - connections.count
         let stats = DomainAnalyzer.aggregate(connections)
         let digests = DomainAnalyzer.daily(connections)
         let suggestions = DomainAnalyzer.suggestions(stats)
@@ -23,6 +29,17 @@ public struct DomainAnalysisView: View {
             }
             .pickerStyle(.segmented)
             .listRowSeparator(.hidden)
+
+            // 过滤生效时的轻提示，避免用户忘了开着过滤、以为数据少了
+            if hiddenIPCount > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "eye.slash").imageScale(.small)
+                    Text("忽略 IP：已隐藏 \(hiddenIPCount) 条纯 IP 连接")
+                }
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .listRowSeparator(.hidden)
+            }
 
             switch mode {
             case 0:
@@ -43,6 +60,11 @@ public struct DomainAnalysisView: View {
             }
         }
         .navigationTitle("域名分析")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                IgnoreIPToggle(state: state)
+            }
+        }
     }
 
     // MARK: - rows

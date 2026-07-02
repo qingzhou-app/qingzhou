@@ -90,4 +90,20 @@ final class SettingsMigrationTests: XCTestCase {
         let reloaded = try JSONDecoder().decode(Settings.self, from: data)
         XCTAssertEqual(reloaded.autoMeasureIntervalSeconds, 15 * 60)
     }
+
+    // MARK: - hideBareIPConnections（连接页 / 域名分析页的「忽略 IP」过滤）
+
+    /// 旧 JSON 没这个字段 → 默认 false（不过滤，行为与升级前一致）。
+    func testDecodeWithoutHideBareIPUsesDefaultFalse() throws {
+        let s = try decode("{}")
+        XCTAssertFalse(s.hideBareIPConnections)
+    }
+
+    func testHideBareIPRoundtripsTrue() throws {
+        var s = Settings()
+        s.hideBareIPConnections = true
+        let data = try JSONEncoder().encode(s)
+        let reloaded = try JSONDecoder().decode(Settings.self, from: data)
+        XCTAssertTrue(reloaded.hideBareIPConnections)
+    }
 }

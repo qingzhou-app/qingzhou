@@ -17,17 +17,22 @@ public struct ConnectionsView: View {
     public init(state: AppState) { self.state = state }
 
     public var body: some View {
+        let result = filtered
         VStack(spacing: 0) {
-            controls
-            if filtered.isEmpty {
+            controls(hiddenIPCount: result.hiddenIPCount)
+            if result.visible.isEmpty {
                 ContentUnavailableView {
                     Label("暂无连接", systemImage: "antenna.radiowaves.left.and.right.slash")
                 } description: {
-                    Text("开启 VPN 后，这里会展示真实的访问记录。")
+                    if result.hiddenIPCount > 0 {
+                        Text("「忽略 IP」已隐藏 \(result.hiddenIPCount) 条纯 IP 连接。")
+                    } else {
+                        Text("开启 VPN 后，这里会展示真实的访问记录。")
+                    }
                 }
                 .frame(maxHeight: .infinity)
             } else {
-                List(filtered) { c in
+                List(result.visible) { c in
                     connectionRow(c)
                 }
                 .listStyle(.plain)
@@ -35,6 +40,9 @@ public struct ConnectionsView: View {
         }
         .navigationTitle("连接")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                IgnoreIPToggle(state: state)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { showDomainAnalysis = true } label: {
                     Label("域名分析", systemImage: "chart.pie")
@@ -58,22 +66,37 @@ public struct ConnectionsView: View {
         .searchable(text: $keyword, prompt: "搜索 host / route / app")
     }
 
-    private var controls: some View {
-        HStack {
+    private func controls(hiddenIPCount: Int) -> some View {
+        VStack(spacing: 4) {
             Picker("", selection: $filter) {
                 ForEach(ConnectionFilter.allCases) { f in
                     Text(f.rawValue).tag(f)
                 }
             }
             .pickerStyle(.segmented)
+            // 过滤生效时的轻提示：避免用户忘了开着「忽略 IP」，以为数据丢了
+            if hiddenIPCount > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "eye.slash").imageScale(.small)
+                    Text("忽略 IP：已隐藏 \(hiddenIPCount) 条纯 IP 连接")
+                }
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
     }
 
-    private var filtered: [Connection] {
+    /// 三层过滤：状态（活跃/已关闭）→ 关键字 → 「忽略 IP」。
+    /// `hiddenIPCount` 只统计前两层已命中、仅因裸 IP 被隐藏的条数，用于轻提示。
+    private var filtered: (visible: [Connection], hiddenIPCount: Int) {
         let kw = keyword.lowercased()
-        return state.connections.filter { c in
+        let hideIP = state.settings.hideBareIPConnections
+        var visible: [Connection] = []
+        var hiddenIP = 0
+        for c in state.connections {
             let scopeOK: Bool
             switch filter {
             case .active: scopeOK = c.isActive
@@ -85,8 +108,14 @@ public struct ConnectionsView: View {
                 || c.route.lowercased().contains(kw)
                 || c.matchedRule.lowercased().contains(kw)
                 || (c.sourceApp?.lowercased().contains(kw) ?? false)
-            return scopeOK && kwOK
+            guard scopeOK && kwOK else { continue }
+            if hideIP && HostClassifier.isBareIP(c.targetHost) {
+                hiddenIP += 1
+                continue
+            }
+            visible.append(c)
         }
+        return (visible, hiddenIP)
     }
 
     private func connectionRow(_ c: Connection) -> some View {
