@@ -85,9 +85,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let nodeName = (providerConfig?["nodeName"] as? String) ?? "node"
         let modeRaw = (providerConfig?["proxyMode"] as? String) ?? ProxyMode.global.rawValue
         let mode = ProxyMode(rawValue: modeRaw) ?? .global
+        // 用户规则（自定义 + 远程）：内联压缩 Data，超大规则集降级为 App Group 文件路径
+        let userRules = loadUserRules(
+            inlineData: providerConfig?["userRulesGZ"] as? Data,
+            base64: nil,
+            path: providerConfig?["userRulesPath"] as? String
+        )
 
-        os_log("starting tunnel for node: %{public}@ mode=%{public}@",
-               log: log, type: .default, nodeName, mode.rawValue)
+        os_log("starting tunnel for node: %{public}@ mode=%{public}@ userRules=%d",
+               log: log, type: .default, nodeName, mode.rawValue, userRules.count)
 
         // 转换 Node → outbounds JSON
         let xrayJSON: String
@@ -98,7 +104,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             xrayJSON = try XrayConfigComposer.compose(
                 outboundsJSON: outboundsJSON,
                 mode: mode,
-                accessLogPath: TunnelAppGroup.accessLogPath()
+                accessLogPath: TunnelAppGroup.accessLogPath(),
+                userRules: userRules
             )
         } catch {
             os_log("share link → xray config 转换失败: %{public}@",
@@ -231,6 +238,27 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             userInfo: [NSLocalizedDescriptionKey:
                 "两条路径都失败：nodeJSON 解析失败且 shareLink 为空"]
         )
+    }
+
+    /// 解出主 App 传来的用户规则。三个来源按序尝试：内联 Data（providerConfiguration）、
+    /// base64 字符串（sendProviderMessage 的 JSON 消息体）、App Group 文件路径（超大规则集）。
+    /// 解不出来 → 空规则集 + 打日志 —— 规则只是分流增强，绝不能因为它 VPN 起不来。
+    private func loadUserRules(inlineData: Data?, base64: String?, path: String?) -> [Rule] {
+        var data = inlineData
+        if data == nil, let base64, !base64.isEmpty {
+            data = Data(base64Encoded: base64)
+        }
+        if data == nil, let path, !path.isEmpty {
+            data = FileManager.default.contents(atPath: path)
+        }
+        guard let data else { return [] }
+        do {
+            return try RulesTransport.decode(data)
+        } catch {
+            os_log("⚠️ decode user rules failed (%{public}@) — falling back to built-in rules only",
+                   log: log, type: .error, error.localizedDescription)
+            return []
+        }
     }
 
     // MARK: - socketpair TUN bridge (iOS 26 必备)
@@ -403,15 +431,18 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     ///  - 新配置**构建失败**时直接回错、**不拆旧 xray** —— 旧连接照跑，网络不受影响；
     ///  - xray 起不来时 bringUpXray 会自己 tearDown 并回错误，主 App 收到后回退到全量重启。
     private func reconfigure(nodeJSON: String, shareLink: String, mode: ProxyMode,
-                             nodeName: String, reply: @escaping (Error?) -> Void) {
-        os_log("reconfigure → node=%{public}@ mode=%{public}@", log: log, type: .default, nodeName, mode.rawValue)
+                             nodeName: String, userRules: [Rule],
+                             reply: @escaping (Error?) -> Void) {
+        os_log("reconfigure → node=%{public}@ mode=%{public}@ userRules=%d",
+               log: log, type: .default, nodeName, mode.rawValue, userRules.count)
         let xrayJSON: String
         do {
             let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
             xrayJSON = try XrayConfigComposer.compose(
                 outboundsJSON: outboundsJSON,
                 mode: mode,
-                accessLogPath: TunnelAppGroup.accessLogPath()
+                accessLogPath: TunnelAppGroup.accessLogPath(),
+                userRules: userRules
             )
         } catch {
             os_log("reconfigure: build config failed, keep old xray: %{public}@",
@@ -434,7 +465,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             nodeJSON: obj["nodeJSON"] ?? "",
             shareLink: obj["shareLink"] ?? "",
             mode: ProxyMode(rawValue: obj["proxyMode"] ?? "") ?? .global,
-            nodeName: obj["nodeName"] ?? "node"
+            nodeName: obj["nodeName"] ?? "node",
+            userRules: loadUserRules(inlineData: nil,
+                                     base64: obj["userRulesGZ"],
+                                     path: obj["userRulesPath"])
         ) { error in
             let payload: [String: Any] = error == nil
                 ? ["ok": true]

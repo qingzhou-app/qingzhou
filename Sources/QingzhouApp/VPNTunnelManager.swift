@@ -98,10 +98,14 @@ public final class VPNTunnelManager {
     /// 优先用 Node 跑纯 Swift 的 NodeConverter（XrayConfig 模块），share link 作 fallback。
     /// 主 App 既不 link LibXray.xcframework 也不 link XrayConfig —— 启动时不会被任何额外
     /// 动态库拖慢。
+    ///
+    /// `rules`：用户规则（自定义 + 远程，自定义在前），压缩后内联进 providerConfiguration；
+    /// 超大规则集降级为写 App Group 文件传路径（见 makeRulesPayload）。
     public func configure(
         node: Node,
         mode: ProxyMode,
         shareLink: String,
+        rules: [Rule] = [],
         description: String = "VPN"
     ) async throws {
         if manager == nil { try await load() }
@@ -129,13 +133,20 @@ public final class VPNTunnelManager {
         // 把启动信息塞进 providerConfiguration —— 系统保存在 VPN preferences 里，
         // Extension 启动时通过 protocolConfiguration.providerConfiguration 读出来。
         // 不再需要 App Group 共享存储，因此不会触发「访问其他 App 数据」隐私弹窗。
-        proto.providerConfiguration = [
+        var providerConfig: [String: Any] = [
             "nodeJSON": nodeJSON,
             "shareLink": shareLink,  // fallback 通道
             "nodeId": node.id.uuidString,
             "nodeName": node.name,
             "proxyMode": mode.rawValue
         ]
+        // 用户规则：压缩内联（Data 是合法 plist 类型）；超大时写 App Group 文件传路径。
+        switch makeRulesPayload(rules) {
+        case .inline(let gz):  providerConfig["userRulesGZ"] = gz
+        case .file(let path):  providerConfig["userRulesPath"] = path
+        case .none:            break
+        }
+        proto.providerConfiguration = providerConfig
 
         manager.protocolConfiguration = proto
         manager.localizedDescription = description
@@ -161,17 +172,23 @@ public final class VPNTunnelManager {
     /// 原地无感重配：给**运行中**的扩展发新配置，扩展只重启 xray（不重连 VPN、不动 TUN）。
     /// 用于切代理模式 / 切节点时避免整条隧道 stop→start 造成的断连。
     /// 失败（拿不到会话 / 扩展报错 / 超时）时 throws —— 调用方据此回退到全量重启。
-    public func reconfigureInPlace(node: Node, mode: ProxyMode, shareLink: String) async throws {
+    public func reconfigureInPlace(node: Node, mode: ProxyMode, shareLink: String, rules: [Rule] = []) async throws {
         guard let session = manager?.connection as? NETunnelProviderSession else {
             throw TunnelError.managerNotLoaded
         }
-        let msg: [String: String] = [
+        var msg: [String: String] = [
             "command": "reconfigure",
             "nodeJSON": Self.encodeNodeJSON(node),
             "shareLink": shareLink,
             "nodeName": node.name,
             "proxyMode": mode.rawValue
         ]
+        // 消息体是 JSON（[String: String]），二进制走 base64；超大规则集同样降级为文件路径
+        switch makeRulesPayload(rules) {
+        case .inline(let gz):  msg["userRulesGZ"] = gz.base64EncodedString()
+        case .file(let path):  msg["userRulesPath"] = path
+        case .none:            break
+        }
         let data = try JSONSerialization.data(withJSONObject: msg)
 
         let reply: Data? = try await withCheckedThrowingContinuation { cont in
@@ -199,6 +216,49 @@ public final class VPNTunnelManager {
             throw TunnelError.underlying(NSError(
                 domain: "qingzhou.tunnel", code: -2,
                 userInfo: [NSLocalizedDescriptionKey: (obj["error"] as? String) ?? "扩展重配失败"]))
+        }
+    }
+
+    // MARK: - 用户规则 payload
+
+    private enum RulesPayload {
+        case inline(Data)
+        case file(String)
+        case none
+    }
+
+    /// 压缩后 ≤ 该阈值直接内联。providerConfiguration 落 VPN preferences plist、
+    /// sendProviderMessage 走 XPC，都不适合塞太大；200KB 压缩后 ≈ 数万条规则，日常远达不到。
+    private static let inlineRulesLimit = 200 * 1024
+    /// 超限降级写到 App Group 容器的文件名（主 App 写、隧道扩展读，同一容器）。
+    private static let rulesFileName = "user-rules.gz"
+
+    /// [Rule] → 传输 payload。编码失败 / 无处可写时返回 .none 并记日志 ——
+    /// 规则传不过去只是分流退化为内置规则，绝不能阻断 VPN 启动。
+    private func makeRulesPayload(_ rules: [Rule]) -> RulesPayload {
+        guard !rules.isEmpty else { return .none }
+        let gz: Data
+        do {
+            gz = try RulesTransport.encode(rules)
+        } catch {
+            logger?.warn("encode user rules failed: \(error) — tunnel will use built-in rules only", category: "tunnel")
+            return .none
+        }
+        if gz.count <= Self.inlineRulesLimit {
+            return .inline(gz)
+        }
+        // 超大规则集：写 App Group 文件传路径（扩展与主 App 共享同一容器）
+        guard let url = AppGroupStorage.containerURL?.appendingPathComponent(Self.rulesFileName) else {
+            logger?.warn("user rules too large (\(gz.count)B) and App Group unavailable — dropped", category: "tunnel")
+            return .none
+        }
+        do {
+            try gz.write(to: url, options: [.atomic])
+            logger?.info("user rules payload \(gz.count)B exceeds inline limit — wrote to App Group file", category: "tunnel")
+            return .file(url.path)
+        } catch {
+            logger?.warn("write user rules file failed: \(error) — dropped", category: "tunnel")
+            return .none
         }
     }
 
