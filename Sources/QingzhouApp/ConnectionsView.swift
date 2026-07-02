@@ -45,9 +45,18 @@ public struct ConnectionsView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { showDomainAnalysis = true } label: {
-                    // 图标 + 文字并显：toolbar 默认只出图标，第一眼看不懂
+                    // 图标 + 文字并显：toolbar 默认只出图标，第一眼看不懂。
+                    // iOS 的 ToolbarItem 里 .labelStyle(.titleAndIcon) 经常不生效
+                    // （仍渲染成 icon-only），用 HStack 强制横排；macOS 用 Label 即可。
+                    #if os(iOS)
+                    HStack(spacing: 4) {
+                        Image(systemName: "chart.pie")
+                        Text("域名分析")
+                    }
+                    #else
                     Label("域名分析", systemImage: "chart.pie")
                         .labelStyle(.titleAndIcon)
+                    #endif
                 }
             }
         }
