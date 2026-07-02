@@ -143,7 +143,7 @@ public struct ConnectionsView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Circle()
-                    .fill(c.isActive ? Color.green : Color.secondary)
+                    .fill(statusDotColor(c))
                     .frame(width: 8, height: 8)
                 Text(c.targetHost).font(.headline)
                 Spacer()
@@ -183,5 +183,17 @@ public struct ConnectionsView: View {
         .padding(.vertical, 4)
         // 一键规则：iOS 长按/左滑，macOS 右键 →「加入直连 / 代理 / 拒绝」
         .quickRuleActions(host: c.targetHost, state: state)
+    }
+
+    /// 行首状态点：被拒绝的连接恒为红色 —— xray reject 是即时的，没有「连通」阶段，
+    /// 沿用 isActive 的绿点会让用户以为连接成功了（真实验收反馈）。
+    ///
+    /// 只改显示层、不在摄入时置 closedAt：被拒目标（典型是广告域名）会高频重试，
+    /// ConnectionTracker 靠「活跃身份」去重才让它们合并成一行；摄入即关闭会破坏去重
+    /// （每次重试都成新行，连接页和每日拒绝计数一起灌水），或者得给 tracker 引入
+    /// 「已关闭仍去重」的特殊态。显示层修复已消除误导，域名分析的拒绝统计口径不变。
+    private func statusDotColor(_ c: Connection) -> Color {
+        if DomainAnalyzer.routeCategory(c.route) == .reject { return .red }
+        return c.isActive ? .green : .secondary
     }
 }
