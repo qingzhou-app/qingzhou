@@ -24,6 +24,10 @@ public struct TunnelMemoryStats: Codable, Sendable, Equatable {
     public var limitBytes: Int64
     /// 本次会话 footprint 越过告警阈值的次数（进入告警状态才 +1，持续超限不重复计）。
     public var warningCount: Int
+    /// 采样诊断：采样失败/降级时的原因（task_info 的 kern_return 码、反推标记等），
+    /// 正常时为 nil。**采样失败也要每秒写记录** —— 原因必须能到达诊断 UI：
+    /// 验收 #17-iOS 的教训是扩展静默跳过写入后，Mac 上读不到 iPhone 容器，只能靠猜。
+    public var error: String?
     public var sampledAt: Date
 
     public init(
@@ -33,6 +37,7 @@ public struct TunnelMemoryStats: Codable, Sendable, Equatable {
         allTimePeakBytes: Int64 = 0,
         limitBytes: Int64 = 0,
         warningCount: Int = 0,
+        error: String? = nil,
         sampledAt: Date = Date()
     ) {
         self.footprintBytes = footprintBytes
@@ -41,6 +46,7 @@ public struct TunnelMemoryStats: Codable, Sendable, Equatable {
         self.allTimePeakBytes = allTimePeakBytes
         self.limitBytes = limitBytes
         self.warningCount = warningCount
+        self.error = error
         self.sampledAt = sampledAt
     }
 }

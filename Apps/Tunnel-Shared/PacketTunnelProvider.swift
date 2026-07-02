@@ -490,12 +490,24 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         reportMemoryStats(at: now)
     }
 
-    /// 内存采样 + 上报（statsQueue 上跑）。采样失败静默跳过本轮 —— 观测缺席不影响 VPN。
+    /// 内存采样 + 上报（statsQueue 上跑）。
     /// 先量化再优化：footprint（jetsam 判定依据）、会话峰值、跨会话历史峰值、40MB 预警。
+    ///
+    /// **采样失败也每秒写记录（带 error 字段）** —— 验收 #17-iOS 教训：静默跳过写入后，
+    /// Mac 上读不到 iPhone 容器，失败原因只能靠猜。现在诊断区直接显示 error，一张截图定位。
+    /// iOS 兜底：task_vm_info 拿不到时用 os_proc_available_memory 反推
+    /// （50MB 上限 − 剩余 = 已用 —— 这本来就是 Apple 给扩展的 jetsam 余量 API）。
     private func reportMemoryStats(at now: Date) {
-        guard let footprint = MemoryFootprint.currentFootprint() else { return }
+        let sample = MemoryFootprint.sampleFootprint()
+        let available = MemoryFootprint.availableMemory()
+        var footprint = sample.bytes
+        var note = sample.error
+        if footprint == nil, let avail = available, MemoryFootprint.platformLimitBytes > 0 {
+            footprint = max(0, MemoryFootprint.platformLimitBytes - avail)
+            note = "\(sample.error ?? "task_vm_info 失败")；footprint 已由 os_proc_available_memory 反推"
+        }
 
-        // 历史最高峰值跨会话延续：第一次采样时从上次落盘的 memory-stats 读回来接着比。
+        // 历史最高峰值跨会话延续：第一次上报时从上次落盘的 memory-stats 读回来接着比。
         // 用途：用户报「断流」时，看历史峰值是否顶到过 50MB —— 有据可查。
         if !memAllTimePeakLoaded {
             memAllTimePeakLoaded = true
@@ -508,33 +520,36 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
             }
         }
-        memSessionPeak = max(memSessionPeak, footprint)
-        memAllTimePeak = max(memAllTimePeak, memSessionPeak)
+        if let fp = footprint {
+            memSessionPeak = max(memSessionPeak, fp)
+            memAllTimePeak = max(memAllTimePeak, memSessionPeak)
 
-        // 接近上限预警（40MB，距 jetsam 线还剩 10MB）。带 4MB 迟滞：越线只记一次，
-        // 回落到 36MB 以下才重新武装 —— 避免在阈值附近抖动时每秒刷一条日志。
-        // **只在有硬上限的平台（iOS）武装**：macOS 无 jetsam 线、扩展常态就 60MB+，
-        // 在那儿告警是纯噪声（本机实测装上第一秒就误报了一次）。
-        if MemoryFootprint.platformLimitBytes > 0 {
-            if footprint >= Self.memWarnThreshold {
-                if !memInWarningZone {
-                    memInWarningZone = true
-                    memWarningCount += 1
-                    os_log("⚠️ memory footprint %lld MB ≥ 40 MB warn threshold (iOS jetsam limit 50 MB), warning #%d this session",
-                           log: log, type: .error, footprint / (1024 * 1024), memWarningCount)
+            // 接近上限预警（40MB，距 jetsam 线还剩 10MB）。带 4MB 迟滞：越线只记一次，
+            // 回落到 36MB 以下才重新武装 —— 避免在阈值附近抖动时每秒刷一条日志。
+            // **只在有硬上限的平台（iOS）武装**：macOS 无 jetsam 线、扩展常态就 60MB+，
+            // 在那儿告警是纯噪声（本机实测装上第一秒就误报了一次）。
+            if MemoryFootprint.platformLimitBytes > 0 {
+                if fp >= Self.memWarnThreshold {
+                    if !memInWarningZone {
+                        memInWarningZone = true
+                        memWarningCount += 1
+                        os_log("⚠️ memory footprint %lld MB ≥ 40 MB warn threshold (iOS jetsam limit 50 MB), warning #%d this session",
+                               log: log, type: .error, fp / (1024 * 1024), memWarningCount)
+                    }
+                } else if fp < Self.memWarnThreshold - 4 * 1024 * 1024 {
+                    memInWarningZone = false
                 }
-            } else if footprint < Self.memWarnThreshold - 4 * 1024 * 1024 {
-                memInWarningZone = false
             }
         }
 
         let stats = TunnelMemoryStats(
-            footprintBytes: footprint,
-            availableBytes: MemoryFootprint.availableMemory(),
+            footprintBytes: footprint ?? 0,   // 0 + error 字段 = 「采样失败」，UI 不会当真实值显示
+            availableBytes: available,
             sessionPeakBytes: memSessionPeak,
             allTimePeakBytes: memAllTimePeak,
             limitBytes: MemoryFootprint.platformLimitBytes,
             warningCount: memWarningCount,
+            error: note,
             sampledAt: now
         )
         let encoder = JSONEncoder()

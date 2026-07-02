@@ -13,6 +13,7 @@ final class TunnelMemoryStatsTests: XCTestCase {
             allTimePeakBytes: 42 * 1024 * 1024,
             limitBytes: 50 * 1024 * 1024,
             warningCount: 2,
+            error: "task_info(TASK_VM_INFO) kr=4",
             sampledAt: Date(timeIntervalSince1970: 1_750_000_000)
         )
         let encoder = JSONEncoder()
@@ -30,6 +31,7 @@ final class TunnelMemoryStatsTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let stats = try decoder.decode(TunnelMemoryStats.self, from: Data(json.utf8))
         XCTAssertNil(stats.availableBytes)
+        XCTAssertNil(stats.error, "旧版扩展写的 JSON 没有 error 字段，解码必须兼容")
         XCTAssertEqual(stats.footprintBytes, 1024)
     }
 

@@ -23,6 +23,12 @@ public enum MemoryFootprint {
     /// 结构体保持初始化的 0。上一版用 offset(of:)/4+1 只覆盖到 phys_footprint 的
     /// 前 4 字节，差 1 个 integer_t 没到 REV1 线，于是采出来恒 0（验收 #17 的根因）。
     public static func currentFootprint() -> Int64? {
+        sampleFootprint().bytes
+    }
+
+    /// 带诊断的采样：失败时 error 描述原因（kern_return 码 / 字段未填）。
+    /// 验收 #17-iOS 教训：失败原因必须能随 memory-stats 到达诊断 UI —— 静默 nil 只能靠猜。
+    public static func sampleFootprint() -> (bytes: Int64?, error: String?) {
         var info = task_vm_info_data_t()
         var count = mach_msg_type_number_t(
             MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size
@@ -32,10 +38,15 @@ public enum MemoryFootprint {
                 task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), intPtr, &count)
             }
         }
+        guard kr == KERN_SUCCESS else {
+            return (nil, "task_info(TASK_VM_INFO) kr=\(kr)")
+        }
         // 0 也当失败：活进程的 footprint 不可能为 0，出现即字段没被填（内核截断/老系统）。
-        // 宁缺勿假 —— 返 nil 让调用方跳过本轮，绝不把 0 写进 memory-stats 跟真实数据混淆。
-        guard kr == KERN_SUCCESS, info.phys_footprint > 0 else { return nil }
-        return Int64(info.phys_footprint)
+        // 宁缺勿假 —— 绝不把 0 当真实数据。
+        guard info.phys_footprint > 0 else {
+            return (nil, "phys_footprint==0 (count=\(count))")
+        }
+        return (Int64(info.phys_footprint), nil)
     }
 
     /// 距离 jetsam 上限还剩多少字节（os_proc_available_memory）。**仅 iOS 有意义**；

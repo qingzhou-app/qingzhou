@@ -15,6 +15,13 @@ final class MemoryFootprintTests: XCTestCase {
                              "XCTest 进程的 phys_footprint 必然 > 1MB，小于即字段没被内核填充")
     }
 
+    /// sampleFootprint 的诊断语义：成功时 error 必须为 nil（否则 UI 会显示假告警）。
+    func testSampleFootprintCarriesNoErrorOnSuccess() {
+        let sample = MemoryFootprint.sampleFootprint()
+        XCTAssertNotNil(sample.bytes)
+        XCTAssertNil(sample.error)
+    }
+
     func testPlatformLimit() {
         #if os(iOS)
         XCTAssertEqual(MemoryFootprint.platformLimitBytes, 50 * 1024 * 1024)

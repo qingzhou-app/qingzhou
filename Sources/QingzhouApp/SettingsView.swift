@@ -38,18 +38,28 @@ public struct SettingsView: View {
                 if let mem = state.tunnelMemory {
                     let age = context.date.timeIntervalSince(mem.sampledAt)
                     let live = age <= 3
+                    // footprint==0 && error != nil = 扩展在写但采样失败 —— 显示失败而不是"0 B"
+                    let samplingFailed = mem.footprintBytes <= 0 && mem.error != nil
                     VStack(alignment: .leading, spacing: 4) {
                         LabeledContent("扩展内存", value: live
-                            ? "\(ByteFormatter.format(mem.footprintBytes))"
-                              + " · 峰值 \(ByteFormatter.format(mem.sessionPeakBytes))"
+                            ? (samplingFailed
+                               ? "采样失败"
+                               : "\(ByteFormatter.format(mem.footprintBytes))"
+                                 + " · 峰值 \(ByteFormatter.format(mem.sessionPeakBytes))")
                             : "未在上报")
-                        Text(live
+                        Text(live && !samplingFailed
                             ? memoryCaption(mem)
                             : "上次会话峰值 \(ByteFormatter.format(mem.sessionPeakBytes))"
                               + " · 历史最高 \(ByteFormatter.format(mem.allTimePeakBytes))"
                               + (mem.limitBytes > 0 ? "（上限 \(ByteFormatter.format(mem.limitBytes))）" : ""))
                             .font(.caption2)
                             .foregroundStyle(live && mem.warningCount > 0 ? .orange : .secondary)
+                        // 采样诊断（扩展带出的失败/降级原因）—— 用户截图这一行就能远程定位
+                        if let err = mem.error {
+                            Text("采样诊断：\(err)")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.orange)
+                        }
                         Text("上次采样：\(Self.ageText(age))")
                             .font(.caption2)
                             .foregroundStyle(live ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
