@@ -17,6 +17,10 @@ public struct SettingsView: View {
             #if os(macOS)
             macIntegrationSection
             #endif
+            #if os(iOS)
+            // iOS tab 收敛到 5 个后「日志」不再占 tab，从这里 push 进去（macOS 侧栏有独立项）
+            diagnosticsSection
+            #endif
             iCloudSection
             aboutSection
         }
@@ -229,6 +233,19 @@ public struct SettingsView: View {
                 .task { filterEnabled = ContentFilterManager.isEnabled }
                 Text("开启后「连接」页会标注每条流量是哪个 App 发起的。首次要在系统设置批准扩展 + 授权过滤。")
                     .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    /// 「日志」的导航入口（仅 iOS）：日志页本体不变，只是从 tab 降级为设置页里的一行。
+    private var diagnosticsSection: some View {
+        Section("诊断") {
+            NavigationLink {
+                LogsView(state: state)
+            } label: {
+                Label("日志", systemImage: "doc.text.magnifyingglass")
             }
         }
     }

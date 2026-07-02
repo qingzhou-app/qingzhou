@@ -66,9 +66,12 @@ public struct RootView: View {
 
     #if os(iOS)
     private var iOSRoot: some View {
-        // 超过 5 个 tab 时 iPhone 会自动把多出来的塞进 "More" tab。
+        // iPhone 的 tab bar 只放得下 5 个，多了会被塞进 "More" tab（设置/日志曾因此
+        // 藏了两层）。收敛到 5：连接页挂在首页流量卡的「查看连接明细」入口（push），
+        // 日志挂在设置页的「日志」入口（push）；macOS 侧栏不受限，保持全量列表。
+        // 规则和订阅不合并 —— 一个是路由策略、一个是节点来源，语义无关。
         // selection 绑定 state.activeSection —— 首页空态按钮等可编程式切 tab。
-        TabView(selection: $state.activeSection) {
+        TabView(selection: iOSTabBinding) {
             NavigationStack { HomeView(state: state) }
                 .tabItem { Label("首页", systemImage: "house") }
                 .tag(AppSection.home)
@@ -81,16 +84,25 @@ public struct RootView: View {
             NavigationStack { RulesView(state: state) }
                 .tabItem { Label("规则", systemImage: "list.bullet.rectangle") }
                 .tag(AppSection.rules)
-            NavigationStack { ConnectionsView(state: state) }
-                .tabItem { Label("连接", systemImage: "antenna.radiowaves.left.and.right") }
-                .tag(AppSection.connections)
-            NavigationStack { LogsView(state: state) }
-                .tabItem { Label("日志", systemImage: "doc.text.magnifyingglass") }
-                .tag(AppSection.logs)
             NavigationStack { SettingsView(state: state) }
                 .tabItem { Label("设置", systemImage: "gearshape") }
                 .tag(AppSection.settings)
         }
+    }
+
+    /// iOS 只有 5 个 tab：activeSection 被设成非 tab 页（连接/日志）时就近落到
+    /// 承载它入口的 tab（连接→首页、日志→设置），不让 TabView 拿到无 tag 可匹配的值。
+    private var iOSTabBinding: Binding<AppSection> {
+        Binding(
+            get: {
+                switch state.activeSection {
+                case .connections: return .home
+                case .logs:        return .settings
+                default:           return state.activeSection
+                }
+            },
+            set: { state.activeSection = $0 }
+        )
     }
     #else
     private var macOSRoot: some View {

@@ -7,6 +7,10 @@ public struct HomeView: View {
     @State private var isRefreshingIP = false
     @State private var isTestingSpeed = false
     @State private var singleTesting: Set<SpeedTestTarget> = []
+    #if os(iOS)
+    /// iOS 上「连接」不再占 tab（tab 收敛到 5 个），从流量卡的入口 push 进来。
+    @State private var showConnections = false
+    #endif
 
     public init(state: AppState) {
         self.state = state
@@ -46,6 +50,11 @@ public struct HomeView: View {
         } message: { msg in
             Text(msg)
         }
+        #if os(iOS)
+        .navigationDestination(isPresented: $showConnections) {
+            ConnectionsView(state: state)
+        }
+        #endif
     }
 
     // MARK: - 卡片
@@ -330,6 +339,19 @@ public struct HomeView: View {
                 statRow("总上行", value: ByteFormatter.format(latest?.uploadBytes ?? 0))
                 statRow("总下行", value: ByteFormatter.format(latest?.downloadBytes ?? 0))
                 statRow("当前速率", value: "↑ \(ByteFormatter.format(latest?.uploadSpeedBps ?? 0))/s · ↓ \(ByteFormatter.format(latest?.downloadSpeedBps ?? 0))/s")
+                #if os(iOS)
+                // 连接页在 iOS 上不占 tab，从这里 push（macOS 侧栏有独立「连接」项，不重复放）
+                HStack {
+                    Spacer()
+                    Button {
+                        showConnections = true
+                    } label: {
+                        Label("查看连接明细", systemImage: "list.bullet.rectangle")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                }
+                #endif
             }
         }
     }
