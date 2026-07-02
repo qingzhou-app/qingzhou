@@ -69,6 +69,8 @@ public struct ConnectionsView: View {
                         }
                     }
             }
+            // sheet 盖住 RootView 的 toast 浮层，一键规则的反馈要在 sheet 里再挂一份才可见
+            .toastOverlay(state: state)
             // macOS 上 sheet 不给尺寸会缩成一个小空框（看起来"啥都没有"）——显式给最小尺寸。
             #if os(macOS)
             .frame(minWidth: 480, minHeight: 560)
@@ -179,5 +181,7 @@ public struct ConnectionsView: View {
             .font(.caption2.monospaced()).foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
+        // 一键规则：iOS 长按/左滑，macOS 右键 →「加入直连 / 代理 / 拒绝」
+        .quickRuleActions(host: c.targetHost, state: state)
     }
 }

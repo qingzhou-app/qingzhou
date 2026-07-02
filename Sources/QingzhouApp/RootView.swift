@@ -11,8 +11,7 @@ public struct RootView: View {
 
     public var body: some View {
         rootContent
-            .overlay(alignment: .top) { toastOverlay }
-            .animation(.spring(duration: 0.3), value: state.toast)
+            .toastOverlay(state: state)
             // iCloud vault：云端备份更新（或新装机）时的恢复确认。挂在根上 —— 启动检查
             // 在任何页面都能弹；设置页的「立即恢复」也复用这里。
             .alert(
@@ -49,19 +48,6 @@ public struct RootView: View {
         #else
         macOSRoot
         #endif
-    }
-
-    @ViewBuilder private var toastOverlay: some View {
-        if let toast = state.toast {
-            Text(toast)
-                .font(.subheadline)
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().stroke(.secondary.opacity(0.2)))
-                .shadow(radius: 8, y: 2)
-                .padding(.top, 10)
-                .transition(.move(edge: .top).combined(with: .opacity))
-        }
     }
 
     #if os(iOS)

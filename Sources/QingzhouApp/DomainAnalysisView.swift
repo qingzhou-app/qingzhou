@@ -107,6 +107,8 @@ public struct DomainAnalysisView: View {
             }
         }
         .padding(.vertical, 2)
+        // 一键规则：iOS 长按/左滑，macOS 右键 →「加入直连 / 代理 / 拒绝」
+        .quickRuleActions(host: s.domain, state: state)
     }
 
     private func suggestionRow(_ s: RuleSuggestion) -> some View {

@@ -960,6 +960,59 @@ public final class AppState {
         reapplyForRulesChange()
     }
 
+    /// 「一键规则」的结果，UI 据此不用再猜发生了什么（toast 文案已在方法内给出）。
+    public enum QuickRuleOutcome: Equatable, Sendable {
+        case added(domain: String)                                     // 新增了一条规则
+        case retargeted(domain: String, from: RuleTarget, to: RuleTarget) // 同域名已有规则，原地改目标
+        case unchanged(domain: String)                                 // 同域名同目标，什么都没做
+        case notADomain(host: String)                                  // 裸 IP / 无点主机名，DOMAIN-SUFFIX 不适用
+    }
+
+    /// 域名分析 / 连接页的「加入直连 / 代理 / 拒绝」一键规则入口。
+    ///
+    /// - host 先归并成主域名（registrable domain），规则形如 `DOMAIN-SUFFIX,youtube.com,PROXY`；
+    /// - 自定义规则里已有同域名的 DOMAIN / DOMAIN-SUFFIX 时**原地改目标**而不是重复添加
+    ///   （改目标顺手升级成 SUFFIX，覆盖全部子域名）；同域名同目标则告知「已存在」；
+    /// - 走 addCustomRule 同款持久化 + 热切换路径，VPN 在跑且 rule 模式时立即生效；
+    /// - 每种结果都有 toast 反馈。
+    @discardableResult
+    public func quickAddDomainRule(forHost host: String, target: RuleTarget) -> QuickRuleOutcome {
+        let domain = DomainAnalyzer.registrableDomain(host)
+        guard !HostClassifier.isBareIP(host), domain.contains(".") else {
+            showToast("「\(host)」不是域名，无法生成域名规则")
+            return .notADomain(host: host)
+        }
+        let targetName = Self.quickRuleTargetName(target)
+        if let idx = customRules.firstIndex(where: {
+            ($0.type == .domainSuffix || $0.type == .domain) && $0.value.lowercased() == domain
+        }) {
+            let old = customRules[idx].target
+            guard old != target else {
+                showToast("已有规则：\(customRules[idx].lineForm)")
+                return .unchanged(domain: domain)
+            }
+            customRules[idx].target = target
+            customRules[idx].type = .domainSuffix
+            logger.info("Retargeted custom rule \(customRules[idx].lineForm) (was \(old.rawValue))",
+                        category: "rules")
+            persist()
+            reapplyForRulesChange()
+            showToast("\(domain) 已从\(Self.quickRuleTargetName(old))改为\(targetName)，规则已生效")
+            return .retargeted(domain: domain, from: old, to: target)
+        }
+        addCustomRule(Rule(type: .domainSuffix, value: domain, target: target, comment: "一键添加"))
+        showToast("已加入\(targetName)：\(domain)，规则已生效")
+        return .added(domain: domain)
+    }
+
+    private static func quickRuleTargetName(_ t: RuleTarget) -> String {
+        switch t {
+        case .proxy:  return "代理"
+        case .direct: return "直连"
+        case .reject: return "拒绝"
+        }
+    }
+
     /// 规则集变了：VPN 在跑且是 rule 模式时热切换，让新规则立即对真实流量生效。
     /// global / direct 模式不吃规则，改规则不值得为此断流重启隧道。
     func reapplyForRulesChange() {
