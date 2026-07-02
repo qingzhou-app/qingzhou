@@ -38,6 +38,8 @@ public struct DomainStat: Sendable, Equatable, Identifiable {
 public struct DailyDigest: Sendable, Equatable, Identifiable {
     public var day: Date                 // 当天 0 点
     public var domains: [DomainStat]
+    /// 代理/直连/拒绝的**连接次数**（不是域名个数）：三者之和 = 当天总连接次数，
+    /// 与 DomainStat.connectionCount 同单位，UI 上可直接对账。
     public var proxyCount: Int
     public var directCount: Int
     public var rejectCount: Int
@@ -130,13 +132,14 @@ public enum DomainAnalyzer {
                              sortBy: SortDimension = .traffic) -> [DailyDigest] {
         let groups = Dictionary(grouping: connections) { calendar.startOfDay(for: $0.openedAt) }
         return groups.map { day, conns in
-            let stats = aggregate(conns, sortBy: sortBy)
+            // 计数是连接次数口径（见 DailyDigest 字段注释），与 DomainDailyHistory.digests 一致
+            let routes = conns.map { routeCategory($0.route) }
             return DailyDigest(
                 day: day,
-                domains: stats,
-                proxyCount: stats.filter { $0.route == .proxy || $0.route == .mixed }.count,
-                directCount: stats.filter { $0.route == .direct }.count,
-                rejectCount: stats.filter { $0.route == .reject }.count
+                domains: aggregate(conns, sortBy: sortBy),
+                proxyCount: routes.filter { $0 == .proxy }.count,
+                directCount: routes.filter { $0 == .direct }.count,
+                rejectCount: routes.filter { $0 == .reject }.count
             )
         }
         .sorted { $0.day > $1.day }

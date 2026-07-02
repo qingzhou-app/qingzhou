@@ -88,10 +88,21 @@ public struct DomainDailyHistory: Codable, Sendable, Equatable {
     // MARK: - 每日视图
 
     /// 转成 UI 用的每日摘要，最近的在前；每天内按连接次数降序（字节没有真实来源，恒 0）。
-    public func digests(calendar: Calendar = .current) -> [DailyDigest] {
-        days.compactMap { key, records -> DailyDigest? in
+    ///
+    /// - Parameter excludingBareIPs: true 时剔除裸 IP 条目 —— 和域名 tab 的「忽略 IP」
+    ///   过滤同一口径，否则开关一开两个 tab 数字必然对不上。判定在读取时现场做
+    ///   （`HostClassifier.isBareIP`），已落盘的旧历史数据无需迁移。
+    /// - Note: digest 的 proxy/direct/reject 是**连接次数**（Σ 各域名的分路计数，
+    ///   三者之和 = 当天总连接次数），与行内「N 次」同单位，可直接对账；
+    ///   不是「域名个数」—— 那个口径下 mixed 域名没法归类，数字也没法验证。
+    public func digests(calendar: Calendar = .current, excludingBareIPs: Bool = false) -> [DailyDigest] {
+        days.compactMap { key, allRecords -> DailyDigest? in
             guard let day = Self.parseDayKey(key, calendar: calendar) else { return nil }
-            let stats = records.values.map { r in
+            let records = excludingBareIPs
+                ? allRecords.values.filter { !HostClassifier.isBareIP($0.domain) }
+                : Array(allRecords.values)
+            guard !records.isEmpty else { return nil }
+            let stats = records.map { r in
                 DomainStat(
                     domain: r.domain, connectionCount: r.connectionCount,
                     uploadBytes: 0, downloadBytes: 0,   // 接上 QueryStats 前没有真实字节，不编造
@@ -103,13 +114,12 @@ public struct DomainDailyHistory: Codable, Sendable, Equatable {
                 $0.connectionCount != $1.connectionCount
                     ? $0.connectionCount > $1.connectionCount : $0.domain < $1.domain
             }
-            // digest 级计数与 DomainAnalyzer.daily 同口径：mixed 计入代理
             return DailyDigest(
                 day: day,
                 domains: stats,
-                proxyCount: stats.filter { $0.route == .proxy || $0.route == .mixed }.count,
-                directCount: stats.filter { $0.route == .direct }.count,
-                rejectCount: stats.filter { $0.route == .reject }.count
+                proxyCount: records.reduce(0) { $0 + $1.proxyCount },
+                directCount: records.reduce(0) { $0 + $1.directCount },
+                rejectCount: records.reduce(0) { $0 + $1.rejectCount }
             )
         }
         .sorted { $0.day > $1.day }

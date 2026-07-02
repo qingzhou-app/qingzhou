@@ -1132,9 +1132,12 @@ public final class AppState {
                let bundleID = sourceAppMap[port] {
                 conn.sourceApp = bundleID
             }
-            // 同身份（源地址+目标+端口）重现 → 只刷新活跃时间，不重复插入
-            connectionTracker.ingest(conn)
-            newConnections.append(conn)
+            // 同身份（源地址+目标+端口）重现 → 只刷新活跃时间，不重复插入。
+            // 域名每日历史只统计 tracker 判定为**新连接**的（UDP/QUIC 同 socket 的重现
+            // 不算新访问），否则「连接次数」会被灌水，和连接页的观感也对不上。
+            if connectionTracker.ingest(conn) {
+                newConnections.append(conn)
+            }
         }
         recordDomainHistory(newConnections)
     }

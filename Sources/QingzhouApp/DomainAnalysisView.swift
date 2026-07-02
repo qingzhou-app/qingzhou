@@ -25,8 +25,8 @@ public struct DomainAnalysisView: View {
         // 「按流量排序 + 显示 0B」是假数据。有真实字节后把 sortBy 切回 .traffic 并恢复字节列。
         let stats = DomainAnalyzer.aggregate(connections, sortBy: .connections)
         // 「每日」读按天聚合的持久化历史（跨重启、保留 30 天），不再从内存最近 200 条
-        // 连接现算 —— 那是假历史。
-        let digests = state.domainHistory.digests()
+        // 连接现算 —— 那是假历史。「忽略 IP」必须同样作用到这里，否则和域名 tab 数字对不上。
+        let digests = state.domainHistory.digests(excludingBareIPs: hideBareIPs)
         let suggestions = DomainAnalyzer.suggestions(stats)
 
         List {
@@ -60,7 +60,14 @@ public struct DomainAnalysisView: View {
                                            description: Text("开启 VPN 浏览后，这里按天保留最近 30 天的域名访问汇总。"))
                 } else {
                     ForEach(digests) { d in
-                        Section { ForEach(d.domains.prefix(8)) { domainRow($0) } } header: { dailyHeader(d) }
+                        Section {
+                            ForEach(d.domains.prefix(8)) { domainRow($0) }
+                            // 只展示 top 8，剩余的说明白 —— 否则行数和 header 的域名数对不上
+                            if d.domains.count > 8 {
+                                Text("… 还有 \(d.domains.count - 8) 个域名（按连接次数排序，仅显示前 8）")
+                                    .font(.caption2).foregroundStyle(.tertiary)
+                            }
+                        } header: { dailyHeader(d) }
                     }
                 }
             default:
@@ -118,8 +125,9 @@ public struct DomainAnalysisView: View {
         HStack {
             Text(d.day.formatted(date: .abbreviated, time: .omitted))
             Spacer()
-            // 不显示 totalBytes —— 字节数在接上 QueryStats 前恒 0（假数据）
-            Text("代理 \(d.proxyCount) · 直连 \(d.directCount) · 拒绝 \(d.rejectCount)")
+            // 口径：代理/直连/拒绝是**连接次数**（和行里的「N 次」同单位，三者之和 = 当天
+            // 总次数）；域名数单独给。不显示 totalBytes —— 接上 QueryStats 前恒 0（假数据）。
+            Text("\(d.domains.count) 个域名 · 代理 \(d.proxyCount) / 直连 \(d.directCount) / 拒绝 \(d.rejectCount) 次")
                 .font(.caption2).textCase(nil)
         }
     }

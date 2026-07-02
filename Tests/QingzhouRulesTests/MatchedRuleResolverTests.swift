@@ -28,7 +28,7 @@ final class MatchedRuleResolverTests: XCTestCase {
         // 用户规则说 PROXY，但 xray 实际走了直连（说明是内置 geosite:cn 之类命中的）
         let rule = Rule(type: .domainSuffix, value: "example.com", target: .proxy)
         let r = makeResolver(mode: .rule, rules: [rule])
-        XCTAssertEqual(r.resolve(host: "www.example.com", route: .direct), "geosite:cn")
+        XCTAssertEqual(r.resolve(host: "www.example.com", route: .direct), "geosite:cn（内置国内域名直连）")
     }
 
     func testUserFinalRuleIsNeverClaimed() {
@@ -42,25 +42,25 @@ final class MatchedRuleResolverTests: XCTestCase {
 
     func testRuleModeDirectDomainInfersGeositeCN() {
         let r = makeResolver(mode: .rule)
-        XCTAssertEqual(r.resolve(host: "www.baidu.com", route: .direct), "geosite:cn")
+        XCTAssertEqual(r.resolve(host: "www.baidu.com", route: .direct), "geosite:cn（内置国内域名直连）")
     }
 
     func testRuleModeDirectPrivateIPInfersGeoipPrivate() {
         let r = makeResolver(mode: .rule)
-        XCTAssertEqual(r.resolve(host: "192.168.1.10", route: .direct), "geoip:private")
-        XCTAssertEqual(r.resolve(host: "10.0.0.3", route: .direct), "geoip:private")
-        XCTAssertEqual(r.resolve(host: "::1", route: .direct), "geoip:private")
+        XCTAssertEqual(r.resolve(host: "192.168.1.10", route: .direct), "geoip:private（内置局域网直连）")
+        XCTAssertEqual(r.resolve(host: "10.0.0.3", route: .direct), "geoip:private（内置局域网直连）")
+        XCTAssertEqual(r.resolve(host: "::1", route: .direct), "geoip:private（内置局域网直连）")
     }
 
     func testRuleModeDirectPublicIPInfersGeoipCN() {
         let r = makeResolver(mode: .rule)
-        XCTAssertEqual(r.resolve(host: "223.5.5.5", route: .direct), "geoip:cn")
+        XCTAssertEqual(r.resolve(host: "223.5.5.5", route: .direct), "geoip:cn（内置国内 IP 直连）")
     }
 
     func testRuleModeRejectInfersAdsGeosite() {
         let r = makeResolver(mode: .rule)
         XCTAssertEqual(r.resolve(host: "ads.example.com", route: .reject),
-                       "geosite:category-ads-all")
+                       "geosite:category-ads-all（内置广告拦截）")
     }
 
     func testRuleModeProxyWithoutUserRuleIsUnmatchedSentinel() {

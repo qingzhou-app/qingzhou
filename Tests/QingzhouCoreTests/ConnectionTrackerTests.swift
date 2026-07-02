@@ -37,8 +37,9 @@ final class ConnectionTrackerTests: XCTestCase {
 
     func testIngestSameIdentityRefreshesInsteadOfDuplicating() {
         var tracker = ConnectionTracker()
-        tracker.ingest(conn(), at: t0)
-        tracker.ingest(conn(), at: t0 + 60)   // 同身份重现 → 刷新活跃时间，不重复插入
+        // 返回值 = 是否为新连接：域名每日历史靠它决定「连接次数」计不计数
+        XCTAssertTrue(tracker.ingest(conn(), at: t0))
+        XCTAssertFalse(tracker.ingest(conn(), at: t0 + 60))   // 同身份重现 → 刷新活跃时间，不重复插入
         XCTAssertEqual(tracker.connections.count, 1)
 
         // t0+120：距首次 120s > 超时，但距最近活跃只有 60s → 仍应活跃

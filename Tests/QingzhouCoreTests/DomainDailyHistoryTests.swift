@@ -53,10 +53,13 @@ final class DomainDailyHistoryTests: XCTestCase {
         XCTAssertEqual(d.domains.first { $0.domain == "a.com" }?.route, .mixed)
         XCTAssertEqual(d.domains.first { $0.domain == "b.com" }?.route, .direct)
         XCTAssertEqual(d.domains.first { $0.domain == "c.com" }?.route, .reject)
-        // digest 级计数沿用 DomainAnalyzer.daily 的口径：mixed 计入代理
+        // digest 级计数是**连接次数**：三者之和 = 当天总连接次数（4），可与行内「N 次」对账
         XCTAssertEqual(d.proxyCount, 1)
-        XCTAssertEqual(d.directCount, 1)
+        XCTAssertEqual(d.directCount, 2)
         XCTAssertEqual(d.rejectCount, 1)
+        XCTAssertEqual(d.proxyCount + d.directCount + d.rejectCount,
+                       d.domains.reduce(0) { $0 + $1.connectionCount },
+                       "header 三计数之和应等于所有行的连接次数之和")
     }
 
     func testRecordTracksFirstAndLastSeen() {
@@ -120,6 +123,68 @@ final class DomainDailyHistoryTests: XCTestCase {
         h.days["not-a-date"] = [:]
         h.prune(now: Date(timeIntervalSince1970: 1_750_000_000), calendar: cal)
         XCTAssertTrue(h.days.isEmpty)
+    }
+
+    // MARK: - 「忽略 IP」过滤 × 三个 tab 计数一致性
+
+    func testDigestsCanExcludeBareIPs() {
+        var h = DomainDailyHistory()
+        let t = Date(timeIntervalSince1970: 1_750_000_000)
+        h.record([conn("a.com", at: t),
+                  conn("8.8.8.8", route: "DIRECT", at: t),
+                  conn("2001:db8::1", at: t)], calendar: cal)
+
+        XCTAssertEqual(h.digests(calendar: cal)[0].domains.count, 3, "不过滤时 3 个条目都在")
+        let filtered = h.digests(calendar: cal, excludingBareIPs: true)[0]
+        XCTAssertEqual(filtered.domains.map(\.domain), ["a.com"], "裸 IP（v4/v6）应被剔除")
+        XCTAssertEqual(filtered.proxyCount + filtered.directCount + filtered.rejectCount, 1,
+                       "header 计数也要跟着过滤，不能还数被隐藏的连接")
+    }
+
+    func testDigestsDropDayWhoseEntriesAreAllBareIPs() {
+        var h = DomainDailyHistory()
+        let t = Date(timeIntervalSince1970: 1_750_000_000)
+        h.record([conn("8.8.8.8", at: t)], calendar: cal)
+        XCTAssertTrue(h.digests(calendar: cal, excludingBareIPs: true).isEmpty,
+                      "整天都是裸 IP → 过滤后这一天不该以空壳出现")
+    }
+
+    /// 开/关「忽略 IP」两种状态下，域名 tab（aggregate）、每日 tab（digests）、
+    /// 建议 tab（suggestions）看到的域名集合与连接次数必须一致 —— 验收反馈的
+    /// 「数字对不上」就是每日 tab 没吃过滤造成的。
+    func testThreeTabsAgreeOnCountsRegardlessOfIPFilter() {
+        let t = Date(timeIntervalSince1970: 1_750_000_000)
+        let conns = [
+            conn("www.google.com", route: "PROXY", rule: Connection.noMatchedRule, at: t),
+            conn("google.com", route: "PROXY", rule: Connection.noMatchedRule, at: t),
+            conn("notion.so", route: "DIRECT", rule: Connection.noMatchedRule, at: t),
+            conn("8.8.8.8", route: "DIRECT", rule: "geoip:cn（内置国内 IP 直连）", at: t),
+            conn("www.baidu.com", route: "DIRECT", rule: "geosite:cn（内置国内域名直连）", at: t)
+        ]
+        var h = DomainDailyHistory()
+        h.record(conns, calendar: cal)
+
+        for hide in [false, true] {
+            let visible = hide ? conns.filter { !HostClassifier.isBareIP($0.targetHost) } : conns
+            let stats = DomainAnalyzer.aggregate(visible, sortBy: .connections)   // 域名 tab
+            let digest = h.digests(calendar: cal, excludingBareIPs: hide)[0]      // 每日 tab
+
+            XCTAssertEqual(stats.count, digest.domains.count,
+                           "hide=\(hide)：域名 tab 的域名数 == 每日 tab 当天域名数")
+            XCTAssertEqual(Set(stats.map(\.domain)), Set(digest.domains.map(\.domain)),
+                           "hide=\(hide)：两个 tab 看到同一批域名")
+            let headerTotal = digest.proxyCount + digest.directCount + digest.rejectCount
+            XCTAssertEqual(headerTotal, visible.count,
+                           "hide=\(hide)：每日 header 三计数之和 == 可见连接次数")
+            XCTAssertEqual(headerTotal, stats.reduce(0) { $0 + $1.connectionCount },
+                           "hide=\(hide)：header 计数与域名 tab 行内次数之和一致")
+
+            let suggestions = DomainAnalyzer.suggestions(stats)                   // 建议 tab
+            if hide {
+                XCTAssertFalse(suggestions.contains { HostClassifier.isBareIP($0.domain) },
+                               "过滤开着时建议里不该出现裸 IP")
+            }
+        }
     }
 
     // MARK: - Codable（持久化格式）

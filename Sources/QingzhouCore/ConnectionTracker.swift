@@ -34,17 +34,21 @@ public struct ConnectionTracker: Sendable {
         self.maxCount = maxCount
     }
 
-    /// 摄入一条 access log 解析出的连接。同身份且仍活跃 → 只刷新活跃时间。
-    public mutating func ingest(_ connection: Connection, at now: Date = Date()) {
+    /// 摄入一条 access log 解析出的连接。同身份且仍活跃 → 只刷新活跃时间，返回 false；
+    /// 确为新连接（插入列表）→ 返回 true。调用方据此决定要不要计入域名每日历史的
+    /// 「连接次数」（同 socket 重现不算新访问）。
+    @discardableResult
+    public mutating func ingest(_ connection: Connection, at now: Date = Date()) -> Bool {
         let key = Self.identity(of: connection)
         if let existingID = activeIDByKey[key] {
             lastSeenByID[existingID] = now
-            return
+            return false
         }
         activeIDByKey[key] = connection.id
         lastSeenByID[connection.id] = now
         connections.insert(connection, at: 0)
         trim()
+        return true
     }
 
     /// 老化：把超过 `idleTimeout` 无活动的活跃连接置为已关闭。

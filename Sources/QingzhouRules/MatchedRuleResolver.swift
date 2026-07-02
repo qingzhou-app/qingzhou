@@ -64,12 +64,16 @@ public final class MatchedRuleResolver {
             // global 模式唯一的直连是内置局域网 CIDR；其余全走代理
             return route == .direct ? "局域网直连（内置）" : "全局模式（GLOBAL）"
         case .rule:
+            // 括号注解是给用户看的人话 —— 验收反馈「为什么有被拒绝的」：光给 geosite
+            // 标识看不懂。程序侧别对这些文本做前缀/全等匹配，认标识部分即可。
             switch route {
             case .reject:
-                return "geosite:category-ads-all"
+                return "geosite:category-ads-all（内置广告拦截）"
             case .direct:
-                if Self.isPrivateHost(host) { return "geoip:private" }
-                return Self.isIPLiteral(host) ? "geoip:cn" : "geosite:cn"
+                if Self.isPrivateHost(host) { return "geoip:private（内置局域网直连）" }
+                return Self.isIPLiteral(host)
+                    ? "geoip:cn（内置国内 IP 直连）"
+                    : "geosite:cn（内置国内域名直连）"
             case .proxy, .mixed:
                 // 只命中了「其余走代理」的兜底 → 明确的「未命中」语义值，不是空串
                 return Connection.noMatchedRule
