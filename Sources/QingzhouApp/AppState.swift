@@ -1102,6 +1102,9 @@ public final class AppState {
             if let map = AppGroupStorage.read([String: String].self, from: "fakedns-map") {
                 fakeDNSMap = map
             }
+            // 核心摄入永远先跑 —— 来源 App 标注只是可选增强，它的 XPC 绝不能阻塞连接列表。
+            // （踩过的坑：filter 扩展关闭时 XPC await 悬死，循环卡在第一轮，连接页恒空。）
+            ingestAccessLog()
             #if os(macOS)
             // 来源 App 标注暂时搁置（见 FeatureFlags.sourceAppLabeling）。开启时才走 XPC + 回填。
             if FeatureFlags.sourceAppLabeling {
@@ -1115,7 +1118,6 @@ public final class AppState {
                 backfillSourceApps()
             }
             #endif
-            ingestAccessLog()
             // 停止浏览后 ingest 不再产出批次，这里兜底把最后一批脏的域名历史补写掉
             flushDomainHistoryIfNeeded()
         }
