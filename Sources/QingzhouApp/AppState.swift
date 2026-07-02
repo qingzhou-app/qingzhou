@@ -9,6 +9,9 @@ import QingzhouSubscription
 import QingzhouRules
 import QingzhouSpeedTest
 import QingzhouLogging
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// 应用顶层状态容器。UI 通过 @Bindable 直接读 / 写；所有写入都会自动持久化。
 ///
@@ -56,6 +59,10 @@ public final class AppState {
     public var subscriptionErrors: [UUID: String] = [:]
     /// 轻量 toast 文案（自动择优、订阅添加等非阻塞反馈）。UI 浮层显示，几秒自动消失。
     public var toast: String?
+    /// iCloud vault 同步状态（设置页展示）。
+    public internal(set) var cloudSyncStatus: CloudSyncStatus = .unknown
+    /// 启动检查发现云端备份比本机新（或本机是新装机）→ 提示用户恢复。非 nil 时 UI 弹 alert。
+    public internal(set) var cloudRestoreOffer: VaultHeader?
 
     public let logger: Logger
     public let subscriptionFetcher: SubscriptionFetcher
@@ -63,6 +70,10 @@ public final class AppState {
     public let speedTestRunner: SpeedTestRunner
     public let persistence: Persistence
     public let tunnelManager: VPNTunnelManager
+    /// iCloud Drive vault 的读写层。测试可注入指向临时目录的假容器。
+    let cloudVault: CloudVaultStore
+    /// 镜像到 iCloud 的防抖任务（连续 persist 只留最后一次）。internal 供测试 await。
+    var cloudMirrorTask: Task<Void, Never>?
 
     private var schedulerTask: Task<Void, Never>?
     private var trafficPollingTask: Task<Void, Never>?
@@ -89,7 +100,8 @@ public final class AppState {
         subscriptionFetcher: SubscriptionFetcher? = nil,
         nodeSelector: NodeSelector? = nil,
         speedTestRunner: SpeedTestRunner? = nil,
-        tunnelManager: VPNTunnelManager? = nil
+        tunnelManager: VPNTunnelManager? = nil,
+        cloudVault: CloudVaultStore? = nil
     ) {
         self.logger = logger
         self.persistence = persistence
@@ -97,6 +109,7 @@ public final class AppState {
         self.nodeSelector = nodeSelector ?? NodeSelector(logger: logger)
         self.speedTestRunner = speedTestRunner ?? SpeedTestRunner(logger: logger)
         self.tunnelManager = tunnelManager ?? VPNTunnelManager(logger: logger)
+        self.cloudVault = cloudVault ?? CloudVaultStore()
 
         let snapshot = persistence.loadSnapshot()
         self.subscriptions = snapshot.subscriptions
@@ -114,15 +127,21 @@ public final class AppState {
     // MARK: - 持久化
 
     /// 把当前状态序列化落盘。异步执行 —— 主线程立即返回，编码 + 写盘在后台 utility 队列。
+    /// 本地落盘后再（防抖地）镜像到 iCloud vault —— 本地是权威源，云端只是镜像。
     func persist() {
-        let snapshot = Persistence.Snapshot(
+        persistence.saveSnapshotAsync(currentSnapshot())
+        scheduleCloudMirror()
+    }
+
+    /// 当前内存状态的完整快照（本地落盘 / 云端镜像共用）。
+    func currentSnapshot() -> Persistence.Snapshot {
+        Persistence.Snapshot(
             subscriptions: subscriptions,
             nodes: nodes,
             customRules: customRules,
             settings: settings,
             currentNodeId: currentNodeId
         )
-        persistence.saveSnapshotAsync(snapshot)
     }
 
     /// 给 SwiftUI 用的 `Binding` 包装：每次 set 都自动 persist，并同步 logger 等副作用。
@@ -161,6 +180,195 @@ public final class AppState {
         if let lvl = LogLevel(rawValue: settings.logLevel) {
             logger.setMinimumLevel(lvl)
         }
+    }
+
+    // MARK: - iCloud vault（配置的云端镜像，详见 CloudVault.swift 头注释）
+
+    /// 本机同步进度的本地文件名（Persistence 目录，不上云）。
+    private static let vaultSyncStateName = "vault-sync-state"
+    /// 恢复云端数据前，本地快照的备份文件名。
+    private static let restoreBackupName = "state-backup-before-restore"
+
+    /// 启动时的云端检查：无文档 → 镜像本地；云端更新 / 新装机 → 提示恢复；schema 过新 → 拒绝。
+    /// app 启动（startSchedulers）和用户打开同步开关时调用。
+    public func runCloudVaultStartupCheck() async {
+        guard settings.iCloudSyncEnabled else {
+            cloudSyncStatus = .disabled
+            return
+        }
+        guard await cloudVault.isAvailable() else {
+            cloudSyncStatus = .unavailable
+            return
+        }
+        let header: VaultHeader?
+        do {
+            header = try await cloudVault.loadHeader()
+        } catch {
+            cloudSyncStatus = .error("\(error)")
+            logger.warn("iCloud vault read failed: \(error)", category: "cloud")
+            return
+        }
+        let lastSynced = persistence.load(VaultSyncState.self, name: Self.vaultSyncStateName)
+        switch VaultSyncLogic.startupAction(
+            cloudHeader: header, lastSyncedRevision: lastSynced?.lastSyncedRevision
+        ) {
+        case .mirrorLocal:
+            await mirrorToCloudNow()
+        case .offerRestore(let cloud):
+            cloudRestoreOffer = cloud
+            cloudSyncStatus = lastSynced.map { .synced($0.lastSyncedAt) } ?? .unknown
+            logger.info("iCloud vault newer (rev \(cloud.revision) from \(cloud.deviceName)) — offering restore", category: "cloud")
+        case .alreadyInSync:
+            cloudSyncStatus = .synced(lastSynced?.lastSyncedAt ?? Date())
+        case .incompatibleCloud(let version):
+            cloudSyncStatus = .incompatibleCloud(schemaVersion: version)
+            logger.warn("iCloud vault schema v\(version) is newer than supported — not touching it", category: "cloud")
+        }
+    }
+
+    /// persist() 后调用：防抖 0.5s 再镜像 —— 连续编辑（批量导入 / 拖排序）只写最后一版。
+    private func scheduleCloudMirror() {
+        guard settings.iCloudSyncEnabled, cloudRestoreOffer == nil else { return }
+        cloudMirrorTask?.cancel()
+        cloudMirrorTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            await self?.mirrorToCloudNow()
+        }
+    }
+
+    /// 立即把当前状态镜像到云端（revision 盖过云端与本机记录的较大者）。
+    private func mirrorToCloudNow() async {
+        guard settings.iCloudSyncEnabled, cloudRestoreOffer == nil else { return }
+        guard await cloudVault.isAvailable() else {
+            cloudSyncStatus = .unavailable
+            return
+        }
+        cloudSyncStatus = .syncing
+        do {
+            let header = try? await cloudVault.loadHeader()
+            if let header, header.schemaVersion > VaultDocument.currentSchemaVersion {
+                // 云端是新版 App 写的：别用旧格式盖掉
+                cloudSyncStatus = .incompatibleCloud(schemaVersion: header.schemaVersion)
+                return
+            }
+            let lastSynced = persistence.load(VaultSyncState.self, name: Self.vaultSyncStateName)
+            let revision = VaultSyncLogic.nextRevision(
+                cloudRevision: header?.revision,
+                lastSyncedRevision: lastSynced?.lastSyncedRevision
+            )
+            let document = VaultDocument(
+                revision: revision,
+                modifiedAt: Date(),
+                deviceName: Self.deviceName,
+                snapshot: currentSnapshot()
+            )
+            try await cloudVault.save(document)
+            let now = Date()
+            try? persistence.save(
+                VaultSyncState(lastSyncedRevision: revision, lastSyncedAt: now),
+                name: Self.vaultSyncStateName
+            )
+            cloudSyncStatus = .synced(now)
+        } catch {
+            cloudSyncStatus = .error("\(error)")
+            logger.warn("iCloud vault mirror failed: \(error)", category: "cloud")
+        }
+    }
+
+    /// 用户确认恢复：本地快照先备份，再整体替换为云端快照并落盘。
+    public func restoreFromCloud() async {
+        defer { cloudRestoreOffer = nil }
+        let document: VaultDocument?
+        do {
+            document = try await cloudVault.loadDocument()
+        } catch {
+            showToast("读取 iCloud 数据失败：\(error.localizedDescription)")
+            logger.error("iCloud vault restore read failed: \(error)", category: "cloud")
+            return
+        }
+        guard let document else {
+            showToast("iCloud 上没有找到备份")
+            return
+        }
+        guard document.schemaVersion <= VaultDocument.currentSchemaVersion else {
+            cloudSyncStatus = .incompatibleCloud(schemaVersion: document.schemaVersion)
+            showToast("iCloud 数据来自更新版本的轻舟，请先升级 App")
+            return
+        }
+        // 覆盖本地前留一份备份 —— 恢复错了还能救
+        try? persistence.save(currentSnapshot(), name: Self.restoreBackupName)
+
+        let snapshot = document.snapshot
+        subscriptions = snapshot.subscriptions
+        nodes = snapshot.nodes
+        customRules = snapshot.customRules
+        settings = snapshot.settings
+        currentNodeId = snapshot.currentNodeId
+        applySettingsSideEffects()
+        // 直接落盘 + 记录同步进度，不走 persist()（那会立刻再镜像一次、白白 +1 revision）
+        persistence.saveSnapshotAsync(currentSnapshot())
+        let now = Date()
+        try? persistence.save(
+            VaultSyncState(lastSyncedRevision: document.revision, lastSyncedAt: now),
+            name: Self.vaultSyncStateName
+        )
+        cloudSyncStatus = .synced(now)
+        logger.info("Restored from iCloud vault rev \(document.revision) (\(document.deviceName))", category: "cloud")
+        showToast("已从 iCloud 恢复（\(snapshot.nodes.count) 个节点、\(snapshot.subscriptions.count) 个订阅）")
+    }
+
+    /// 用户拒绝恢复：只清掉提示（本次会话不再弹）。本地依旧权威 —— 下次本地编辑会覆盖云端。
+    public func declineCloudRestore() {
+        cloudRestoreOffer = nil
+    }
+
+    /// 设置页「立即恢复 iCloud 数据」：读云端头部，存在则弹确认（复用启动时的恢复 alert）。
+    public func requestManualCloudRestore() async {
+        guard await cloudVault.isAvailable() else {
+            showToast("iCloud 不可用（未登录或未开启 iCloud Drive）")
+            return
+        }
+        do {
+            guard let header = try await cloudVault.loadHeader() else {
+                showToast("iCloud 上没有找到备份")
+                return
+            }
+            if header.schemaVersion > VaultDocument.currentSchemaVersion {
+                showToast("iCloud 数据来自更新版本的轻舟，请先升级 App")
+                return
+            }
+            cloudRestoreOffer = header
+        } catch {
+            showToast("读取 iCloud 数据失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// 开关 iCloud 同步。开 → 立刻跑一次启动检查（可能提示恢复 / 补镜像）；关 → 取消在途镜像。
+    public func setCloudSyncEnabled(_ enabled: Bool) {
+        guard settings.iCloudSyncEnabled != enabled else { return }
+        settings.iCloudSyncEnabled = enabled
+        if enabled {
+            // 只存本地，别直接镜像 —— 云端可能比本机新，让 startup check 先比对：
+            // 该提示恢复就提示，确认没冲突它自己会补镜像。
+            persistence.saveSnapshotAsync(currentSnapshot())
+            Task { @MainActor [weak self] in await self?.runCloudVaultStartupCheck() }
+        } else {
+            cloudMirrorTask?.cancel()
+            cloudMirrorTask = nil
+            persistence.saveSnapshotAsync(currentSnapshot())   // 只存本地，不再碰云端
+            cloudSyncStatus = .disabled
+        }
+        logger.info("iCloud sync \(enabled ? "enabled" : "disabled")", category: "cloud")
+    }
+
+    /// 云文档里标注的来源设备名（多设备同步时提示「来自哪台」）。
+    private static var deviceName: String {
+        #if os(macOS)
+        Host.current().localizedName ?? "Mac"
+        #else
+        UIDevice.current.name
+        #endif
     }
 
     // MARK: - 节点
@@ -594,6 +802,10 @@ public final class AppState {
     /// 启动后台调度：根据设置定期跑自动择优 + 订阅刷新；同时启动示例连接产线（直到真隧道接入）。
     public func startSchedulers() {
         stopSchedulers()
+        // iCloud vault 启动检查（云端更新 → 提示恢复；无云端文档 → 镜像上去）
+        Task { @MainActor [weak self] in
+            await self?.runCloudVaultStartupCheck()
+        }
         schedulerTask = Task { @MainActor [weak self] in
             await self?.schedulerLoop()
         }

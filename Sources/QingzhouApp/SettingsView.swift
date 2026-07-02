@@ -17,6 +17,7 @@ public struct SettingsView: View {
             #if os(macOS)
             macIntegrationSection
             #endif
+            iCloudSection
             aboutSection
         }
         .navigationTitle("设置")
@@ -192,6 +193,31 @@ public struct SettingsView: View {
         }
     }
     #endif
+
+    private var iCloudSection: some View {
+        Section("iCloud 同步") {
+            Toggle("同步到 iCloud Drive", isOn: cloudSyncBinding)
+            LabeledContent("状态", value: state.cloudSyncStatus.displayText)
+                .font(.caption)
+            Button {
+                Task { await state.requestManualCloudRestore() }
+            } label: {
+                Label("立即恢复 iCloud 数据", systemImage: "icloud.and.arrow.down")
+            }
+            .disabled(!state.settings.iCloudSyncEnabled)
+            Text("配置（订阅、节点、规则、设置）会镜像到你 iCloud Drive 的「轻舟」文件夹，"
+                 + "卸载 App 不会丢失，重装或换设备时可一键恢复。不含连接记录与流量统计。")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    /// iCloud 同步开关走专用方法 —— 开启时要立刻跑一次云端比对（可能提示恢复）。
+    private var cloudSyncBinding: Binding<Bool> {
+        Binding(
+            get: { state.settings.iCloudSyncEnabled },
+            set: { state.setCloudSyncEnabled($0) }
+        )
+    }
 
     private var aboutSection: some View {
         Section("关于") {

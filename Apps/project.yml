@@ -45,6 +45,13 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # iCloud Drive 文档容器在「文件」App 里可见（vault：配置镜像，卸载不丢）。
+        # 注意：首次让文件夹现身，除了这段还要 CFBundleVersion 变一次 + 设备登录 iCloud。
+        NSUbiquitousContainers:
+          iCloud.com.sbraveyoung.qingzhou:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: 轻舟
+            NSUbiquitousContainerSupportedFolderLevels: One
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbraveyoung.qingzhou.ios
@@ -62,6 +69,14 @@ targets:
         # 只改 .entitlements 文件会被覆盖掉。
         com.apple.security.application-groups:
           - group.com.sbraveyoung.qingzhou
+        # iCloud Drive 文档容器（vault）：配置镜像到用户 iCloud，卸载不丢、换设备可恢复。
+        # 需要在 Apple 开发者后台给 App ID 关联这个 iCloud container 并刷新 profile。
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.sbraveyoung.qingzhou
+        com.apple.developer.icloud-services:
+          - CloudDocuments
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.sbraveyoung.qingzhou
     dependencies:
       - package: Qingzhou
         product: QingzhouApp
@@ -96,6 +111,13 @@ targets:
         # network_extension 类的系统扩展强制要求主 App Info.plist 有这个键，
         # 缺了激活会报 OSSystemExtensionErrorDomain #9 validationFailed。
         NSSystemExtensionUsageDescription: 轻舟需要安装网络扩展，用于标注每条连接由哪个 App 发起（仅本机分析，不上传）。
+        # iCloud Drive 文档容器在 Finder 的 iCloud Drive 里可见（vault：配置镜像，卸载不丢）。
+        # 注意：首次让文件夹现身，除了这段还要 CFBundleVersion 变一次 + 设备登录 iCloud。
+        NSUbiquitousContainers:
+          iCloud.com.sbraveyoung.qingzhou:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: 轻舟
+            NSUbiquitousContainerSupportedFolderLevels: One
     entitlements:
       path: macOS/Resources/Qingzhou.entitlements
       properties:
@@ -110,6 +132,14 @@ targets:
           - group.com.sbraveyoung.qingzhou
         # 激活 content filter 的 System Extension 需要主 App 有这项
         com.apple.developer.system-extension.install: true
+        # iCloud Drive 文档容器（vault）：配置镜像到用户 iCloud，卸载不丢、换设备可恢复。
+        # 需要在 Apple 开发者后台给 App ID 关联这个 iCloud container 并刷新 profile。
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.sbraveyoung.qingzhou
+        com.apple.developer.icloud-services:
+          - CloudDocuments
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.sbraveyoung.qingzhou
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sbraveyoung.qingzhou.mac

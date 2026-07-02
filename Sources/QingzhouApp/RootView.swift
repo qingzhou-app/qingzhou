@@ -13,6 +13,28 @@ public struct RootView: View {
         rootContent
             .overlay(alignment: .top) { toastOverlay }
             .animation(.spring(duration: 0.3), value: state.toast)
+            // iCloud vault：云端备份更新（或新装机）时的恢复确认。挂在根上 —— 启动检查
+            // 在任何页面都能弹；设置页的「立即恢复」也复用这里。
+            .alert(
+                "发现 iCloud 备份",
+                isPresented: cloudRestoreAlertBinding,
+                presenting: state.cloudRestoreOffer
+            ) { _ in
+                Button("恢复") { Task { await state.restoreFromCloud() } }
+                Button("暂不恢复", role: .cancel) { state.declineCloudRestore() }
+            } message: { offer in
+                Text("iCloud 中有一份配置备份（来自 \(offer.deviceName)，"
+                     + "\(offer.modifiedAt.formatted(date: .abbreviated, time: .shortened))）。"
+                     + "恢复会用它覆盖本机配置；本机当前配置会先自动备份。")
+            }
+    }
+
+    /// alert 的显隐 Binding：关掉（点按钮 / 系统 dismiss）等价于「暂不恢复」。
+    private var cloudRestoreAlertBinding: Binding<Bool> {
+        Binding(
+            get: { state.cloudRestoreOffer != nil },
+            set: { if !$0 { state.declineCloudRestore() } }
+        )
     }
 
     @ViewBuilder private var rootContent: some View {
