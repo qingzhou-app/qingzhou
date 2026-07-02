@@ -133,18 +133,30 @@ public struct LogsView: View {
 
     #if os(macOS)
     private func exportViaSavePanel() {
+        state.logger.debug("打开日志导出保存面板", category: "app")
         let text = LogExportText.render(state.logger.snapshot())
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.plainText]
+        // .log 没有系统静态 UTType，用扩展名构造；失败退回 plainText（会存成 .txt，仍可用）
+        panel.allowedContentTypes = [UTType(filenameExtension: "log") ?? .plainText]
         panel.canCreateDirectories = true
         panel.nameFieldStringValue = LogExportText.suggestedFileName()
-        panel.begin { response in
+
+        let handleResponse: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url else { return }
             do {
                 try text.write(to: url, atomically: true, encoding: .utf8)
+                state.showToast("日志已导出：\(url.lastPathComponent)")
             } catch {
                 state.logger.error("导出日志失败: \(error)", category: "app")
+                state.showToast("导出失败，详见日志")
             }
+        }
+        // 优先挂到当前窗口做 sheet —— 独立 panel.begin() 在个别情况下会沉底/不获焦；
+        // 拿不到窗口（理论上不会）就退化成模态。两者都必须在主线程调用（这里本来就在）。
+        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+            panel.beginSheetModal(for: window, completionHandler: handleResponse)
+        } else {
+            handleResponse(panel.runModal())
         }
     }
     #endif

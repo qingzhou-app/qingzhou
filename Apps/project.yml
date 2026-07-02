@@ -103,6 +103,9 @@ targets:
         com.apple.security.app-sandbox: true
         # 出站网络（订阅刷新、测速等都需要）
         com.apple.security.network.client: true
+        # 沙箱内弹 NSSavePanel / NSOpenPanel（日志导出等）必需：
+        # 缺这条 Powerbox 会静默拒绝，表现为「点了按钮面板不弹」
+        com.apple.security.files.user-selected.read-write: true
         # 让主 App 能管理 Personal VPN 配置 —— 启停 Packet Tunnel Extension 必需
         com.apple.developer.networking.networkextension:
           - packet-tunnel-provider
