@@ -9,7 +9,11 @@ public struct StatusBarMenu: View {
     public init(state: AppState) { self.state = state }
 
     public var body: some View {
-        Toggle(state.isVPNRunning ? "VPN 已连接" : "VPN 未连接", isOn: state.vpnRunningBinding)
+        Toggle(
+            state.isSwitchingTunnel ? "切换中…" : (state.isVPNRunning ? "VPN 已连接" : "VPN 未连接"),
+            isOn: state.vpnRunningBinding
+        )
+        .disabled(state.isSwitchingTunnel)
 
         if let node = state.currentNode {
             Text("→ \(node.name)\(node.lastLatencyMs.map { " · \($0)ms" } ?? "")")
