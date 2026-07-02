@@ -55,14 +55,14 @@ public struct HomeView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(state.isVPNRunning ? Color.green.opacity(0.18) : Color.secondary.opacity(0.14))
+                        .fill(circleFill)
                         .frame(width: 56, height: 56)
-                    Image(systemName: state.isVPNRunning ? "bolt.fill" : "bolt.slash.fill")
+                    Image(systemName: statusIcon)
                         .font(.title)
-                        .foregroundStyle(state.isVPNRunning ? .green : .secondary)
+                        .foregroundStyle(statusColor)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(state.isVPNRunning ? "VPN 已连接" : "VPN 未连接")
+                    Text(statusText)
                         .font(.title3.bold())
                     if let n = state.currentNode {
                         Text("\(n.name) · \(n.protocolType.rawValue.uppercased())")
@@ -75,7 +75,12 @@ public struct HomeView: View {
                 Toggle("", isOn: state.vpnRunningBinding)
                     .toggleStyle(.switch)
                     .labelsHidden()
+                    // 热切换窗口内禁点：重启中途再启停会和 stop→start 时序打架
+                    .disabled(state.isSwitchingTunnel)
             }
+            // 开关滑动 / 图标变色跟着状态平滑过渡，而不是跳变
+            .animation(.spring(duration: 0.35), value: state.isVPNRunning)
+            .animation(.spring(duration: 0.35), value: state.isSwitchingTunnel)
 
             Divider().padding(.vertical, 6)
 
@@ -97,6 +102,22 @@ public struct HomeView: View {
         // VPN 关了。其余卡片沿用 macOS 失焦变暗的默认行为。
         .environment(\.controlActiveState, .active)
         #endif
+    }
+
+    // 状态胶囊三态：切换中（橙）> 已连接（绿）> 未连接（灰）
+    private var statusText: String {
+        state.isSwitchingTunnel ? "切换中…" : (state.isVPNRunning ? "VPN 已连接" : "VPN 未连接")
+    }
+    private var statusIcon: String {
+        state.isSwitchingTunnel ? "arrow.triangle.2.circlepath"
+            : (state.isVPNRunning ? "bolt.fill" : "bolt.slash.fill")
+    }
+    private var statusColor: Color {
+        state.isSwitchingTunnel ? .orange : (state.isVPNRunning ? .green : .secondary)
+    }
+    private var circleFill: Color {
+        state.isSwitchingTunnel ? Color.orange.opacity(0.18)
+            : (state.isVPNRunning ? Color.green.opacity(0.18) : Color.secondary.opacity(0.14))
     }
 
     private var currentNodeCard: some View {
