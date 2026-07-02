@@ -168,6 +168,46 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(result.target, .proxy)
     }
 
+    // MARK: - 域名每日历史（持久化）
+
+    private func historyConn(_ host: String, route: String = "PROXY") -> Connection {
+        Connection(targetHost: host, sourceAddress: "127.0.0.1:1",
+                   targetAddress: "\(host):443", type: .https, route: route, matchedRule: "")
+    }
+
+    func testRecordDomainHistoryAggregatesAndPersistsAcrossRestart() {
+        let state = makeState()
+        state.domainHistorySaveInterval = 0   // 关掉 10s 落盘节流，测试确定性
+        XCTAssertTrue(state.domainHistory.isEmpty)
+        state.recordDomainHistory([historyConn("www.google.com"), historyConn("mail.google.com")])
+        state.recordDomainHistory([historyConn("www.google.com")])   // 第二批增量
+
+        let digests = state.domainHistory.digests()
+        XCTAssertEqual(digests.count, 1)
+        XCTAssertEqual(digests[0].domains.first?.domain, "google.com")
+        XCTAssertEqual(digests[0].domains.first?.connectionCount, 3)
+
+        // 落盘是异步 + 节流（首批立即写）——等写完后从同目录重建，历史应还在
+        state.persistence.waitForPendingWritesForTesting()
+        let reloaded = makeState()
+        XCTAssertEqual(reloaded.domainHistory.digests().first?.domains.first?.connectionCount, 3,
+                       "重启后每日历史应从磁盘恢复（此前重启即清零）")
+    }
+
+    func testDomainHistoryStaysOutOfSnapshot() throws {
+        let state = makeState()
+        state.recordDomainHistory([historyConn("secret-site.com")])
+        state.persist()
+        state.persistence.waitForPendingWritesForTesting()
+
+        // 敏感访问历史绝不进 Snapshot（CloudVault 只镜像 Snapshot）——state.json 里不该出现域名
+        let stateJSON = try String(contentsOf: tmpDir.appendingPathComponent("state.json"), encoding: .utf8)
+        XCTAssertFalse(stateJSON.contains("secret-site.com"))
+        // 而独立的 domain-history.json 里应该有
+        let historyJSON = try String(contentsOf: tmpDir.appendingPathComponent("domain-history.json"), encoding: .utf8)
+        XCTAssertTrue(historyJSON.contains("secret-site.com"))
+    }
+
     // MARK: - 地区排除 / 优先
 
     private func makeMeasuredNodes() -> [Node] {

@@ -33,6 +33,10 @@ public final class AppState {
     /// （xray access log 只记连接建立，没有关闭事件）。
     public var connections: [Connection] { connectionTracker.connections }
     var connectionTracker = ConnectionTracker()
+    /// 按天 × 主域名的聚合历史（域名分析「每日」视图数据源）。connections 只留内存最近
+    /// 200 条、重启清零，每日历史必须靠它。⚠️ 访问历史属敏感数据：独立文件落本地
+    /// （`Self.domainHistoryFile`），**不进 Persistence.Snapshot**，绝不被 iCloud vault 镜像。
+    public private(set) var domainHistory = DomainDailyHistory()
     /// 实时流量波形数据（滑动窗口）。appex 经 App Group 上报 `TrafficStats` 喂进来；
     /// 没开 VPN / 没真实上报时为空，UI 显示「等待流量」。
     public var trafficHistory = TrafficHistory(capacity: 60)
@@ -94,6 +98,18 @@ public final class AppState {
     private var pendingReapply = false
     /// access log 文件已读到的字节位置（增量读，不重复解析）。
     private var accessLogOffset: UInt64 = 0
+    /// matchedRule 回填器（内含 host→规则 缓存）。规则集 / proxyMode 变化时按 key 重建。
+    private var matchedRuleResolver: MatchedRuleResolver?
+    private var matchedRuleResolverKey: Int = 0
+    /// domainHistory 的独立持久化文件名（不进 Snapshot —— 见 domainHistory 注释）。
+    static let domainHistoryFile = "domain-history"
+    /// domainHistory 上次落盘时间：浏览时每 2 秒都有新批次，逐批全量编码落盘太浪费，
+    /// 节流到 ≥saveInterval 一次；停止浏览后由轮询循环把最后的脏数据补写掉
+    /// （进程被杀最多丢 saveInterval 秒的聚合，可接受）。
+    private var domainHistorySavedAt = Date.distantPast
+    private var domainHistoryDirty = false
+    /// internal 供测试注入 0 关掉节流做确定性断言。
+    var domainHistorySaveInterval: TimeInterval = 10
     /// appex 写的「假 IP → 域名」映射（FakeDNS），把 access log 的 198.18.x.x 翻回域名。
     private var fakeDNSMap: [String: String] = [:]
     /// content filter 扩展提供的「源端口 → 来源 App bundle id」（仅 macOS）。
@@ -126,6 +142,11 @@ public final class AppState {
         self.customRules = snapshot.customRules
         self.settings = snapshot.settings
         self.currentNodeId = snapshot.currentNodeId
+        // 域名每日历史：独立文件（敏感访问历史，不进 Snapshot / 不上云），加载后顺手滚动清理
+        var history = persistence.load(DomainDailyHistory.self, name: Self.domainHistoryFile)
+            ?? DomainDailyHistory()
+        history.prune()
+        self.domainHistory = history
         logger.info(
             "AppState restored: \(subscriptions.count) subs, \(nodes.count) nodes, \(customRules.count) custom rules",
             category: "app"
@@ -1034,6 +1055,8 @@ public final class AppState {
             }
             #endif
             ingestAccessLog()
+            // 停止浏览后 ingest 不再产出批次，这里兜底把最后一批脏的域名历史补写掉
+            flushDomainHistoryIfNeeded()
         }
     }
 
@@ -1070,6 +1093,9 @@ public final class AppState {
         let entries = AccessLogParser.parse(text)
         guard !entries.isEmpty else { return }
         let proxyName = currentNode?.name
+        let resolver = currentMatchedRuleResolver()
+        var newConnections: [Connection] = []
+        newConnections.reserveCapacity(entries.count)
         for entry in entries {
             var conn = entry.makeConnection(proxyDisplayName: proxyName)
             // FakeDNS 的假 IP（198.18.x.x）→ 反查回真域名，连接列表/域名分析才有意义
@@ -1077,6 +1103,12 @@ public final class AppState {
                 conn.targetHost = domain
                 conn.targetAddress = "\(domain):\(entry.targetPort)"
             }
+            // matchedRule 回填：用户规则一致才认领，否则推断 xray 内置规则 / 「未命中」哨兵。
+            // 必须在 FakeDNS 翻译**之后**做，否则拿假 IP 去匹配域名规则全落空。
+            conn.matchedRule = resolver.resolve(
+                host: conn.targetHost,
+                route: DomainAnalyzer.routeCategory(conn.route)
+            )
             // 源端口 → 来源 App（macOS content filter 标注的 bundle id）
             if let port = entry.sourceAddress.split(separator: ":").last.map(String.init),
                let bundleID = sourceAppMap[port] {
@@ -1084,12 +1116,51 @@ public final class AppState {
             }
             // 同身份（源地址+目标+端口）重现 → 只刷新活跃时间，不重复插入
             connectionTracker.ingest(conn)
+            newConnections.append(conn)
         }
+        recordDomainHistory(newConnections)
     }
 
     /// 隧道停止 → 所有仍活跃的连接立即归入「已关闭」。
     func markAllConnectionsClosed(at now: Date = Date()) {
         connectionTracker.closeAll(at: now)
+    }
+
+    /// 把一批新摄入的连接并进按天域名聚合，滚动清理后（节流）落盘。
+    /// internal 供单测直接喂连接（ingestAccessLog 依赖 App Group 文件，测试环境没有）。
+    func recordDomainHistory(_ newConnections: [Connection]) {
+        guard !newConnections.isEmpty else { return }
+        domainHistory.record(newConnections)
+        domainHistory.prune()
+        domainHistoryDirty = true
+        flushDomainHistoryIfNeeded()
+    }
+
+    /// 有脏数据且距上次落盘 ≥ 节流间隔时写盘。摄入时和每轮 access log 轮询都会调 ——
+    /// 后者保证停止浏览后最后一批脏数据也会在 ≤10 秒内补写，不会一直悬着。
+    private func flushDomainHistoryIfNeeded() {
+        guard domainHistoryDirty else { return }
+        let now = Date()
+        guard now.timeIntervalSince(domainHistorySavedAt) >= domainHistorySaveInterval else { return }
+        domainHistorySavedAt = now
+        domainHistoryDirty = false
+        persistence.saveAsync(domainHistory, name: Self.domainHistoryFile)
+    }
+
+    /// 取当前规则集 + 代理模式对应的 matchedRule 回填器；输入没变时复用同一实例
+    /// （保住内部 host→规则 缓存），变了才重建。key 用 Hasher 而不是逐条对比 ——
+    /// 每 2 秒一次、几千条规则的 hash 是亚毫秒级，逐条 Equatable 对比反而更贵。
+    private func currentMatchedRuleResolver() -> MatchedRuleResolver {
+        var hasher = Hasher()
+        hasher.combine(customRules)
+        hasher.combine(remoteRules)
+        hasher.combine(settings.proxyMode)
+        let key = hasher.finalize()
+        if let cached = matchedRuleResolver, key == matchedRuleResolverKey { return cached }
+        let fresh = MatchedRuleResolver(rules: customRules + remoteRules, mode: settings.proxyMode)
+        matchedRuleResolver = fresh
+        matchedRuleResolverKey = key
+        return fresh
     }
 
     /// appex 经 App Group 上报的真实 `TrafficStats` 喂进波形窗口。UI 观察 `trafficHistory` 自动重绘。

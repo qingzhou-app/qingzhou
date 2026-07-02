@@ -77,18 +77,29 @@ public enum DomainAnalyzer {
 
     // MARK: - 聚合
 
-    /// 把连接按主域名聚合成统计，按总流量降序。
-    public static func aggregate(_ connections: [Connection]) -> [DomainStat] {
+    /// 聚合结果的排序维度。
+    ///
+    /// `.traffic` 是设计上的最终形态，但在接上 xray QueryStats 之前 per-连接字节恒 0
+    /// （access log 不含字节数），按流量排序等于按域名字母排序还谎称「按流量」。
+    /// UI 当前用 `.connections`（诚实展示），字节有真实来源后切回 `.traffic`。
+    public enum SortDimension: Sendable {
+        case traffic       // 总字节降序（需要真实流量数据）
+        case connections   // 连接次数降序
+    }
+
+    /// 把连接按主域名聚合成统计，按 `sortBy` 维度降序（同值按域名字典序）。
+    public static func aggregate(_ connections: [Connection],
+                                 sortBy: SortDimension = .traffic) -> [DomainStat] {
         var map: [String: DomainStat] = [:]
         for c in connections {
             let domain = registrableDomain(c.targetHost)
-            let r = route(for: c.route)
+            let r = routeCategory(c.route)
             if var s = map[domain] {
                 s.connectionCount += 1
                 s.uploadBytes += c.uploadBytes
                 s.downloadBytes += c.downloadBytes
                 if s.route != r { s.route = .mixed }
-                if !c.matchedRule.isEmpty { s.lastMatchedRule = c.matchedRule }
+                s.lastMatchedRule = mergedRule(existing: s.lastMatchedRule, new: c.matchedRule)
                 s.firstSeen = min(s.firstSeen, c.openedAt)
                 s.lastSeen = max(s.lastSeen, c.openedAt)
                 map[domain] = s
@@ -101,16 +112,25 @@ public enum DomainAnalyzer {
                 )
             }
         }
-        return map.values.sorted {
-            $0.totalBytes != $1.totalBytes ? $0.totalBytes > $1.totalBytes : $0.domain < $1.domain
+        switch sortBy {
+        case .traffic:
+            return map.values.sorted {
+                $0.totalBytes != $1.totalBytes ? $0.totalBytes > $1.totalBytes : $0.domain < $1.domain
+            }
+        case .connections:
+            return map.values.sorted {
+                $0.connectionCount != $1.connectionCount
+                    ? $0.connectionCount > $1.connectionCount : $0.domain < $1.domain
+            }
         }
     }
 
     /// 按天分组的每日汇总，最近的在前。
-    public static func daily(_ connections: [Connection], calendar: Calendar = .current) -> [DailyDigest] {
+    public static func daily(_ connections: [Connection], calendar: Calendar = .current,
+                             sortBy: SortDimension = .traffic) -> [DailyDigest] {
         let groups = Dictionary(grouping: connections) { calendar.startOfDay(for: $0.openedAt) }
         return groups.map { day, conns in
-            let stats = aggregate(conns)
+            let stats = aggregate(conns, sortBy: sortBy)
             return DailyDigest(
                 day: day,
                 domains: stats,
@@ -128,18 +148,26 @@ public enum DomainAnalyzer {
         var out: [RuleSuggestion] = []
         for s in stats {
             let cn = isLikelyCN(s.domain)
-            if s.route == .direct && !cn && s.lastMatchedRule.isEmpty {
+            let unmatched = isUnmatchedRule(s.lastMatchedRule)
+            if s.route == .direct && !cn && unmatched {
                 out.append(.init(domain: s.domain, kind: .shouldProxy,
                                  reason: "境外域名走了直连且未命中规则，可能需要补一条代理规则"))
             } else if (s.route == .proxy || s.route == .mixed) && cn {
                 out.append(.init(domain: s.domain, kind: .shouldDirect,
                                  reason: "国内域名走了代理，直连更快也省代理流量"))
-            } else if s.lastMatchedRule.isEmpty && s.route != .reject {
+            } else if unmatched && s.route != .reject && s.route != .proxy {
+                // 只提示「直连/混合 却没命中规则」的情况。rule 模式下境外域名按默认策略
+                // 走代理是预期行为，逐个刷「未命中」只会淹没真正有用的建议（历史误报源头）。
                 out.append(.init(domain: s.domain, kind: .unmatched,
                                  reason: "未命中任何规则，走的是默认出站"))
             }
         }
         return out
+    }
+
+    /// matchedRule 是否为「未命中」语义：空串（未知/未回填）或明确的默认策略哨兵值。
+    public static func isUnmatchedRule(_ rule: String) -> Bool {
+        rule.isEmpty || rule == Connection.noMatchedRule
     }
 
     // MARK: - 辅助
@@ -161,12 +189,21 @@ public enum DomainAnalyzer {
         return twoLevel.contains(lastTwo) ? parts.suffix(3).joined(separator: ".") : lastTwo
     }
 
-    private static func route(for r: String) -> DomainRoute {
+    /// `Connection.route` 字符串 → 路由类别。route 存的是「DIRECT / REJECT / 节点名」，
+    /// 节点名一律视为代理。公开给摄入侧（matchedRule 回填、每日聚合）复用同一套归类。
+    public static func routeCategory(_ r: String) -> DomainRoute {
         switch r.uppercased() {
         case "DIRECT": return .direct
         case "REJECT": return .reject
         default:       return .proxy
         }
+    }
+
+    /// 聚合时合并 matchedRule：真实规则文本优先于「未命中」哨兵/空串；
+    /// 两个都是真实规则时保留后到的（"last" 语义）。internal 供 DomainDailyHistory 复用同一口径。
+    static func mergedRule(existing: String, new: String) -> String {
+        if !isUnmatchedRule(new) { return new }
+        return isUnmatchedRule(existing) && !new.isEmpty ? new : existing
     }
 
     private static let cnKnownDomains: Set<String> = [

@@ -155,21 +155,19 @@ public struct ConnectionsView: View {
                 Image(systemName: "arrow.triangle.swap").imageScale(.small)
                 Text(c.matchedRule).font(.caption.monospaced()).lineLimit(1)
                 Text("→ \(c.route)").font(.caption.monospaced())
-            }
-            .foregroundStyle(.secondary)
-            HStack(spacing: 16) {
-                Label(ByteFormatter.format(c.uploadBytes), systemImage: "arrow.up")
-                Label(ByteFormatter.format(c.downloadBytes), systemImage: "arrow.down")
-                Text("\(ByteFormatter.format(c.uploadSpeedBps))/s · \(ByteFormatter.format(c.downloadSpeedBps))/s")
                 Spacer()
+                // 字节/速率在接上 xray QueryStats 前没有真实来源（恒 0），先不显示假数字；
+                // 接上后在这里恢复 upload/download 字节 + 速率展示。
                 // 活跃连接显示建立时间；已关闭的显示关闭时间（更有信息量）
                 if let closedAt = c.closedAt {
                     Text("关闭于 \(closedAt.formatted(.relative(presentation: .named)))")
+                        .font(.caption2.monospaced())
                 } else {
                     Text(c.openedAt.formatted(.relative(presentation: .named)))
+                        .font(.caption2.monospaced())
                 }
             }
-            .font(.caption2.monospaced()).foregroundStyle(.secondary)
+            .foregroundStyle(.secondary)
             HStack(spacing: 6) {
                 // 来源 app：macOS 由 content-filter 提供 bundle id，显示真实图标+名字；iOS 拿不到时省略。
                 if let app = c.sourceApp, !app.isEmpty {

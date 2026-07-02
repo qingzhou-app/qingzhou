@@ -60,3 +60,12 @@ public struct Connection: Identifiable, Codable, Sendable, Hashable {
 
     public var isActive: Bool { closedAt == nil }
 }
+
+public extension Connection {
+    /// `matchedRule` 的「没命中任何规则，走的是默认策略」语义值。
+    ///
+    /// 回填侧（AppState.ingestAccessLog → MatchedRuleResolver）判定不出具体规则时填它，
+    /// **不要填空串** —— 空串保留给「未知/尚未回填」（如旧数据），语义上区分开。
+    /// DomainAnalyzer 的建议逻辑把它和空串都当「未命中」处理。
+    static let noMatchedRule = "未命中（默认策略）"
+}

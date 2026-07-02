@@ -21,8 +21,12 @@ public struct DomainAnalysisView: View {
             ? state.connections.filter { !HostClassifier.isBareIP($0.targetHost) }
             : state.connections
         let hiddenIPCount = state.connections.count - connections.count
-        let stats = DomainAnalyzer.aggregate(connections)
-        let digests = DomainAnalyzer.daily(connections)
+        // 排序/展示都用连接次数维度：接上 QueryStats 拿到真实字节前，per-连接流量恒 0，
+        // 「按流量排序 + 显示 0B」是假数据。有真实字节后把 sortBy 切回 .traffic 并恢复字节列。
+        let stats = DomainAnalyzer.aggregate(connections, sortBy: .connections)
+        // 「每日」读按天聚合的持久化历史（跨重启、保留 30 天），不再从内存最近 200 条
+        // 连接现算 —— 那是假历史。
+        let digests = state.domainHistory.digests()
         let suggestions = DomainAnalyzer.suggestions(stats)
 
         List {
@@ -47,12 +51,17 @@ public struct DomainAnalysisView: View {
 
             switch mode {
             case 0:
-                Section("按流量排序 · \(stats.count) 个域名") {
+                Section("按连接次数排序 · \(stats.count) 个域名") {
                     ForEach(stats) { domainRow($0) }
                 }
             case 1:
-                ForEach(digests) { d in
-                    Section { ForEach(d.domains.prefix(8)) { domainRow($0) } } header: { dailyHeader(d) }
+                if digests.isEmpty {
+                    ContentUnavailableView("暂无每日历史", systemImage: "calendar",
+                                           description: Text("开启 VPN 浏览后，这里按天保留最近 30 天的域名访问汇总。"))
+                } else {
+                    ForEach(digests) { d in
+                        Section { ForEach(d.domains.prefix(8)) { domainRow($0) } } header: { dailyHeader(d) }
+                    }
                 }
             default:
                 if suggestions.isEmpty {
@@ -79,12 +88,12 @@ public struct DomainAnalysisView: View {
                 routeBadge(s.route)
                 Text(s.domain).font(.subheadline).fontWeight(.medium).lineLimit(1)
                 Spacer()
-                Text(ByteFormatter.format(s.totalBytes)).font(.caption.monospaced()).foregroundStyle(.secondary)
+                // 流量字节在接上 QueryStats 前恒 0，不显示假 0B；先用连接次数当主指标
+                Text("\(s.connectionCount) 次").font(.caption.monospaced()).foregroundStyle(.secondary)
             }
             HStack(spacing: 8) {
-                Text("\(s.connectionCount) 次").font(.caption2).foregroundStyle(.secondary)
-                if s.lastMatchedRule.isEmpty {
-                    Text("未命中规则").font(.caption2).foregroundStyle(.orange)
+                if DomainAnalyzer.isUnmatchedRule(s.lastMatchedRule) {
+                    Text("未命中规则（默认策略）").font(.caption2).foregroundStyle(.orange)
                 } else {
                     Text(s.lastMatchedRule).font(.caption2.monospaced()).foregroundStyle(.tertiary).lineLimit(1)
                 }
@@ -109,7 +118,8 @@ public struct DomainAnalysisView: View {
         HStack {
             Text(d.day.formatted(date: .abbreviated, time: .omitted))
             Spacer()
-            Text("代理 \(d.proxyCount) · 直连 \(d.directCount) · 拒绝 \(d.rejectCount) · \(ByteFormatter.format(d.totalBytes))")
+            // 不显示 totalBytes —— 字节数在接上 QueryStats 前恒 0（假数据）
+            Text("代理 \(d.proxyCount) · 直连 \(d.directCount) · 拒绝 \(d.rejectCount)")
                 .font(.caption2).textCase(nil)
         }
     }

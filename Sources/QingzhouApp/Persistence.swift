@@ -68,6 +68,14 @@ public final class Persistence: @unchecked Sendable {
         try? FileManager.default.removeItem(at: url(for: name))
     }
 
+    /// 通用异步保存：编码 + 写盘都在后台串行队列，主线程立即返回。
+    /// 用于 Snapshot 之外的独立文件（如 domain-history）。失败静默，取舍同 saveSnapshotAsync。
+    public func saveAsync<T: Encodable & Sendable>(_ value: T, name: String) {
+        saveQueue.async { [self] in
+            try? save(value, name: name)
+        }
+    }
+
     // MARK: - 业务接口
 
     public struct Snapshot: Codable, Sendable {
