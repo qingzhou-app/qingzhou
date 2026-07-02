@@ -324,6 +324,13 @@ public final class AppState {
     }
 
     public func stopTunnel() async {
+        // ⚠️ 用户主动关 VPN：必须先关掉 On-Demand 并落盘，否则 On-Demand 的 connect 规则
+        // 会在 stop() 之后立刻把隧道重连回来，用户永远关不掉。失败也继续 stop（尽力而为）。
+        do {
+            try await tunnelManager.setOnDemandEnabled(false)
+        } catch {
+            logger.warn("Disable on-demand before stop failed: \(error)", category: "tunnel")
+        }
         tunnelManager.stop()
         isVPNRunning = false
         scheduleIPRefresh()   // 隧道断开后刷新公网 IP → 落回「直连」那栏

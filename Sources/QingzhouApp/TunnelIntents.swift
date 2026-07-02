@@ -18,11 +18,15 @@ enum TunnelIntentRunner {
     @MainActor static func start() async throws {
         let mgr = VPNTunnelManager()
         try await mgr.load()
+        // 重开 On-Demand（用户上次可能主动关过、把它落盘成 false），让隧道在 App 被杀后仍保持。
+        try? await mgr.setOnDemandEnabled(true)
         try await mgr.start()
     }
     @MainActor static func stop() async throws {
         let mgr = VPNTunnelManager()
         try await mgr.load()
+        // 用户主动关：先关 On-Demand 并落盘，否则规则会立刻把隧道重连回来。
+        try? await mgr.setOnDemandEnabled(false)
         mgr.stop()
     }
     /// 在跑就关、没跑就开。
@@ -31,8 +35,10 @@ enum TunnelIntentRunner {
         try await mgr.load()
         switch mgr.status {
         case .connected, .connecting, .reasserting:
+            try? await mgr.setOnDemandEnabled(false)
             mgr.stop()
         default:
+            try? await mgr.setOnDemandEnabled(true)
             try await mgr.start()
         }
     }
