@@ -267,12 +267,20 @@ public final class AppState {
     }
 
     /// 立即把当前状态镜像到云端（revision 盖过云端与本机记录的较大者）。
+    ///
+    /// 上云内容先经 `VaultSnapshotNormalizer` 剥离瞬态字段（延迟 / 当前节点 / 订阅拉取
+    /// 时刻与用量），再与上次镜像的内容哈希比对 —— **内容没变就跳过**：自动测速 /
+    /// 自动择优 / 订阅例行刷新不再刷出大量雷同 revision、不再挤掉滚动备份里的有效历史。
     private func mirrorToCloudNow() async {
         guard settings.iCloudSyncEnabled, cloudRestoreOffer == nil else { return }
         guard await cloudVault.isAvailable() else {
             cloudSyncStatus = .unavailable
             return
         }
+        let snapshot = VaultSnapshotNormalizer.normalized(currentSnapshot())
+        let contentHash = try? VaultSnapshotNormalizer.contentHash(of: snapshot)
+        let lastSynced = persistence.load(VaultSyncState.self, name: Self.vaultSyncStateName)
+
         cloudSyncStatus = .syncing
         do {
             let header = try? await cloudVault.loadHeader()
@@ -281,7 +289,13 @@ public final class AppState {
                 cloudSyncStatus = .incompatibleCloud(schemaVersion: header.schemaVersion)
                 return
             }
-            let lastSynced = persistence.load(VaultSyncState.self, name: Self.vaultSyncStateName)
+            // 内容去重：云端就是本机上次写的那个 revision、且规范化内容没变 → 什么都不做
+            if let header, let lastSynced, let contentHash,
+               header.revision == lastSynced.lastSyncedRevision,
+               lastSynced.lastMirroredContentHash == contentHash {
+                cloudSyncStatus = .synced(lastSynced.lastSyncedAt)
+                return
+            }
             let revision = VaultSyncLogic.nextRevision(
                 cloudRevision: header?.revision,
                 lastSyncedRevision: lastSynced?.lastSyncedRevision
@@ -290,12 +304,12 @@ public final class AppState {
                 revision: revision,
                 modifiedAt: Date(),
                 deviceName: Self.deviceName,
-                snapshot: currentSnapshot()
+                snapshot: snapshot
             )
             try await cloudVault.save(document)
             let now = Date()
             try? persistence.save(
-                VaultSyncState(lastSyncedRevision: revision, lastSyncedAt: now),
+                VaultSyncState(lastSyncedRevision: revision, lastSyncedAt: now, lastMirroredContentHash: contentHash),
                 name: Self.vaultSyncStateName
             )
             cloudSyncStatus = .synced(now)
@@ -345,12 +359,43 @@ public final class AppState {
         // 覆盖本地前留一份备份 —— 恢复错了还能救
         try? persistence.save(currentSnapshot(), name: Self.restoreBackupName)
 
-        let snapshot = document.snapshot
+        // vault 里剥掉了设备本地的瞬态字段（延迟 / 当前节点 / 订阅拉取时刻与用量），
+        // 恢复时从本地按身份回填 —— 别把本机刚测好的延迟、正在用的节点清掉。
+        var snapshot = document.snapshot
+        let localNodeTransients = Dictionary(
+            nodes.map { ($0.identityFingerprint, (latency: $0.lastLatencyMs, testedAt: $0.lastTestedAt)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for i in snapshot.nodes.indices {
+            if snapshot.nodes[i].lastLatencyMs == nil,
+               let local = localNodeTransients[snapshot.nodes[i].identityFingerprint] {
+                snapshot.nodes[i].lastLatencyMs = local.latency
+                snapshot.nodes[i].lastTestedAt = local.testedAt
+            }
+        }
+        let localSubTransients = Dictionary(
+            subscriptions.map { ($0.url, (updatedAt: $0.lastUpdatedAt, used: $0.usedBytes)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for i in snapshot.subscriptions.indices {
+            if snapshot.subscriptions[i].lastUpdatedAt == nil,
+               let local = localSubTransients[snapshot.subscriptions[i].url] {
+                snapshot.subscriptions[i].lastUpdatedAt = local.updatedAt
+                snapshot.subscriptions[i].usedBytes = local.used
+            }
+        }
+        // 当前节点：新 vault 不带 currentNodeId（设备本地选择）→ 尽量沿用本机的；
+        // 旧文档带了就尊重它。恢复后指向的节点不存在则清空。
+        let preservedCurrentId = currentNodeId
+
         subscriptions = snapshot.subscriptions
         nodes = snapshot.nodes
         customRules = snapshot.customRules
         settings = snapshot.settings
-        currentNodeId = snapshot.currentNodeId
+        currentNodeId = snapshot.currentNodeId ?? preservedCurrentId
+        if let id = currentNodeId, !nodes.contains(where: { $0.id == id }) {
+            currentNodeId = nil
+        }
         applySettingsSideEffects()
         persistence.saveSnapshotAsync(currentSnapshot())
         let now = Date()
@@ -362,9 +407,15 @@ public final class AppState {
             // 立刻把恢复出来的状态以更高 revision 回推 —— 云端主文档也被救回。
             await mirrorToCloudNow()
         } else {
-            // 恢复的就是云端主文档：记录同步进度即可，不用再镜像（内容一致，白 +1 revision）
+            // 恢复的就是云端主文档：记录同步进度即可，不用再镜像（内容一致，白 +1 revision）。
+            // 哈希记规范化后的恢复内容 —— 之后无实质变化的 persist 不会再产生新 revision。
             try? persistence.save(
-                VaultSyncState(lastSyncedRevision: document.revision, lastSyncedAt: now),
+                VaultSyncState(
+                    lastSyncedRevision: document.revision,
+                    lastSyncedAt: now,
+                    lastMirroredContentHash: try? VaultSnapshotNormalizer.contentHash(
+                        of: VaultSnapshotNormalizer.normalized(currentSnapshot()))
+                ),
                 name: Self.vaultSyncStateName
             )
             cloudSyncStatus = .synced(now)
