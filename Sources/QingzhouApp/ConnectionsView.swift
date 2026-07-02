@@ -24,14 +24,13 @@ public struct ConnectionsView: View {
         VStack(spacing: 0) {
             controls(hiddenIPCount: result.hiddenIPCount)
             if result.visible.isEmpty {
+                let empty = Self.emptyState(filter: filter, searching: !keyword.isEmpty,
+                                            hiddenIPCount: result.hiddenIPCount,
+                                            vpnRunning: state.isVPNRunning)
                 ContentUnavailableView {
-                    Label("暂无连接", systemImage: "antenna.radiowaves.left.and.right.slash")
+                    Label(empty.title, systemImage: empty.icon)
                 } description: {
-                    if result.hiddenIPCount > 0 {
-                        Text("「忽略 IP」已隐藏 \(result.hiddenIPCount) 条纯 IP 连接。")
-                    } else {
-                        Text("开启 VPN 后，这里会展示真实的访问记录。")
-                    }
+                    Text(empty.description)
                 }
                 .frame(maxHeight: .infinity)
             } else {
@@ -77,6 +76,32 @@ public struct ConnectionsView: View {
             #endif
         }
         .searchable(text: $keyword, prompt: "搜索 host / route / app")
+    }
+
+    /// 空态文案：按「为什么空」区分。踩过的坑：三个分组共用「开启 VPN 后…」——
+    /// VPN 明明开着时用户会以为开关没开（真实验收反馈）。
+    /// 优先级：过滤导致（搜索词/忽略 IP）> 「已关闭」分组语义 > VPN 状态。
+    static func emptyState(filter: ConnectionFilter, searching: Bool,
+                           hiddenIPCount: Int, vpnRunning: Bool)
+        -> (title: String, description: String, icon: String) {
+        if searching || hiddenIPCount > 0 {
+            var d = "当前搜索/过滤条件下没有匹配项。"
+            if hiddenIPCount > 0 {
+                d += "「忽略 IP」已隐藏 \(hiddenIPCount) 条纯 IP 连接。"
+            }
+            return ("没有匹配的连接", d, "line.3.horizontal.decrease.circle")
+        }
+        if filter == .closed {
+            return ("还没有已关闭的连接",
+                    "活跃连接约 \(Int(ConnectionTracker.idleTimeout)) 秒无活动后会归入这里。",
+                    "clock.arrow.circlepath")
+        }
+        if vpnRunning {
+            return ("暂无连接记录", "浏览网页后这里会实时更新。",
+                    "antenna.radiowaves.left.and.right")
+        }
+        return ("暂无连接", "开启 VPN 后，这里会展示真实的访问记录。",
+                "antenna.radiowaves.left.and.right.slash")
     }
 
     private func controls(hiddenIPCount: Int) -> some View {
