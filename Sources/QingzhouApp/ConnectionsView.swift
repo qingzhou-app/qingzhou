@@ -73,7 +73,7 @@ public struct ConnectionsView: View {
 
     private var filtered: [Connection] {
         let kw = keyword.lowercased()
-        return state.connections.filter { c in
+        let result = state.connections.filter { c in
             let scopeOK: Bool
             switch filter {
             case .active: scopeOK = c.isActive
@@ -87,6 +87,11 @@ public struct ConnectionsView: View {
                 || (c.sourceApp?.lowercased().contains(kw) ?? false)
             return scopeOK && kwOK
         }
+        // 「已关闭」按关闭时间倒序 —— 刚关闭的在最上面；其他分组保持摄入序（新连接在前）
+        if filter == .closed {
+            return result.sorted { ($0.closedAt ?? .distantPast) > ($1.closedAt ?? .distantPast) }
+        }
+        return result
     }
 
     private func connectionRow(_ c: Connection) -> some View {
@@ -114,7 +119,12 @@ public struct ConnectionsView: View {
                 Label(ByteFormatter.format(c.downloadBytes), systemImage: "arrow.down")
                 Text("\(ByteFormatter.format(c.uploadSpeedBps))/s · \(ByteFormatter.format(c.downloadSpeedBps))/s")
                 Spacer()
-                Text(c.openedAt.formatted(.relative(presentation: .named)))
+                // 活跃连接显示建立时间；已关闭的显示关闭时间（更有信息量）
+                if let closedAt = c.closedAt {
+                    Text("关闭于 \(closedAt.formatted(.relative(presentation: .named)))")
+                } else {
+                    Text(c.openedAt.formatted(.relative(presentation: .named)))
+                }
             }
             .font(.caption2.monospaced()).foregroundStyle(.secondary)
             HStack(spacing: 6) {
