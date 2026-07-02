@@ -409,6 +409,14 @@ public final class AppState {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             try await tunnelManager.start()
+            // start() 只等"启动请求提交成功"，不等隧道真连上 —— 到这里就收窗口的话，
+            // 开关会在 xray 还没就绪时就滑回"开"（规则模式加载 geo 那几秒尤其明显）。
+            // 继续轮询到 .connected 再结束"切换中"，动画的结束沿才真正跟着真实状态走。
+            // 15 秒超时兜底：连不上也先收窗口，不把 UI 卡死在切换态（错误自会走系统 VPN 状态）。
+            for _ in 0..<150 {
+                if tunnelManager.status == .connected { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
             logger.info("Clean-restart switched tunnel to \(node.name) / \(settings.proxyMode.rawValue)", category: "tunnel")
         } catch {
             tunnelError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
