@@ -164,12 +164,24 @@
   `PRIVACY.md` 生效日期填写 + GitHub Pages 部署、截图、TestFlight、审核测试节点准备
 
 **排队立项（按优先级）**：
-1. **英文 i18n 提前**（S11 提前，上国际区 App Store 需要；简繁日按原计划）
-2. **Clash 导入扩展**：现支持 trojan/ss/vmess/vless/hysteria2，补 http/socks5/ssr/snell 等；
+1. ✅ **英文 i18n**（2026-07-03 完成：Localizable/AppShortcuts/InfoPlist/Widget 全量目录，
+   en 100%；语言选项只放简中/English，繁日暂缓）
+2. ✅ **App 内自动化玩法引导页**（2026-07-03 完成：设置 → 自动化 → 自动化玩法指南）
+3. **节点倍率（rate/multiplier）纳入择优**（用户 2026-07-04 提）：从节点名 / 订阅元数据
+   解析倍率（如「2x」「0.5倍」），延迟接近时优先低倍率节点；解析出的倍率也在节点列表展示。
+   需改 Node 模型（Codable 迁移）+ 解析器 + 择优 tiebreaker + iCloud normalizer + 宣发文案
+4. **App 内更新提醒**（用户 2026-07-04 提）：iTunes lookup API 查 App Store 最新版本号，
+   高于当前则提示。轻量、无需服务端
+5. **端侧 AI 动态规则决策表**（用户 2026-07-04 提，长期）：端侧 AI 可用后，
+   用 AI 根据域名访问情况 / 耗时情况**动态维护一条决策表**，自动决定每个域名走哪条规则
+   （代理 / 直连 / 哪个出口）。现有域名分析 + 规则命中统计已经是它的数据底座
+6. **国内社交平台隐秘分享 / 裂变**（用户 2026-07-04 提，需产品决策）：邀请码 / 去敏感化落地页 /
+   口令分享等，规避国内平台对 VPN 类内容的审查。方案待定
+7. **Clash 导入扩展**：现支持 trojan/ss/vmess/vless/hysteria2，补 http/socks5/ssr/snell 等；
    顺带做其他客户端迁移导入
-3. **Live Activity**（灵动岛 / 锁屏实时活动显示连接状态与流量）
-4. **Focus 联动**（专注模式切换联动 VPN 开关）
-5. **App 内自动化玩法引导页**（把 Widget / 快捷指令 / 自动开关的玩法教给普通用户）
+8. **Live Activity**（灵动岛 / 锁屏实时活动显示连接状态与流量）
+9. **Focus 联动**（专注模式切换联动 VPN 开关）
+10. **繁体中文 / 日语本地化**（结构就绪，补翻译即可）
 
 **来源 App 标注（macOS 内容过滤 + XPC）**：**已启用**——代码里 `FeatureFlags.sourceAppLabeling = true`
 （此前文档写「已由 flag=false 搁置」有误，实际是 **opt-in**：设置 → macOS 集成一键启用 +
