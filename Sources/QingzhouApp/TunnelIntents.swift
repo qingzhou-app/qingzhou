@@ -158,7 +158,7 @@ public struct GetVPNStatusIntent: AppIntent {
     public init() {}
     public func perform() async throws -> some IntentResult & ReturnsValue<Bool> & ProvidesDialog {
         let connected = try await TunnelIntentRunner.isActive()
-        return .result(value: connected, dialog: IntentDialog(stringLiteral: connected ? "轻舟已连接" : "轻舟未连接"))
+        return .result(value: connected, dialog: IntentDialog(stringLiteral: connected ? L("轻舟已连接") : L("轻舟未连接")))
     }
 }
 

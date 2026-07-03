@@ -31,8 +31,8 @@ public actor CloudVaultStore {
 
         public var errorDescription: String? {
             switch self {
-            case .unavailable: return "iCloud 不可用（未登录或未开启 iCloud Drive）"
-            case .notYetDownloaded: return "iCloud 数据还在下载中，稍后再试"
+            case .unavailable: return L("iCloud 不可用（未登录或未开启 iCloud Drive）")
+            case .notYetDownloaded: return L("iCloud 数据还在下载中，稍后再试")
             }
         }
     }

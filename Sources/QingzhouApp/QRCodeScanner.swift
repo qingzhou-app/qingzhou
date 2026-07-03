@@ -57,17 +57,17 @@ public struct QRCodeScannerView: UIViewControllerRepresentable {
 
         private func setupCamera() {
             guard let device = AVCaptureDevice.default(for: .video) else {
-                onError?("没有可用摄像头"); return
+                onError?(L("没有可用摄像头")); return
             }
             do {
                 let input = try AVCaptureDeviceInput(device: device)
                 guard session.canAddInput(input) else {
-                    onError?("无法添加摄像头输入"); return
+                    onError?(L("无法添加摄像头输入")); return
                 }
                 session.addInput(input)
                 let output = AVCaptureMetadataOutput()
                 guard session.canAddOutput(output) else {
-                    onError?("无法添加 QR 输出"); return
+                    onError?(L("无法添加 QR 输出")); return
                 }
                 session.addOutput(output)
                 output.setMetadataObjectsDelegate(self, queue: .main)

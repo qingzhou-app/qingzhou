@@ -32,12 +32,12 @@ struct DomainDetailView: View {
                     if DomainAnalyzer.isUnmatchedRule(stat.lastMatchedRule) {
                         Text("未命中规则（默认策略）").foregroundStyle(.orange)
                     } else {
-                        Text(stat.lastMatchedRule)
+                        Text(L10n.lookup(stat.lastMatchedRule))
                             .font(.caption.monospaced())
                             .lineLimit(2).truncationMode(.middle)
                     }
                 }
-                LabeledContent("连接次数", value: "\(stat.connectionCount) 次")
+                LabeledContent("连接次数", value: L("\(stat.connectionCount) 次"))
                 LabeledContent("首次出现", value: stat.firstSeen.formatted(date: .abbreviated, time: .shortened))
                 LabeledContent("最近出现", value: stat.lastSeen.formatted(date: .abbreviated, time: .shortened))
             }
@@ -108,14 +108,14 @@ struct DomainDetailView: View {
 
     /// 柱下标签：今天标「今天」，其余标 M/d（7 天窗口里星期几不如日期直观）。
     static func dayLabel(_ day: Date, calendar: Calendar = .current, now: Date = Date()) -> String {
-        if calendar.isDate(day, inSameDayAs: now) { return "今天" }
+        if calendar.isDate(day, inSameDayAs: now) { return L("今天") }
         let c = calendar.dateComponents([.month, .day], from: day)
         return "\(c.month ?? 0)/\(c.day ?? 0)"
     }
 
     // MARK: - 部件
 
-    private func quickButton(_ title: String, _ color: Color, _ target: RuleTarget) -> some View {
+    private func quickButton(_ title: LocalizedStringKey, _ color: Color, _ target: RuleTarget) -> some View {
         Button(title) { state.quickAddDomainRule(forHost: stat.domain, target: target) }
             .buttonStyle(.bordered)
             .tint(color)
@@ -124,10 +124,10 @@ struct DomainDetailView: View {
     private func routeBadge(_ r: DomainRoute) -> some View {
         let info: (String, Color)
         switch r {
-        case .proxy:  info = ("代理", .blue)
-        case .direct: info = ("直连", .green)
-        case .reject: info = ("拒绝", .red)
-        case .mixed:  info = ("混合", .orange)
+        case .proxy:  info = (L("代理"), .blue)
+        case .direct: info = (L("直连"), .green)
+        case .reject: info = (L("拒绝"), .red)
+        case .mixed:  info = (L("混合"), .orange)
         }
         return Text(info.0)
             .font(.caption).fontWeight(.medium)

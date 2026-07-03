@@ -1,0 +1,40 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qingzhou uses the camera to scan QR codes so you can quickly add nodes or subscriptions."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扫描二维码以快速添加节点或订阅"
+          }
+        }
+      }
+    },
+    "NSSystemExtensionUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qingzhou needs to install a network extension to label which app initiated each connection (analyzed on this device only, never uploaded)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻舟需要安装网络扩展，用于标注每条连接由哪个 App 发起（仅本机分析，不上传）。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

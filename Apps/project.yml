@@ -31,8 +31,15 @@ targets:
     sources:
       - path: iOS/Sources
       - path: iOS/Resources
-      # App Shortcuts 必须在 app target（放 SPM 包里抽取不到 autoShortcuts），双平台共享
+      # App-Shared 双平台共享，但内容物分两种 build phase：
+      # - QingzhouAppShortcuts.swift 必须**编译**进 app target（放 SPM 包里抽取不到 autoShortcuts）
+      # - *.xcstrings 字符串目录必须走 **Copy Resources**（SPM 包里 Text("中文") 默认查
+      #   Bundle.main，目录放 app target 包内代码零改动即命中翻译）
       - path: App-Shared
+        excludes: ["*.xcstrings"]
+      - path: App-Shared
+        includes: ["*.xcstrings"]
+        buildPhase: resources
     info:
       path: iOS/Info.plist
       properties:
@@ -103,8 +110,12 @@ targets:
     sources:
       - path: macOS/Sources
       - path: macOS/Resources
-      # 同 iOS：App Shortcuts 必须在 app target
+      # 同 iOS：App-Shared 源码编译 + 字符串目录走资源（见 Qingzhou-iOS 的注释）
       - path: App-Shared
+        excludes: ["*.xcstrings"]
+      - path: App-Shared
+        includes: ["*.xcstrings"]
+        buildPhase: resources
     info:
       path: macOS/Info.plist
       properties:

@@ -1,0 +1,72 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "切换${applicationName}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toggle ${applicationName}"
+          }
+        }
+      }
+    },
+    "开关${applicationName}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch ${applicationName} on or off"
+          }
+        }
+      }
+    },
+    "开启${applicationName}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on ${applicationName}"
+          }
+        }
+      }
+    },
+    "用${applicationName}连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect with ${applicationName}"
+          }
+        }
+      }
+    },
+    "关闭${applicationName}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn off ${applicationName}"
+          }
+        }
+      }
+    },
+    "断开${applicationName}" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disconnect ${applicationName}"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

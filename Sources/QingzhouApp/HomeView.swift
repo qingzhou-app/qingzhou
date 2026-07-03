@@ -4,6 +4,8 @@ import QingzhouSpeedTest
 
 public struct HomeView: View {
     @Bindable var state: AppState
+    /// 跟随 App 语言设置的 locale（根视图注入），日期/相对时间格式化用
+    @Environment(\.locale) private var locale
     @State private var isRefreshingIP = false
     @State private var isTestingSpeed = false
     @State private var singleTesting: Set<SpeedTestTarget> = []
@@ -229,9 +231,9 @@ public struct HomeView: View {
     /// 「已连接 1:23:45 · ↑ 1.2 MB ↓ 34 MB」。流量读 appex 上报的会话累计值；
     /// 隧道刚起来还没上报时只显示时长。
     private func sessionStatusLine(since: Date, now: Date) -> String {
-        var line = "已连接 \(Self.durationText(max(0, now.timeIntervalSince(since))))"
+        var line = L("已连接 \(Self.durationText(max(0, now.timeIntervalSince(since))))")
         if let latest = state.trafficHistory.latest {
-            line += " · ↑ \(ByteFormatter.format(latest.uploadBytes)) ↓ \(ByteFormatter.format(latest.downloadBytes))"
+            line += L(" · ↑ \(ByteFormatter.format(latest.uploadBytes)) ↓ \(ByteFormatter.format(latest.downloadBytes))")
         }
         return line
     }
@@ -244,7 +246,7 @@ public struct HomeView: View {
 
     // 状态胶囊三态：切换中（橙）> 已连接（绿）> 未连接（灰）
     private var statusText: String {
-        state.isSwitchingTunnel ? "切换中…" : (state.isVPNRunning ? "VPN 已连接" : "VPN 未连接")
+        state.isSwitchingTunnel ? L("切换中…") : (state.isVPNRunning ? L("VPN 已连接") : L("VPN 未连接"))
     }
     private var statusIcon: String {
         state.isSwitchingTunnel ? "arrow.triangle.2.circlepath"
@@ -268,7 +270,7 @@ public struct HomeView: View {
                     HStack {
                         latencyChip(node.lastLatencyMs)
                         if let t = node.lastTestedAt {
-                            Text("测于 \(t.formatted(.relative(presentation: .named)))")
+                            Text("测于 \(t.formatted(.relative(presentation: .named).locale(locale)))")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                     }
@@ -295,7 +297,7 @@ public struct HomeView: View {
                             HStack {
                                 Text("节点 \(sub.nodeCount)").font(.caption2).foregroundStyle(.secondary)
                                 if let upd = sub.lastUpdatedAt {
-                                    Text("· 更新于 \(upd.formatted(.relative(presentation: .named)))")
+                                    Text("· 更新于 \(upd.formatted(.relative(presentation: .named).locale(locale)))")
                                         .font(.caption2).foregroundStyle(.secondary)
                                 }
                             }
@@ -305,7 +307,7 @@ public struct HomeView: View {
                                     .font(.caption2.monospaced())
                             }
                             if let exp = sub.expiresAt {
-                                Text("到期：\(exp.formatted(date: .abbreviated, time: .omitted))")
+                                Text("到期：\(exp.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(locale)))")
                                     .font(.caption2).foregroundStyle(.secondary)
                             }
                         }
@@ -346,7 +348,7 @@ public struct HomeView: View {
         }
     }
 
-    private func ipRow(title: String, info: PublicIPInfo?, tint: Color) -> some View {
+    private func ipRow(title: LocalizedStringKey, info: PublicIPInfo?, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Circle().fill(tint).frame(width: 7, height: 7)
@@ -358,7 +360,7 @@ public struct HomeView: View {
                 if !loc.isEmpty {
                     Text(loc).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
-                Text("更新于 \(info.fetchedAt.formatted(.relative(presentation: .named)))")
+                Text("更新于 \(info.fetchedAt.formatted(.relative(presentation: .named).locale(locale)))")
                     .font(.caption2).foregroundStyle(.tertiary)
             } else {
                 Text(isRefreshingIP ? "查询中…" : "尚未获取")
@@ -386,7 +388,7 @@ public struct HomeView: View {
                 if let xs = state.outboundStats {
                     statRow("代理 / 直连",
                             value: "\(ByteFormatter.format(xs.proxy.totalBytes)) / \(ByteFormatter.format(xs.direct.totalBytes))"
-                                + (xs.proxyShare.map { String(format: "（代理 %.0f%%）", $0 * 100) } ?? ""))
+                                + (xs.proxyShare.map { String(format: L("（代理 %.0f%%）"), $0 * 100) } ?? ""))
                 }
                 #if os(iOS)
                 // 连接页在 iOS 上不占 tab，从这里 push（macOS 侧栏有独立「连接」项，不重复放）
@@ -414,7 +416,7 @@ public struct HomeView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(SpeedTestTarget.allCases, id: \.self) { target in
                     HStack {
-                        Text(target.displayName).font(.caption)
+                        Text(L10n.lookup(target.displayName)).font(.caption)
                         Spacer()
                         if singleTesting.contains(target) {
                             ProgressView().controlSize(.small)
@@ -433,7 +435,7 @@ public struct HomeView: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(singleTesting.contains(target) || isTestingSpeed)
-                        .help("测试 \(target.displayName)")
+                        .help("测试 \(L10n.lookup(target.displayName))")
                     }
                 }
             }
@@ -489,7 +491,7 @@ public struct HomeView: View {
                 #else
                 statRow("平台", value: "iOS")
                 #endif
-                statRow("模式", value: "TUN（虚拟网卡）")
+                statRow("模式", value: L("TUN（虚拟网卡）"))
                 statRow("日志级别", value: state.settings.logLevel)
                 statRow("规则数", value: "\(state.customRules.count + state.remoteRules.count)")
             }
@@ -529,7 +531,7 @@ public struct HomeView: View {
         return .red
     }
 
-    private func statRow(_ title: String, value: String) -> some View {
+    private func statRow(_ title: LocalizedStringKey, value: String) -> some View {
         HStack {
             Text(title).font(.caption).foregroundStyle(.secondary)
             Spacer()
@@ -539,7 +541,7 @@ public struct HomeView: View {
 
     /// 空态卡：说明文字 + 可点的 CTA 按钮（跳到对应页面）。
     /// 早期 CTA 是灰色纯文字，新用户第一屏看到「去节点页选择」却无处可点 —— 死路。
-    private func emptyCard(icon: String, text: String, cta: String, action: @escaping () -> Void) -> some View {
+    private func emptyCard(icon: String, text: LocalizedStringKey, cta: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: icon).foregroundStyle(.secondary)
@@ -556,20 +558,20 @@ public struct HomeView: View {
 
     private func label(for mode: ProxyMode) -> String {
         switch mode {
-        case .global: return "全局"
-        case .rule:   return "规则"
-        case .direct: return "直连"
+        case .global: return L("全局")
+        case .rule:   return L("规则")
+        case .direct: return L("直连")
         }
     }
 }
 
 /// 通用卡片容器：圆角、淡背景、可选 title + icon。
 struct Card<Content: View>: View {
-    var title: String?
+    var title: LocalizedStringKey?
     var systemImage: String?
     @ViewBuilder var content: () -> Content
 
-    init(title: String? = nil, systemImage: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+    init(title: LocalizedStringKey? = nil, systemImage: String? = nil, @ViewBuilder content: @escaping () -> Content) {
         self.title = title
         self.systemImage = systemImage
         self.content = content

@@ -35,11 +35,11 @@ public enum AutoStopPresets {
 
     /// 档位文案（Picker 选项 / toast 共用）。
     public static func label(for seconds: TimeInterval) -> String {
-        guard seconds > 0 else { return "关闭" }
+        guard seconds > 0 else { return L("关闭") }
         if seconds < 60 * 60 {
-            return "\(Int(seconds / 60)) 分钟"
+            return L("\(Int(seconds / 60)) 分钟")
         }
-        return "\(Int(seconds / 3600)) 小时"
+        return L("\(Int(seconds / 3600)) 小时")
     }
 
     /// 剩余时间文案：< 1 小时用 mm:ss（如 29:59），≥ 1 小时用 h:mm（如 3:59）。

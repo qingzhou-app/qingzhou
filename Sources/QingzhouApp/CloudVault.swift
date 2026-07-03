@@ -109,9 +109,9 @@ public struct VaultHeader: Codable, Sendable, Equatable {
     /// 恢复确认弹窗 / 版本列表展示的内容摘要 —— 让「空数据」一眼可见。
     public var contentSummary: String {
         guard let subs = subscriptionCount, let nodes = nodeCount else {
-            return "内容数量未知（旧版本文档）"
+            return L("内容数量未知（旧版本文档）")
         }
-        return "\(subs) 个订阅 · \(nodes) 个节点"
+        return L("\(subs) 个订阅 · \(nodes) 个节点")
     }
 }
 
@@ -294,16 +294,16 @@ public enum CloudSyncStatus: Equatable, Sendable {
     /// 设置页显示的文案。
     public var displayText: String {
         switch self {
-        case .unknown: return "检查中…"
-        case .disabled: return "已关闭"
-        case .unavailable: return "iCloud 不可用（未登录或未开启 iCloud Drive）"
-        case .idle: return "尚无可同步的数据"
-        case .syncing: return "同步中…"
+        case .unknown: return L("检查中…")
+        case .disabled: return L("未开启")
+        case .unavailable: return L("iCloud 不可用（未登录或未开启 iCloud Drive）")
+        case .idle: return L("尚无可同步的数据")
+        case .syncing: return L("同步中…")
         case .synced(let date):
-            return "最近同步 " + date.formatted(date: .abbreviated, time: .shortened)
+            return L("最近同步 \(date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))")
         case .incompatibleCloud:
-            return "iCloud 数据来自更新版本的轻舟，请升级 App"
-        case .error(let message): return "同步失败：\(message)"
+            return L("iCloud 数据来自更新版本的轻舟，请升级 App")
+        case .error(let message): return L("同步失败：\(message)")
         }
     }
 }

@@ -27,10 +27,8 @@ public struct RootView: View {
                 Button("暂不恢复", role: .cancel) { state.declineCloudRestore() }
             } message: { offer in
                 // 内容计数放最前 —— 「0 个订阅 · 0 个节点」一眼可见，防止误恢复空数据
-                Text("内容：\(offer.header.contentSummary)\n"
-                     + "来自 \(offer.header.deviceName)，"
-                     + "\(offer.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))。\n"
-                     + "恢复会用它覆盖本机配置；本机当前配置会先自动备份。")
+                // 单条长字面量（不用 + 拼接）以命中本地化 —— Text("a"+"b") 会落到 Text(String) 重载不翻译。
+                Text("内容：\(offer.header.contentSummary)\n来自 \(offer.header.deviceName)，\(offer.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))。\n恢复会用它覆盖本机配置；本机当前配置会先自动备份。")
             }
     }
 
@@ -137,13 +135,13 @@ extension AppSection {
     /// macOS 侧栏显示名。
     var sidebarTitle: String {
         switch self {
-        case .home:          return "首页"
-        case .nodes:         return "节点"
-        case .subscriptions: return "订阅"
-        case .rules:         return "规则"
-        case .connections:   return "连接"
-        case .logs:          return "日志"
-        case .settings:      return "设置"
+        case .home:          return L("首页")
+        case .nodes:         return L("节点")
+        case .subscriptions: return L("订阅")
+        case .rules:         return L("规则")
+        case .connections:   return L("连接")
+        case .logs:          return L("日志")
+        case .settings:      return L("设置")
         }
     }
 }

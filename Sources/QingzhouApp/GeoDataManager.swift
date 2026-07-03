@@ -162,23 +162,25 @@ public final class GeoDataManager {
     public func downloadFullGeoIP() async -> Bool {
         guard !isDownloading else { return false }
         guard let directory, let datFileURL, let infoFileURL else {
-            phase = .failed("App Group 容器不可用，无法保存 geo 数据")
+            phase = .failed(L("App Group 容器不可用，无法保存 geo 数据"))
             return false
         }
 
         var failures: [String] = []
         for source in sources {
-            phase = .downloading(sourceName: source.displayName, progress: nil)
+            // 源名会进 UI（进度条 / 失败详情），按 App 语言查表；info.sourceName 仍存原文（见下）
+            let sourceLabel = L10n.lookup(source.displayName)
+            phase = .downloading(sourceName: sourceLabel, progress: nil)
             do {
                 // 1) 同源校验和（几十字节）：拿不到/格式不对 → 这个源直接作废
                 let checksumData = try await downloader.fetch(source.checksumURL, progress: { _ in })
                 guard let expectedSha = Self.parseChecksum(checksumData) else {
-                    failures.append("\(source.displayName)：校验和文件格式异常")
+                    failures.append(L("\(sourceLabel)：校验和文件格式异常"))
                     continue
                 }
 
                 // 2) dat 本体，报进度
-                let sourceName = source.displayName
+                let sourceName = sourceLabel
                 let data = try await downloader.fetch(source.datURL, progress: { [weak self] p in
                     Task { @MainActor [weak self] in
                         guard let self, case .downloading = self.phase else { return }
@@ -190,7 +192,7 @@ public final class GeoDataManager {
                 phase = .verifying
                 let actualSha = Self.sha256Hex(data)
                 guard actualSha == expectedSha else {
-                    failures.append("\(source.displayName)：sha256 校验不匹配")
+                    failures.append(L("\(sourceLabel)：sha256 校验不匹配"))
                     continue
                 }
 
@@ -212,13 +214,14 @@ public final class GeoDataManager {
                 phase = .idle
                 return true
             } catch {
-                failures.append("\(source.displayName)：\(error.localizedDescription)")
+                failures.append(L("\(sourceLabel)：\(error.localizedDescription)"))
                 continue
             }
         }
 
         // 双源全挂：现有数据原样保留，文案引导先开 VPN（geo 数据在 GitHub，受限网络直连不通）
-        phase = .failed("下载失败（\(failures.joined(separator: "；"))）。若当前网络无法直连 GitHub，请先开启 VPN 后重试。")
+        let detail = failures.joined(separator: L("；"))
+        phase = .failed(L("下载失败（\(detail)）。若当前网络无法直连 GitHub，请先开启 VPN 后重试。"))
         return false
     }
 
@@ -233,10 +236,11 @@ public final class GeoDataManager {
                   let remoteSha = Self.parseChecksum(data) else { continue }
             let has = hasFullGeoIP && info?.sha256 == remoteSha
             updateAvailable = !has
-            lastCheckMessage = has ? "已是最新（\(source.displayName)）" : "有新版本可下载（\(source.displayName)）"
+            let sourceLabel = L10n.lookup(source.displayName)
+            lastCheckMessage = has ? L("已是最新（\(sourceLabel)）") : L("有新版本可下载（\(sourceLabel)）")
             return !has
         }
-        lastCheckMessage = "检查失败：无法连接任一数据源。若当前网络无法直连 GitHub，请先开启 VPN 后重试。"
+        lastCheckMessage = L("检查失败：无法连接任一数据源。若当前网络无法直连 GitHub，请先开启 VPN 后重试。")
         return nil
     }
 

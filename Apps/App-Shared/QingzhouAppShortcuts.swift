@@ -18,12 +18,15 @@ struct QingzhouAppIntentsHost: AppIntentsPackage {
 }
 
 // `\(.applicationName)` 会被替换成 App 名（轻舟）。
+// 短语的多语言在同目录 AppShortcuts.xcstrings（key = 这里的中文短语，
+// ${applicationName} 对应 \(.applicationName)）；英文说法（"Toggle …" 等）由目录提供，
+// 不要在这里内联英文短语 —— 会变成一条独立 key，反而让目录维护混乱。
 @available(iOS 16.0, macOS 13.0, *)
 struct QingzhouAppShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: ToggleVPNIntent(),
-            phrases: ["切换\(.applicationName)", "Toggle \(.applicationName)"],
+            phrases: ["切换\(.applicationName)", "开关\(.applicationName)"],
             shortTitle: "切换 VPN",
             systemImageName: "power"
         )

@@ -1,0 +1,5385 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "%@ · 峰值 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · peak %@"
+          }
+        }
+      }
+    },
+    "%@ 已从%@改为%@，规则已生效": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ changed from %@ to %@ — rule is now active"
+          }
+        }
+      }
+    },
+    "%@：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: %@"
+          }
+        }
+      }
+    },
+    "%@：sha256 校验不匹配": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: sha256 checksum mismatch"
+          }
+        }
+      }
+    },
+    "%@：校验和文件格式异常": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: invalid checksum file format"
+          }
+        }
+      }
+    },
+    "%lld 个域名 · 代理 %lld / 直连 %lld / 拒绝 %lld 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld domains · Proxy %lld / Direct %lld / Reject %lld"
+          }
+        }
+      }
+    },
+    "%lld 个节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nodes"
+          }
+        }
+      }
+    },
+    "%lld 个订阅 · %lld 个节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld subscriptions · %lld nodes"
+          }
+        }
+      }
+    },
+    "%lld 分钟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld min"
+          }
+        }
+      }
+    },
+    "%lld 分钟前": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld min ago"
+          }
+        }
+      }
+    },
+    "%lld 小时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld hr"
+          }
+        }
+      }
+    },
+    "%lld 小时前": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld hr ago"
+          }
+        }
+      }
+    },
+    "%lld 条 · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld rules · %@"
+          }
+        }
+      }
+    },
+    "%lld 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld×"
+          }
+        }
+      }
+    },
+    "%lld 次连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld connections"
+          }
+        }
+      }
+    },
+    "%lld 秒前": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld s ago"
+          }
+        }
+      }
+    },
+    "1 小时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 hour"
+          }
+        }
+      }
+    },
+    "15 分钟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "15 minutes"
+          }
+        }
+      }
+    },
+    "24 小时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "24 hours"
+          }
+        }
+      }
+    },
+    "30 分钟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 minutes"
+          }
+        }
+      }
+    },
+    "5 分钟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 minutes"
+          }
+        }
+      }
+    },
+    "6 小时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6 hours"
+          }
+        }
+      }
+    },
+    "App Group 容器不可用，无法保存 geo 数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App Group container unavailable — can't save geo data."
+          }
+        }
+      }
+    },
+    "App 版本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App Version"
+          }
+        }
+      }
+    },
+    "FINAL（兜底）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FINAL (Fallback)"
+          }
+        }
+      }
+    },
+    "GEOIP（国家代码）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GEOIP (Country Code)"
+          }
+        }
+      }
+    },
+    "Geo 数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geo Data"
+          }
+        }
+      }
+    },
+    "GitHub 仓库": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub Repository"
+          }
+        }
+      }
+    },
+    "IPv4 网段": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IPv4 CIDR"
+          }
+        }
+      }
+    },
+    "IPv6 网段": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IPv6 CIDR"
+          }
+        }
+      }
+    },
+    "TUN（虚拟网卡）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TUN (Virtual NIC)"
+          }
+        }
+      }
+    },
+    "URL 无效（需要以 http:// 或 https:// 开头）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid URL (must start with http:// or https://)"
+          }
+        }
+      }
+    },
+    "VPN 启动失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN Start Failed"
+          }
+        }
+      }
+    },
+    "VPN 启动失败：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to start the VPN: %@"
+          }
+        }
+      }
+    },
+    "VPN 在跑就关、没跑就开。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turns the VPN off if it's running, on if it's not."
+          }
+        }
+      }
+    },
+    "VPN 已连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN Connected"
+          }
+        }
+      }
+    },
+    "VPN 未连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN Not Connected"
+          }
+        }
+      }
+    },
+    "VPN 配置未加载。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN configuration is not loaded."
+          }
+        }
+      }
+    },
+    "VPN 配置被禁用了（系统设置里 toggle 是关闭状态）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The VPN configuration is disabled (its toggle is off in System Settings)."
+          }
+        }
+      }
+    },
+    "VPN 配置过期了。先在系统设置里把旧 VPN 删掉重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The VPN configuration is stale. Delete the old VPN in System Settings and try again."
+          }
+        }
+      }
+    },
+    "geoip:cn（内置国内 IP 直连）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "geoip:cn (built-in China IP direct)"
+          }
+        }
+      }
+    },
+    "geoip:private（内置局域网直连）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "geoip:private (built-in LAN direct)"
+          }
+        }
+      }
+    },
+    "geosite:category-ads-all（内置广告拦截）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "geosite:category-ads-all (built-in ad blocking)"
+          }
+        }
+      }
+    },
+    "geosite:cn（内置国内域名直连）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "geosite:cn (built-in China domain direct)"
+          }
+        }
+      }
+    },
+    "iCloud 上没有找到备份": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No backup found in iCloud"
+          }
+        }
+      }
+    },
+    "iCloud 不可用（未登录或未开启 iCloud Drive）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud is unavailable (not signed in, or iCloud Drive is off)"
+          }
+        }
+      }
+    },
+    "iCloud 同步": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Sync"
+          }
+        }
+      }
+    },
+    "iCloud 数据来自更新版本的轻舟，请先升级 App": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iCloud data was written by a newer version of Qingzhou — please update the app first"
+          }
+        }
+      }
+    },
+    "iCloud 数据来自更新版本的轻舟，请升级 App": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This iCloud data was written by a newer version of Qingzhou — please update the app"
+          }
+        }
+      }
+    },
+    "iCloud 数据还在下载中，稍后再试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud data is still downloading — try again later"
+          }
+        }
+      }
+    },
+    "iCloud 数据还在下载中，稍等片刻再试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud data is still downloading — try again in a moment"
+          }
+        }
+      }
+    },
+    "macOS 集成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS Integration"
+          }
+        }
+      }
+    },
+    "permission denied —— macOS 拒绝写入 VPN 配置。最常见原因：\n1. app 是 ad-hoc 签名（用 install.sh 装的）。改用 Xcode ⌘R 启动；\n2. 「系统设置 → 隐私与安全性」最下面有「VPN 配置已被阻止」红字，点「允许」；\n3. 你没在弹出的「允许 VPN 配置」密码框里输入 Mac 登录密码。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "permission denied — macOS refused to write the VPN configuration. Most common causes:\n1. The app is ad-hoc signed (installed with install.sh). Launch it with Xcode ⌘R instead;\n2. At the bottom of System Settings → Privacy & Security there's a red \"VPN configuration has been blocked\" — click \"Allow\";\n3. You didn't enter your Mac login password in the \"Allow VPN configuration\" dialog."
+          }
+        }
+      }
+    },
+    "sha256 校验中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifying SHA-256…"
+          }
+        }
+      }
+    },
+    "v2fly 官方": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "v2fly official"
+          }
+        }
+      }
+    },
+    "· 启用过滤前的连接 / 系统流量": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· Connections before filtering was enabled / system traffic"
+          }
+        }
+      }
+    },
+    "· 更新于 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· Updated %@"
+          }
+        }
+      }
+    },
+    "· 长期未命中，可考虑删除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· No hits for a long time; consider removing"
+          }
+        }
+      }
+    },
+    "… 还有 %lld 个域名（按连接次数排序，仅显示前 %lld）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "… %lld more domains (sorted by connections, showing top %lld)"
+          }
+        }
+      }
+    },
+    "… 还有 %lld 个域名（按连接次数排序，仅显示前 8）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "… %lld more domains (sorted by connections, showing top 8)"
+          }
+        }
+      }
+    },
+    "… 还有 %lld 个（按连接次数排序，仅显示前 8）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "… %lld more (sorted by connections, showing top 8)"
+          }
+        }
+      }
+    },
+    "✓ 已选中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "✓ Selected"
+          }
+        }
+      }
+    },
+    "、": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": ", "
+          }
+        }
+      }
+    },
+    "「%@」不是域名，无法生成域名规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"%@\" is not a domain — cannot create a domain rule"
+          }
+        }
+      }
+    },
+    "「%@」需下载完整版 geo 数据后才会生效（内置精简版仅含 cn / private）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"%@\" takes effect only after you download the full geo data (the built-in lite version includes only cn / private)"
+          }
+        }
+      }
+    },
+    "「忽略 IP」已隐藏 %lld 条纯 IP 连接。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignore IPs has hidden %lld IP-only connections."
+          }
+        }
+      }
+    },
+    "「来源 App 标注」已启用，还没有可归属的连接。\n确认 VPN 已开启并浏览一会儿；启用标注之前建立的连接无法补标。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source App labeling is on, but there are no attributable connections yet.\nMake sure the VPN is on and browse for a bit; connections made before labeling was enabled cannot be attributed retroactively."
+          }
+        }
+      }
+    },
+    "一键全部测试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test All"
+          }
+        }
+      }
+    },
+    "一键测速并择优": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test & Auto-Select"
+          }
+        }
+      }
+    },
+    "一键规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quick Rule"
+          }
+        }
+      }
+    },
+    "上次会话峰值 %@ · 历史最高 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last session peak %@ · all-time peak %@"
+          }
+        }
+      }
+    },
+    "上次测试失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last Test Failed"
+          }
+        }
+      }
+    },
+    "上次测速 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last tested %@"
+          }
+        }
+      }
+    },
+    "上次采样：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last sample: %@"
+          }
+        }
+      }
+    },
+    "上行": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up"
+          }
+        }
+      }
+    },
+    "下行": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Down"
+          }
+        }
+      }
+    },
+    "下载失败（%@）。若当前网络无法直连 GitHub，请先开启 VPN 后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download failed (%@). If your network can't reach GitHub directly, turn on the VPN first and try again."
+          }
+        }
+      }
+    },
+    "下载完整版 geo 数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download Full Geo Data"
+          }
+        }
+      }
+    },
+    "下载完整版（约 20 MB）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download Full Version (~20 MB)"
+          }
+        }
+      }
+    },
+    "为 %@ 添加 DOMAIN-SUFFIX 规则（覆盖全部子域名），VPN 运行中立即生效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adds a DOMAIN-SUFFIX rule for %@ (covers all subdomains); takes effect immediately while the VPN is running."
+          }
+        }
+      }
+    },
+    "为 %@ 添加规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Rule for %@"
+          }
+        }
+      }
+    },
+    "主机": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host"
+          }
+        }
+      }
+    },
+    "主题": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme"
+          }
+        }
+      }
+    },
+    "二维码生成失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QR Code Generation Failed"
+          }
+        }
+      }
+    },
+    "云端当前版本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Cloud Version"
+          }
+        }
+      }
+    },
+    "今天": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today"
+          }
+        }
+      }
+    },
+    "今日新增 · %lld 个域名（30 天内首次出现）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New today · %lld domains (first seen within 30 days)"
+          }
+        }
+      }
+    },
+    "代理": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy"
+          }
+        }
+      }
+    },
+    "代理 / 直连": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy / Direct"
+          }
+        }
+      }
+    },
+    "代理模式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy Mode"
+          }
+        }
+      }
+    },
+    "优先地区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preferred Region"
+          }
+        }
+      }
+    },
+    "传输参数": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transport Parameters"
+          }
+        }
+      }
+    },
+    "依次刷新所有订阅": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh all subscriptions one by one"
+          }
+        }
+      }
+    },
+    "俄罗斯": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Russia"
+          }
+        }
+      }
+    },
+    "保存": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        }
+      }
+    },
+    "值": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Value"
+          }
+        }
+      }
+    },
+    "先测速再选延迟最低的节点为当前节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test latency, then set the lowest-latency node as current"
+          }
+        }
+      }
+    },
+    "全局": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global"
+          }
+        }
+      }
+    },
+    "全局代理": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global Proxy"
+          }
+        }
+      }
+    },
+    "全局模式下所有流量都走代理，分流建议仅供参考（切回规则模式后可按建议行动）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Global mode all traffic goes through the proxy, so routing suggestions are for reference only (switch back to Rule mode to act on them)."
+          }
+        }
+      }
+    },
+    "全局模式（GLOBAL）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global mode (GLOBAL)"
+          }
+        }
+      }
+    },
+    "全程走虚拟网卡（TUN），整机流量自动经隧道转发，无需配置系统代理。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All traffic goes through a virtual network interface (TUN) and is forwarded via the tunnel automatically — no system proxy configuration needed."
+          }
+        }
+      }
+    },
+    "全部": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All"
+          }
+        }
+      }
+    },
+    "全部刷新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh All"
+          }
+        }
+      }
+    },
+    "公网 IP": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Public IP"
+          }
+        }
+      }
+    },
+    "关于": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        }
+      }
+    },
+    "关闭": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        }
+      }
+    },
+    "关闭 VPN": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn Off VPN"
+          }
+        }
+      }
+    },
+    "关闭于 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed %@"
+          }
+        }
+      }
+    },
+    "关闭来源 App 标注": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disable Source App Labeling"
+          }
+        }
+      }
+    },
+    "关闭轻舟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn Off Qingzhou"
+          }
+        }
+      }
+    },
+    "其它": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other"
+          }
+        }
+      }
+    },
+    "内容数量未知（旧版本文档）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content count unknown (older document version)"
+          }
+        }
+      }
+    },
+    "内容：%@\n来自 %@，%@。\n恢复会用它覆盖本机配置；本机当前配置会先自动备份。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content: %@\nFrom %@, %@.\nRestoring overwrites this device's config; the current config is backed up first."
+          }
+        }
+      }
+    },
+    "内置 geo 数据为精简版，GEOIP 仅支持 cn 与 private；其他国家码需下载完整版。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The built-in geo data is the lite version; GEOIP supports only cn and private. Other country codes require the full version."
+          }
+        }
+      }
+    },
+    "凭据 / 加密": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credentials / Encryption"
+          }
+        }
+      }
+    },
+    "分享": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share"
+          }
+        }
+      }
+    },
+    "分享二维码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share QR Code"
+          }
+        }
+      }
+    },
+    "分流建议": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Routing Suggestions"
+          }
+        }
+      }
+    },
+    "切换 VPN": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toggle VPN"
+          }
+        }
+      }
+    },
+    "切换中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching…"
+          }
+        }
+      }
+    },
+    "切换轻舟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toggle Qingzhou"
+          }
+        }
+      }
+    },
+    "刚刚": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "just now"
+          }
+        }
+      }
+    },
+    "删除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        }
+      }
+    },
+    "删除节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Node"
+          }
+        }
+      }
+    },
+    "到期：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expires: %@"
+          }
+        }
+      }
+    },
+    "到点自动断开 VPN，只对本次连接生效 —— 断开后不会自动重连，手动重开会重新计时。VPN 运行中修改会立即从现在起重新计时。注意：启用定时的连接不开启系统自动重连（On-Demand），若扩展异常退出需手动重开。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatically disconnects the VPN when time is up. Applies to the current connection only — it won't reconnect afterwards, and turning the VPN back on restarts the timer. Changing this while the VPN is running restarts the countdown immediately. Note: connections with auto-stop enabled don't use system auto-reconnect (On-Demand), so if the extension exits unexpectedly you'll need to reconnect manually."
+          }
+        }
+      }
+    },
+    "刷新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh"
+          }
+        }
+      }
+    },
+    "刷新完成：%lld 成功，%lld 失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh complete: %lld succeeded, %lld failed"
+          }
+        }
+      }
+    },
+    "刷新远程规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Remote Rules"
+          }
+        }
+      }
+    },
+    "刷新：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh: %@"
+          }
+        }
+      }
+    },
+    "加入代理": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Proxy"
+          }
+        }
+      }
+    },
+    "加入拒绝": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Reject"
+          }
+        }
+      }
+    },
+    "加入拒绝（追踪器，推荐）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Reject (Tracker, Recommended)"
+          }
+        }
+      }
+    },
+    "加入直连": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Direct"
+          }
+        }
+      }
+    },
+    "加密 (scy)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encryption (scy)"
+          }
+        }
+      }
+    },
+    "加密方式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cipher"
+          }
+        }
+      }
+    },
+    "加拿大": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Canada"
+          }
+        }
+      }
+    },
+    "匹配 %lld 个域名": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld domains matched"
+          }
+        }
+      }
+    },
+    "匹配后": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On Match"
+          }
+        }
+      }
+    },
+    "协议": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protocol"
+          }
+        }
+      }
+    },
+    "印度": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "India"
+          }
+        }
+      }
+    },
+    "历史最高 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "all-time peak %@"
+          }
+        }
+      }
+    },
+    "历史版本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous Version"
+          }
+        }
+      }
+    },
+    "原地重配超时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In-place reconfiguration timed out"
+          }
+        }
+      }
+    },
+    "去节点页选择": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Nodes to Select"
+          }
+        }
+      }
+    },
+    "去订阅页添加": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Subscriptions to Add"
+          }
+        }
+      }
+    },
+    "发现 iCloud 备份": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Backup Found"
+          }
+        }
+      }
+    },
+    "取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "取消排除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Include"
+          }
+        }
+      }
+    },
+    "只刷新延迟数据，不会自动切换当前节点。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only refreshes latency data; never switches the current node automatically."
+          }
+        }
+      }
+    },
+    "可合并的自定义规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mergeable Custom Rules"
+          }
+        }
+      }
+    },
+    "台湾": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taiwan"
+          }
+        }
+      }
+    },
+    "合并": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merge"
+          }
+        }
+      }
+    },
+    "同域名 %lld 条同目标规则，可收敛为一条后缀规则（覆盖全部子域名）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld same-target rules for this domain can be merged into one suffix rule (covers all subdomains)"
+          }
+        }
+      }
+    },
+    "同步中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing…"
+          }
+        }
+      }
+    },
+    "同步到 iCloud Drive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync to iCloud Drive"
+          }
+        }
+      }
+    },
+    "同步失败：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync failed: %@"
+          }
+        }
+      }
+    },
+    "名称": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        }
+      }
+    },
+    "名称（可选）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name (Optional)"
+          }
+        }
+      }
+    },
+    "启动 + 定时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At Launch + Periodically"
+          }
+        }
+      }
+    },
+    "启动时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At Launch"
+          }
+        }
+      }
+    },
+    "启用来源 App 标注": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable Source App Labeling"
+          }
+        }
+      }
+    },
+    "命中规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matched Rule"
+          }
+        }
+      }
+    },
+    "哔哩哔哩大陆": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilibili (Mainland)"
+          }
+        }
+      }
+    },
+    "哔哩哔哩港澳台": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilibili (HK/MO/TW)"
+          }
+        }
+      }
+    },
+    "国内域名走了代理，直连更快也省代理流量": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chinese domain went through the proxy — direct is faster and saves proxy traffic"
+          }
+        }
+      }
+    },
+    "土耳其": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Türkiye"
+          }
+        }
+      }
+    },
+    "地区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regions"
+          }
+        }
+      }
+    },
+    "地区已排除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Region Excluded"
+          }
+        }
+      }
+    },
+    "域名": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domains"
+          }
+        }
+      }
+    },
+    "域名,路由,连接次数,命中规则,首次出现,最近出现": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domain,Route,Connections,Matched Rule,First Seen,Last Seen"
+          }
+        }
+      }
+    },
+    "域名关键字": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domain Keyword"
+          }
+        }
+      }
+    },
+    "域名分析": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domain Analysis"
+          }
+        }
+      }
+    },
+    "域名后缀": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domain Suffix"
+          }
+        }
+      }
+    },
+    "域名（精确）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domain (Exact)"
+          }
+        }
+      }
+    },
+    "基本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Basic"
+          }
+        }
+      }
+    },
+    "境外域名走了直连且未命中规则，可能需要补一条代理规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overseas domain went direct without matching any rule — consider adding a proxy rule"
+          }
+        }
+      }
+    },
+    "复制 URL": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy URL"
+          }
+        }
+      }
+    },
+    "复制分享链接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Share Link"
+          }
+        }
+      }
+    },
+    "复制链接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Link"
+          }
+        }
+      }
+    },
+    "外观": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
+          }
+        }
+      }
+    },
+    "大量连接仅显示 IP": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Many Connections Show Only IPs"
+          }
+        }
+      }
+    },
+    "失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed"
+          }
+        }
+      }
+    },
+    "失败 [%@ #%lld] %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed [%@ #%lld] %@"
+          }
+        }
+      }
+    },
+    "好": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "完整版 · %@ · 来源：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full version · %@ · Source: %@"
+          }
+        }
+      }
+    },
+    "完整版解锁所有国家/地区码的 GEOIP 规则（如 GEOIP,us）。数据来自 v2fly 上游，主源为轻舟自建发布仓库、每周自动同步，主源不可用时自动切换 v2fly 官方源。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The full version unlocks GEOIP rules for every country/region code (e.g. GEOIP,us). Data comes from the v2fly upstream; the primary source is Qingzhou's own release repository, synced weekly, with automatic fallback to the official v2fly source when it is unavailable."
+          }
+        }
+      }
+    },
+    "定时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periodically"
+          }
+        }
+      }
+    },
+    "定时关闭": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-Stop"
+          }
+        }
+      }
+    },
+    "定时设置将在下次连接时生效": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-stop setting will take effect on the next connection"
+          }
+        }
+      }
+    },
+    "定时设置超时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-stop update timed out"
+          }
+        }
+      }
+    },
+    "密码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password"
+          }
+        }
+      }
+    },
+    "导出": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export"
+          }
+        }
+      }
+    },
+    "导出 CSV": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export CSV"
+          }
+        }
+      }
+    },
+    "导出全部节点链接（复制）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export All Node Links (Copy)"
+          }
+        }
+      }
+    },
+    "导出失败，详见日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export failed, see logs for details"
+          }
+        }
+      }
+    },
+    "将删除全部 %lld 条日志记录，此操作不可撤销。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This will delete all %lld log entries. This cannot be undone."
+          }
+        }
+      }
+    },
+    "尚无可同步的数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No data to sync yet"
+          }
+        }
+      }
+    },
+    "尚未加载远程规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No remote rules loaded yet"
+          }
+        }
+      }
+    },
+    "尚未获取": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Fetched Yet"
+          }
+        }
+      }
+    },
+    "局域网直连（内置）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LAN direct (built-in)"
+          }
+        }
+      }
+    },
+    "已为你选择延迟最优节点：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected the lowest-latency node for you: %@"
+          }
+        }
+      }
+    },
+    "已从 iCloud 恢复（%lld 个订阅、0 个节点）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restored from iCloud (%lld subscriptions, 0 nodes)"
+          }
+        }
+      }
+    },
+    "已保持当前节点连接不变。切换目标节点配置无效：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kept the current node connected. The target node's configuration is invalid: %@"
+          }
+        }
+      }
+    },
+    "已关闭": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closed"
+          }
+        }
+      }
+    },
+    "已关闭来源 App 标注": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source app labeling disabled"
+          }
+        }
+      }
+    },
+    "已刷新 %lld 个订阅": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refreshed %lld subscriptions"
+          }
+        }
+      }
+    },
+    "已加入%@：%@，规则已生效": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Added to %@: %@ — rule is now active"
+          }
+        }
+      }
+    },
+    "已取消定时断开": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-stop timer canceled"
+          }
+        }
+      }
+    },
+    "已合并 %lld 条为 %@，规则已生效": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merged %lld rules into %@ — rule is now active"
+          }
+        }
+      }
+    },
+    "已启用完整版 geo 数据，支持全部国家/地区码。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full geo data is enabled; all country and region codes are supported."
+          }
+        }
+      }
+    },
+    "已启用来源 App 标注": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source app labeling enabled"
+          }
+        }
+      }
+    },
+    "已复制 %lld 条节点分享链接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied %lld node share links"
+          }
+        }
+      }
+    },
+    "已复制分享链接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share link copied"
+          }
+        }
+      }
+    },
+    "已导出 %lld 个域名：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exported %lld domains: %@"
+          }
+        }
+      }
+    },
+    "已展示前 200 条，共 %lld 条匹配。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing the first 200 of %lld matching rules."
+          }
+        }
+      }
+    },
+    "已开启定时：%@后自动断开": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-stop enabled — will disconnect in %@"
+          }
+        }
+      }
+    },
+    "已恢复（%lld 个订阅、%lld 个节点），正在测速择优…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restored (%lld subscriptions, %lld nodes) — testing latency to auto-select…"
+          }
+        }
+      }
+    },
+    "已按定时自动断开 VPN": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN auto-disconnected by the timer"
+          }
+        }
+      }
+    },
+    "已排除": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Excluded"
+          }
+        }
+      }
+    },
+    "已是最新（%@）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Already up to date (%@)"
+          }
+        }
+      }
+    },
+    "已有规则：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule already exists: %@"
+          }
+        }
+      }
+    },
+    "已有订阅": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Existing Subscriptions"
+          }
+        }
+      }
+    },
+    "已知追踪器域名（连接 %lld 次），拒绝可减少行为追踪；个别 App 的统计功能可能受影响": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Known tracker domain (%lld connections) — rejecting it reduces behavioral tracking; analytics in some apps may be affected"
+          }
+        }
+      }
+    },
+    "已连接 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected %@"
+          }
+        }
+      }
+    },
+    "已选: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected: %@"
+          }
+        }
+      }
+    },
+    "已重新计时：%@后自动断开": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Timer reset — auto-disconnect in %@"
+          }
+        }
+      }
+    },
+    "巴西": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brazil"
+          }
+        }
+      }
+    },
+    "平台": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Platform"
+          }
+        }
+      }
+    },
+    "应用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apps"
+          }
+        }
+      }
+    },
+    "应用运行时的事件（连接 VPN、刷新订阅、测速、报错等）会记录在这里。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runtime events (connecting the VPN, refreshing subscriptions, speed tests, errors, and so on) are recorded here."
+          }
+        }
+      }
+    },
+    "建议 %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suggestions %lld"
+          }
+        }
+      }
+    },
+    "开启 VPN": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn On VPN"
+          }
+        }
+      }
+    },
+    "开启 VPN 后，这里会展示真实的访问记录。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Once the VPN is on, your real access records appear here."
+          }
+        }
+      }
+    },
+    "开启 VPN 浏览后，这里按天保留最近 30 天的域名访问汇总。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Once you browse with the VPN on, daily domain-access summaries for the last 30 days are kept here."
+          }
+        }
+      }
+    },
+    "开启后「连接」页会标注每条流量是哪个 App 发起的。首次要在系统设置批准扩展 + 授权过滤。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When enabled, the Connections page labels which app initiated each connection. The first time, you'll need to approve the extension and allow filtering in System Settings."
+          }
+        }
+      }
+    },
+    "开启后会主动把「当前节点」切到测速最快的那个 —— 如果你手选了节点不想被换，关掉这一项。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When enabled, the current node is switched to whichever tests fastest. If you picked a node manually and don't want it replaced, turn this off."
+          }
+        }
+      }
+    },
+    "开启后这里会按 App 分组展示各自访问的域名与连接次数。\n入口：设置 → macOS 集成 → 启用来源 App 标注（首次需在系统设置批准扩展）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Once enabled, this groups accessed domains and connection counts by App.\nWhere to enable: Settings → macOS Integration → Enable Source App Labeling (the first time, you must approve the extension in System Settings)."
+          }
+        }
+      }
+    },
+    "开启轻舟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn On Qingzhou"
+          }
+        }
+      }
+    },
+    "开机自启": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Launch at Login"
+          }
+        }
+      }
+    },
+    "当前域名的代理/直连分流看起来都合理。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy and direct routing for the current domains looks reasonable."
+          }
+        }
+      }
+    },
+    "当前搜索/过滤条件下没有匹配项。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matches under the current search or filter."
+          }
+        }
+      }
+    },
+    "当前版本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Version"
+          }
+        }
+      }
+    },
+    "当前生效规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Active Rules"
+          }
+        }
+      }
+    },
+    "当前级别下没有日志，试试切换回 ALL。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No logs at the current level. Try switching back to ALL."
+          }
+        }
+      }
+    },
+    "当前节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Node"
+          }
+        }
+      }
+    },
+    "当前节点：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current node: %@"
+          }
+        }
+      }
+    },
+    "当前路由": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Route"
+          }
+        }
+      }
+    },
+    "当前速率": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current Speed"
+          }
+        }
+      }
+    },
+    "德国": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Germany"
+          }
+        }
+      }
+    },
+    "忽略 IP": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignore IPs"
+          }
+        }
+      }
+    },
+    "忽略 IP：已隐藏 %lld 条纯 IP 连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ignore IPs: %lld IP-only connections hidden"
+          }
+        }
+      }
+    },
+    "总上行": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total Up"
+          }
+        }
+      }
+    },
+    "总下行": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total Down"
+          }
+        }
+      }
+    },
+    "恢复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore"
+          }
+        }
+      }
+    },
+    "所有节点测速失败，未做切换": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All nodes failed the latency test; no switch made"
+          }
+        }
+      }
+    },
+    "手动添加": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manually Added"
+          }
+        }
+      }
+    },
+    "打开主窗口": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Main Window"
+          }
+        }
+      }
+    },
+    "打开开关 = 排除该地区的所有节点（不参与自动择优、不会被自动选中）。例如排除「香港」以避开 Anthropic / OpenAI 等对香港 IP 的限制。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turning a switch on excludes every node in that region (skipped by auto-select, never chosen automatically). For example, exclude Hong Kong to avoid the restrictions services like Anthropic or OpenAI place on Hong Kong IPs."
+          }
+        }
+      }
+    },
+    "扩展内存": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extension Memory"
+          }
+        }
+      }
+    },
+    "扩展回执缺少 delayMs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The extension reply is missing delayMs"
+          }
+        }
+      }
+    },
+    "扩展定时设置失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extension auto-stop update failed"
+          }
+        }
+      }
+    },
+    "扩展尚未上报 —— 需 VPN 处于开启状态，且隧道扩展为最新版本（更新 App 后要关-开一次 VPN，运行中的旧扩展进程才会换成新代码）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The extension hasn't reported yet — the VPN must be on and the tunnel extension up to date (after updating the app, toggle the VPN off and on once so the running old extension process is replaced)."
+          }
+        }
+      }
+    },
+    "扩展未报告原因，可在设置→日志查看": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The extension reported no reason — see Settings → Logs"
+          }
+        }
+      }
+    },
+    "扩展重配失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extension reconfiguration failed"
+          }
+        }
+      }
+    },
+    "扫码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan"
+          }
+        }
+      }
+    },
+    "批量操作：经代理测速 / 导出全部节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batch actions: proxied latency test / export all nodes"
+          }
+        }
+      }
+    },
+    "把全部日志导出成文本文件": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export all logs to a text file"
+          }
+        }
+      }
+    },
+    "把当前过滤视图的域名统计导出成 CSV": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export the domain stats of the current filtered view as CSV"
+          }
+        }
+      }
+    },
+    "拒绝": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reject"
+          }
+        }
+      }
+    },
+    "择优间隔": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-Select Interval"
+          }
+        }
+      }
+    },
+    "指纹": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fingerprint"
+          }
+        }
+      }
+    },
+    "按名称": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Name"
+          }
+        }
+      }
+    },
+    "按延迟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Latency"
+          }
+        }
+      }
+    },
+    "按连接次数排序 · %lld 个域名": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sorted by connections · %lld domains"
+          }
+        }
+      }
+    },
+    "排序": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sort"
+          }
+        }
+      }
+    },
+    "排除节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exclude Node"
+          }
+        }
+      }
+    },
+    "排除（不参与自动择优）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exclude (skip auto-select)"
+          }
+        }
+      }
+    },
+    "搜索 host / route / app": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search host / route / app"
+          }
+        }
+      }
+    },
+    "搜索域名": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search domains"
+          }
+        }
+      }
+    },
+    "搜索节点 / 主机 / 协议": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search nodes / hosts / protocols"
+          }
+        }
+      }
+    },
+    "搜索规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search rules"
+          }
+        }
+      }
+    },
+    "支持：trojan:// / ss:// / vmess:// / vless:// / hysteria2:// 链接（多行），或整段 Clash / Mihomo YAML 配置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supports: trojan:// / ss:// / vmess:// / vless:// / hysteria2:// links (multiple lines), or a full Clash / Mihomo YAML config."
+          }
+        }
+      }
+    },
+    "数据目录": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Data Directory"
+          }
+        }
+      }
+    },
+    "断开当前 VPN 连接。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnects the current VPN connection."
+          }
+        }
+      }
+    },
+    "新加坡": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Singapore"
+          }
+        }
+      }
+    },
+    "无": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None"
+          }
+        }
+      }
+    },
+    "无匹配规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching rules"
+          }
+        }
+      }
+    },
+    "无可用节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Nodes Available"
+          }
+        }
+      }
+    },
+    "无法把节点编码成分享链接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't encode the node into a share link"
+          }
+        }
+      }
+    },
+    "无法添加 QR 输出": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot add QR output"
+          }
+        }
+      }
+    },
+    "无法添加摄像头输入": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot add camera input"
+          }
+        }
+      }
+    },
+    "无硬性内存上限": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hard memory limit"
+          }
+        }
+      }
+    },
+    "无（只比延迟）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None (latency only)"
+          }
+        }
+      }
+    },
+    "日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logs"
+          }
+        }
+      }
+    },
+    "日志已导出：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logs exported: %@"
+          }
+        }
+      }
+    },
+    "日志级别": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log Level"
+          }
+        }
+      }
+    },
+    "日本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Japan"
+          }
+        }
+      }
+    },
+    "暂不恢复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Now"
+          }
+        }
+      }
+    },
+    "暂无优化建议": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Optimization Suggestions"
+          }
+        }
+      }
+    },
+    "暂无数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No data"
+          }
+        }
+      }
+    },
+    "暂无日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Logs Yet"
+          }
+        }
+      }
+    },
+    "暂无来源 App 数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Source App Data Yet"
+          }
+        }
+      }
+    },
+    "暂无每日历史": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Daily History"
+          }
+        }
+      }
+    },
+    "暂无自定义规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No custom rules yet"
+          }
+        }
+      }
+    },
+    "暂无订阅": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Subscriptions"
+          }
+        }
+      }
+    },
+    "暂无连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Connections"
+          }
+        }
+      }
+    },
+    "暂无连接记录": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Connections Yet"
+          }
+        }
+      }
+    },
+    "更多": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More"
+          }
+        }
+      }
+    },
+    "更新于 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated %@"
+          }
+        }
+      }
+    },
+    "最近 7 天连接次数": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connections in the Last 7 Days"
+          }
+        }
+      }
+    },
+    "最近出现": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last Seen"
+          }
+        }
+      }
+    },
+    "最近同步 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last synced %@"
+          }
+        }
+      }
+    },
+    "最近测速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last Tested"
+          }
+        }
+      }
+    },
+    "最近经代理测速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last Proxied Test"
+          }
+        }
+      }
+    },
+    "有新版本可下载（%@）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A new version is available (%@)"
+          }
+        }
+      }
+    },
+    "未命中任何规则，走的是默认出站": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No rule matched; traffic used the default outbound"
+          }
+        }
+      }
+    },
+    "未命中规则（默认策略）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No rule matched (default policy)"
+          }
+        }
+      }
+    },
+    "未命中（默认策略）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No rule matched (default policy)"
+          }
+        }
+      }
+    },
+    "未在上报": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not reporting"
+          }
+        }
+      }
+    },
+    "未开启": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        }
+      }
+    },
+    "未找到比当前节点更快的": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No node faster than the current one"
+          }
+        }
+      }
+    },
+    "未拉取": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not fetched"
+          }
+        }
+      }
+    },
+    "未测速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Tested"
+          }
+        }
+      }
+    },
+    "未知来源": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown Source"
+          }
+        }
+      }
+    },
+    "未选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None"
+          }
+        }
+      }
+    },
+    "未选择节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Node Selected"
+          }
+        }
+      }
+    },
+    "本次会话越过 40 MB 告警线 %lld 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "crossed the 40 MB warning line %lld times this session"
+          }
+        }
+      }
+    },
+    "本次运行期间不再提示": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Don't show again this session"
+          }
+        }
+      }
+    },
+    "来源": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source"
+          }
+        }
+      }
+    },
+    "来源 App 标注未开启": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source App Labeling Is Off"
+          }
+        }
+      }
+    },
+    "来源订阅": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From Subscription"
+          }
+        }
+      }
+    },
+    "查看详情 / 编辑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Details / Edit"
+          }
+        }
+      }
+    },
+    "查看连接明细": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Connection Details"
+          }
+        }
+      }
+    },
+    "查询中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Querying…"
+          }
+        }
+      }
+    },
+    "校验中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifying…"
+          }
+        }
+      }
+    },
+    "检查中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking…"
+          }
+        }
+      }
+    },
+    "检查失败：无法连接任一数据源。若当前网络无法直连 GitHub，请先开启 VPN 后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check failed: couldn't reach any data source. If your network can't reach GitHub directly, turn on the VPN first and try again."
+          }
+        }
+      }
+    },
+    "检查更新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check for Updates"
+          }
+        }
+      }
+    },
+    "检测到系统代理已开启（%@，可能是 Clash 等工具）。轻舟是 TUN 模式，可与它共存（会形成冗余的双重代理，一般不影响使用）；若个别 App 联网异常，可先关掉系统代理排除干扰。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A system proxy is enabled (%@, likely a tool such as Clash). Qingzhou runs in TUN mode and can coexist with it (this forms a redundant double-proxy chain, usually harmless). If certain apps fail to connect, turn off the system proxy to rule out interference."
+          }
+        }
+      }
+    },
+    "模式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mode"
+          }
+        }
+      }
+    },
+    "正在从%@下载…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading from %@…"
+          }
+        }
+      }
+    },
+    "正在读取 iCloud 版本…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading iCloud versions…"
+          }
+        }
+      }
+    },
+    "每日": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily"
+          }
+        }
+      }
+    },
+    "没有匹配的日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Matching Logs"
+          }
+        }
+      }
+    },
+    "没有匹配的连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Matching Connections"
+          }
+        }
+      }
+    },
+    "没有可用摄像头": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No camera available"
+          }
+        }
+      }
+    },
+    "没选中节点。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No node selected."
+          }
+        }
+      }
+    },
+    "法国": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "France"
+          }
+        }
+      }
+    },
+    "泰国": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thailand"
+          }
+        }
+      }
+    },
+    "活跃": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Active"
+          }
+        }
+      }
+    },
+    "活跃连接约 %lld 秒无活动后会归入这里。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Active connections move here after about %lld seconds of inactivity."
+          }
+        }
+      }
+    },
+    "流量统计": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traffic Stats"
+          }
+        }
+      }
+    },
+    "浅色": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Light"
+          }
+        }
+      }
+    },
+    "测于 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tested %@"
+          }
+        }
+      }
+    },
+    "测全部经代理延迟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test All Proxied Latency"
+          }
+        }
+      }
+    },
+    "测经代理延迟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test Proxied Latency"
+          }
+        }
+      }
+    },
+    "测经代理延迟（需 VPN 运行中）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test Proxied Latency (VPN must be running)"
+          }
+        }
+      }
+    },
+    "测试 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test %@"
+          }
+        }
+      }
+    },
+    "测速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test Latency"
+          }
+        }
+      }
+    },
+    "浏览器可能在用加密 DNS（DoH），域名解析不经过隧道，轻舟无法看到这些域名。想按域名统计/分流，可在浏览器设置里关闭「安全 DNS」。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your browser may be using encrypted DNS (DoH), so domain resolution bypasses the tunnel and Qingzhou cannot see these domains. To break things down or route by domain, turn off \"Secure DNS\" in your browser settings."
+          }
+        }
+      }
+    },
+    "浏览网页后这里会实时更新。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This updates in real time as you browse."
+          }
+        }
+      }
+    },
+    "深色": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dark"
+          }
+        }
+      }
+    },
+    "混合": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mixed"
+          }
+        }
+      }
+    },
+    "添加": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add"
+          }
+        }
+      }
+    },
+    "添加并刷新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add & Refresh"
+          }
+        }
+      }
+    },
+    "添加自定义规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Custom Rule"
+          }
+        }
+      }
+    },
+    "添加节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Node"
+          }
+        }
+      }
+    },
+    "添加规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Rule"
+          }
+        }
+      }
+    },
+    "添加订阅": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Subscription"
+          }
+        }
+      }
+    },
+    "清空": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear"
+          }
+        }
+      }
+    },
+    "清空全部日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear all logs"
+          }
+        }
+      }
+    },
+    "澳大利亚": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Australia"
+          }
+        }
+      }
+    },
+    "状态": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status"
+          }
+        }
+      }
+    },
+    "直连": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct"
+          }
+        }
+      }
+    },
+    "直连 IP（VPN 未连接）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct IP (VPN Not Connected)"
+          }
+        }
+      }
+    },
+    "直连延迟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct Latency"
+          }
+        }
+      }
+    },
+    "直连模式下所有流量都直连，分流建议仅供参考（切回规则模式后可按建议行动）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Direct mode all traffic connects directly, so routing suggestions are for reference only (switch back to Rule mode to act on them)."
+          }
+        }
+      }
+    },
+    "直连模式（DIRECT）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct mode (DIRECT)"
+          }
+        }
+      }
+    },
+    "直连（不走节点）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct (Bypass Node)"
+          }
+        }
+      }
+    },
+    "确定清空全部日志？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear all logs?"
+          }
+        }
+      }
+    },
+    "窗口内暂无按天历史（历史按天聚合、保留 30 天，重启后累计）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No daily history in this window (history is aggregated daily, kept for 30 days, and accumulates after restarts)"
+          }
+        }
+      }
+    },
+    "立即刷新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Now"
+          }
+        }
+      }
+    },
+    "立即应用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply Now"
+          }
+        }
+      }
+    },
+    "立即恢复 iCloud 数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore iCloud Data Now"
+          }
+        }
+      }
+    },
+    "端口": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port"
+          }
+        }
+      }
+    },
+    "等待流量…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for traffic…"
+          }
+        }
+      }
+    },
+    "类别": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Category"
+          }
+        }
+      }
+    },
+    "类型": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Type"
+          }
+        }
+      }
+    },
+    "粘贴一个订阅 URL，添加并刷新后会自动解析里面的节点。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste a subscription URL; after Add & Refresh, its nodes are parsed automatically."
+          }
+        }
+      }
+    },
+    "粘贴节点链接 / 扫码添加 / 导入 Clash YAML": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste node links / scan a QR code / import Clash YAML"
+          }
+        }
+      }
+    },
+    "精简版（内置，GEOIP 仅 cn / private）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lite version (built-in, GEOIP cn / private only)"
+          }
+        }
+      }
+    },
+    "系统信息": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System Info"
+          }
+        }
+      }
+    },
+    "级别": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Level"
+          }
+        }
+      }
+    },
+    "经代理延迟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied Latency"
+          }
+        }
+      }
+    },
+    "经代理延迟：真实通过该节点访问网站的全链路耗时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied latency: the full round-trip time to reach a site through this node."
+          }
+        }
+      }
+    },
+    "经代理测速中 %lld/%lld…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied Testing %lld/%lld…"
+          }
+        }
+      }
+    },
+    "经代理测速中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied testing…"
+          }
+        }
+      }
+    },
+    "经代理测速失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied latency test failed"
+          }
+        }
+      }
+    },
+    "经代理测速失败：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied latency test failed: %@"
+          }
+        }
+      }
+    },
+    "经代理测速超时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied latency test timed out"
+          }
+        }
+      }
+    },
+    "经代理测速需要 VPN 运行中": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied latency test requires the VPN to be running"
+          }
+        }
+      }
+    },
+    "经代理测速需要 VPN 运行中（直连延迟请用普通测速）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxied latency test requires the VPN to be running (use the standard test for direct latency)"
+          }
+        }
+      }
+    },
+    "给所有未排除的节点测一次延迟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run a latency test on all non-excluded nodes"
+          }
+        }
+      }
+    },
+    "缺少 Network Extension entitlement —— provisioning profile 没带这个 capability，或者 app 是 ad-hoc 签名的（必须用 Apple Developer 真签）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Missing the Network Extension entitlement — the provisioning profile doesn't carry this capability, or the app is ad-hoc signed (it must be signed with a real Apple Developer identity)."
+          }
+        }
+      }
+    },
+    "网站测试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website Test"
+          }
+        }
+      }
+    },
+    "美国": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "United States"
+          }
+        }
+      }
+    },
+    "自动化": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automation"
+          }
+        }
+      }
+    },
+    "自动择优": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-Select"
+          }
+        }
+      }
+    },
+    "自动择优时机": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-Select Trigger"
+          }
+        }
+      }
+    },
+    "自动择优时，若优先地区有可用节点，从中选最快的；否则全局选最快。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "During auto-select, if the preferred region has usable nodes, the fastest one there is chosen; otherwise the fastest overall wins."
+          }
+        }
+      }
+    },
+    "自动测速": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto Latency Test"
+          }
+        }
+      }
+    },
+    "自定义 %lld · 远程 %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom %lld · Remote %lld"
+          }
+        }
+      }
+    },
+    "自定义规则（优先匹配）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom Rules (Matched First)"
+          }
+        }
+      }
+    },
+    "节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nodes"
+          }
+        }
+      }
+    },
+    "节点 %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nodes"
+          }
+        }
+      }
+    },
+    "节点出口": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Node Exit"
+          }
+        }
+      }
+    },
+    "节点详情": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Node Details"
+          }
+        }
+      }
+    },
+    "节点配置预检未通过：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Node configuration pre-check failed: %@"
+          }
+        }
+      }
+    },
+    "英国": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "United Kingdom"
+          }
+        }
+      }
+    },
+    "荷兰": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Netherlands"
+          }
+        }
+      }
+    },
+    "菲律宾": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Philippines"
+          }
+        }
+      }
+    },
+    "规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rules"
+          }
+        }
+      }
+    },
+    "规则代理": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule-Based Proxy"
+          }
+        }
+      }
+    },
+    "规则已变化，建议已过期": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rules have changed — this suggestion is out of date"
+          }
+        }
+      }
+    },
+    "规则数": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule Count"
+          }
+        }
+      }
+    },
+    "规则源": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule Source"
+          }
+        }
+      }
+    },
+    "规则源 URL": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rule Source URL"
+          }
+        }
+      }
+    },
+    "解析失败：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parse failed: %@"
+          }
+        }
+      }
+    },
+    "订阅": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscriptions"
+          }
+        }
+      }
+    },
+    "订阅 (%lld)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscriptions (%lld)"
+          }
+        }
+      }
+    },
+    "订阅自动刷新": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-Refresh Subscriptions"
+          }
+        }
+      }
+    },
+    "设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
+    },
+    "诊断": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics"
+          }
+        }
+      }
+    },
+    "详情": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details"
+          }
+        }
+      }
+    },
+    "语言": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Language"
+          }
+        }
+      }
+    },
+    "请到「系统设置 → 通用 → 登录项与扩展 → 网络扩展」批准轻舟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please approve Qingzhou in System Settings → General → Login Items & Extensions → Network Extensions"
+          }
+        }
+      }
+    },
+    "请填写规则值": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Please enter a rule value"
+          }
+        }
+      }
+    },
+    "读取 iCloud 数据失败：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to read iCloud data: %@"
+          }
+        }
+      }
+    },
+    "越南": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vietnam"
+          }
+        }
+      }
+    },
+    "距 %@ 上限余 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ headroom below the %1$@ limit"
+          }
+        }
+      }
+    },
+    "跟随系统": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        }
+      }
+    },
+    "路由 / 规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Route / Rule"
+          }
+        }
+      }
+    },
+    "身份": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identity"
+          }
+        }
+      }
+    },
+    "轻舟 · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qingzhou · %@"
+          }
+        }
+      }
+    },
+    "轻舟 · 来源 App 标注": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qingzhou · Source App Labeling"
+          }
+        }
+      }
+    },
+    "轻舟域名统计": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qingzhou Domain Stats"
+          }
+        }
+      }
+    },
+    "轻舟日志": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qingzhou Logs"
+          }
+        }
+      }
+    },
+    "轻舟源": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qingzhou source"
+          }
+        }
+      }
+    },
+    "输入不像节点链接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Input doesn't look like a node link"
+          }
+        }
+      }
+    },
+    "近 30 天命中 %lld 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld hits in the last 30 days"
+          }
+        }
+      }
+    },
+    "还有 %lld 个，去 app 内查看": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld more — view in the app"
+          }
+        }
+      }
+    },
+    "还有 %lld 条订阅…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld more subscriptions…"
+          }
+        }
+      }
+    },
+    "还没有已关闭的连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Closed Connections Yet"
+          }
+        }
+      }
+    },
+    "还没有节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Nodes Yet"
+          }
+        }
+      }
+    },
+    "还没有节点，添加订阅后这里会列出各地区。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No nodes yet. Regions will appear here once you add a subscription."
+          }
+        }
+      }
+    },
+    "进程名（仅 macOS）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Process Name (macOS Only)"
+          }
+        }
+      }
+    },
+    "远程规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Rules"
+          }
+        }
+      }
+    },
+    "连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connections"
+          }
+        }
+      }
+    },
+    "连接到上次使用的节点。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connects to the last used node."
+          }
+        }
+      }
+    },
+    "连接次数": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connections"
+          }
+        }
+      }
+    },
+    "追踪器": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tracker"
+          }
+        }
+      }
+    },
+    "退出": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit"
+          }
+        }
+      }
+    },
+    "选为当前": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set as Current"
+          }
+        }
+      }
+    },
+    "选择节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select Node"
+          }
+        }
+      }
+    },
+    "选择要恢复的版本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a Version to Restore"
+          }
+        }
+      }
+    },
+    "通过订阅页添加订阅，或右上 + 按钮粘贴单条链接 / 扫码添加。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add subscriptions from the Subscriptions page, or tap + at the top right to paste a single link / scan a QR code."
+          }
+        }
+      }
+    },
+    "配置预检失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration pre-check failed"
+          }
+        }
+      }
+    },
+    "配置预检超时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration pre-check timed out"
+          }
+        }
+      }
+    },
+    "配置（订阅、节点、规则、设置）会镜像到你 iCloud Drive 的「轻舟」文件夹，卸载 App 不会丢失，重装或换设备时可一键恢复。云端保留最近 %lld 份历史版本。不含连接记录与流量统计。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your configuration (subscriptions, nodes, rules, settings) is mirrored to the \"Qingzhou\" folder in your iCloud Drive. It survives uninstalling the app and can be restored in one tap after reinstalling or switching devices. The %lld most recent versions are kept in the cloud. Connection records and traffic statistics are not included."
+          }
+        }
+      }
+    },
+    "采样失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sampling failed"
+          }
+        }
+      }
+    },
+    "采样诊断：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sampling diagnostics: %@"
+          }
+        }
+      }
+    },
+    "重新下载完整版": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Re-download Full Version"
+          }
+        }
+      }
+    },
+    "重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        }
+      }
+    },
+    "键 (如 sni)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Key (e.g. sni)"
+          }
+        }
+      }
+    },
+    "阿根廷": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Argentina"
+          }
+        }
+      }
+    },
+    "隐藏目标是纯 IP（没有域名）的条目；离开页面自动恢复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide entries whose target is a bare IP (no domain); resets automatically when you leave the page"
+          }
+        }
+      }
+    },
+    "需下载完整版 geo 数据，该规则暂不生效": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requires the full geo data; this rule is inactive for now"
+          }
+        }
+      }
+    },
+    "韩国": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "South Korea"
+          }
+        }
+      }
+    },
+    "预览：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview: %@"
+          }
+        }
+      }
+    },
+    "首次出现": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First Seen"
+          }
+        }
+      }
+    },
+    "首页": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Home"
+          }
+        }
+      }
+    },
+    "香港": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hong Kong"
+          }
+        }
+      }
+    },
+    "马来西亚": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Malaysia"
+          }
+        }
+      }
+    },
+    "（上限 %@）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " (limit %@)"
+          }
+        }
+      }
+    },
+    "（代理 %.0f%%）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Proxy %.0f%%)"
+          }
+        }
+      }
+    },
+    "；": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "; "
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

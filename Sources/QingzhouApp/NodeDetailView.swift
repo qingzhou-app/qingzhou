@@ -8,6 +8,8 @@ import QingzhouCore
 /// - 协议特有的 `parameters: [String: String]` 用 key/value 表格，允许增删改。
 public struct NodeDetailView: View {
     @Bindable var state: AppState
+    /// 跟随 App 语言设置的 locale（根视图注入），日期格式化用
+    @Environment(\.locale) private var locale
     @State var draft: Node
     @State private var newParamKey: String = ""
     @State private var newParamValue: String = ""
@@ -28,7 +30,7 @@ public struct NodeDetailView: View {
             footerSection
         }
         .formStyle(.grouped)
-        .navigationTitle(draft.name.isEmpty ? "节点详情" : draft.name)
+        .navigationTitle(draft.name.isEmpty ? L("节点详情") : draft.name)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") { save() }
@@ -52,7 +54,7 @@ public struct NodeDetailView: View {
                let sub = state.subscriptions.first(where: { $0.id == subId }) {
                 LabeledContent("来源订阅", value: sub.name)
             } else {
-                LabeledContent("来源", value: "手动添加")
+                LabeledContent("来源", value: L("手动添加"))
             }
         }
     }
@@ -159,18 +161,18 @@ public struct NodeDetailView: View {
         Section("状态") {
             Toggle("排除（不参与自动择优）", isOn: $draft.isExcluded)
             if let ms = draft.lastLatencyMs {
-                LabeledContent("直连延迟", value: "\(ms) ms")
+                LabeledContent("直连延迟", value: L("\(ms) ms"))
             }
             if let t = draft.lastTestedAt {
-                LabeledContent("最近测速", value: t.formatted(date: .abbreviated, time: .shortened))
+                LabeledContent("最近测速", value: t.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)))
             }
             if let pms = draft.lastProxiedLatencyMs {
-                LabeledContent("经代理延迟", value: "\(pms) ms")
+                LabeledContent("经代理延迟", value: L("\(pms) ms"))
             } else if draft.lastProxiedTestedAt != nil {
-                LabeledContent("经代理延迟", value: "上次测试失败")
+                LabeledContent("经代理延迟", value: L("上次测试失败"))
             }
             if let pt = draft.lastProxiedTestedAt {
-                LabeledContent("最近经代理测速", value: pt.formatted(date: .abbreviated, time: .shortened))
+                LabeledContent("最近经代理测速", value: pt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)))
             }
             Button {
                 Task {

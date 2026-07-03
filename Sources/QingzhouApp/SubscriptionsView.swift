@@ -3,6 +3,8 @@ import QingzhouCore
 
 public struct SubscriptionsView: View {
     @Bindable var state: AppState
+    /// 跟随 App 语言设置的 locale（根视图注入），日期格式化用
+    @Environment(\.locale) private var locale
     @State private var newName: String = ""
     @State private var newURL: String = ""
     @State private var addError: String?
@@ -124,7 +126,7 @@ public struct SubscriptionsView: View {
             HStack(spacing: 12) {
                 Text("节点 \(sub.nodeCount)")
                 if let upd = sub.lastUpdatedAt {
-                    Text("· \(upd.formatted(.relative(presentation: .named)))")
+                    Text("· \(upd.formatted(.relative(presentation: .named).locale(locale)))")
                 }
                 Spacer()
             }
@@ -135,7 +137,7 @@ public struct SubscriptionsView: View {
                     .font(.caption2.monospaced()).foregroundStyle(.secondary)
             }
             if let exp = sub.expiresAt {
-                Text("到期：\(exp.formatted(date: .abbreviated, time: .omitted))")
+                Text("到期：\(exp.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(locale)))")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             if let err = state.subscriptionErrors[sub.id] {
@@ -194,7 +196,7 @@ public struct SubscriptionsView: View {
                 .textSelection(.enabled).foregroundStyle(.secondary).padding(.horizontal)
             HStack {
                 Button("复制 URL") { copyToPasteboard(sub.url.absoluteString) }
-                Button("关闭") { qrShareSub = nil }
+                Button("完成") { qrShareSub = nil }
             }
         }
         .padding()
@@ -217,16 +219,16 @@ public struct SubscriptionsView: View {
         }
         let failed = subs.filter { state.subscriptionErrors[$0.id] != nil }.count
         if failed == 0 {
-            state.showToast("已刷新 \(subs.count) 个订阅")
+            state.showToast(L("已刷新 \(subs.count) 个订阅"))
         } else {
-            state.showToast("刷新完成：\(subs.count - failed) 成功，\(failed) 失败")
+            state.showToast(L("刷新完成：\(subs.count - failed) 成功，\(failed) 失败"))
         }
     }
 
     private func addAndRefresh() async {
         let trimmedURL = newURL.trimmingCharacters(in: .whitespaces)
         guard let url = URL(string: trimmedURL), url.scheme?.hasPrefix("http") == true else {
-            addError = "URL 无效（需要以 http:// 或 https:// 开头）"; return
+            addError = L("URL 无效（需要以 http:// 或 https:// 开头）"); return
         }
         addError = nil
         let displayName = newName.isEmpty ? (url.host ?? "Subscription") : newName
@@ -247,7 +249,7 @@ public struct SubscriptionsView: View {
     }
 
     /// 比 `Label` 紧凑：图标和文字间距固定 4 pt，避免 borderless Button 里默认布局把它俩拉得很开。
-    private func compactLabel(_ text: String, systemImage: String) -> some View {
+    private func compactLabel(_ text: LocalizedStringKey, systemImage: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: systemImage)
             Text(text)

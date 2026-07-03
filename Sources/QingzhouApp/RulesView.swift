@@ -168,7 +168,7 @@ public struct RulesView: View {
     private func addCustomRule() {
         let trimmed = newValue.trimmingCharacters(in: .whitespaces)
         if newType != .final, trimmed.isEmpty {
-            addError = "请填写规则值"
+            addError = L("请填写规则值")
             return
         }
         let rule = Rule(type: newType, value: trimmed, target: newTarget)
@@ -177,7 +177,7 @@ public struct RulesView: View {
         addError = nil
     }
 
-    private static func displayName(for type: RuleType) -> String {
+    private static func displayName(for type: RuleType) -> LocalizedStringKey {
         switch type {
         case .domain:        return "域名（精确）"
         case .domainSuffix:  return "域名后缀"
@@ -191,7 +191,7 @@ public struct RulesView: View {
         }
     }
 
-    private static func displayName(for target: RuleTarget) -> String {
+    private static func displayName(for target: RuleTarget) -> LocalizedStringKey {
         switch target {
         case .proxy:  return "代理"
         case .direct: return "直连"

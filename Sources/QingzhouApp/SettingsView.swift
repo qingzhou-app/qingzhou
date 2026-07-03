@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 
 public struct SettingsView: View {
     @Bindable var state: AppState
+    /// 跟随 App 语言设置的 locale（根视图注入），日期/相对时间格式化用
+    @Environment(\.locale) private var locale
     @State private var filterEnabled = false
 
     public init(state: AppState) { self.state = state }
@@ -60,15 +62,12 @@ public struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         LabeledContent("扩展内存", value: live
                             ? (samplingFailed
-                               ? "采样失败"
-                               : "\(ByteFormatter.format(mem.footprintBytes))"
-                                 + " · 峰值 \(ByteFormatter.format(mem.sessionPeakBytes))")
-                            : "未在上报")
+                               ? L("采样失败")
+                               : L("\(ByteFormatter.format(mem.footprintBytes)) · 峰值 \(ByteFormatter.format(mem.sessionPeakBytes))"))
+                            : L("未在上报"))
                         Text(live && !samplingFailed
                             ? memoryCaption(mem)
-                            : "上次会话峰值 \(ByteFormatter.format(mem.sessionPeakBytes))"
-                              + " · 历史最高 \(ByteFormatter.format(mem.allTimePeakBytes))"
-                              + (mem.limitBytes > 0 ? "（上限 \(ByteFormatter.format(mem.limitBytes))）" : ""))
+                            : idleMemoryCaption(mem))
                             .font(.caption2)
                             .foregroundStyle(live && mem.warningCount > 0 ? .orange : .secondary)
                         // 采样诊断（扩展带出的失败/降级原因）—— 用户截图这一行就能远程定位
@@ -83,9 +82,8 @@ public struct SettingsView: View {
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
-                        LabeledContent("扩展内存", value: "暂无数据")
-                        Text("扩展尚未上报 —— 需 VPN 处于开启状态，且隧道扩展为最新版本"
-                             + "（更新 App 后要关-开一次 VPN，运行中的旧扩展进程才会换成新代码）。")
+                        LabeledContent("扩展内存", value: L("暂无数据"))
+                        Text("扩展尚未上报 —— 需 VPN 处于开启状态，且隧道扩展为最新版本（更新 App 后要关-开一次 VPN，运行中的旧扩展进程才会换成新代码）。")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                 }
@@ -103,26 +101,35 @@ public struct SettingsView: View {
 
     /// 「上次采样」的人话时间差。负值（时钟偏差）并进"刚刚"。
     static func ageText(_ age: TimeInterval) -> String {
-        if age < 2 { return "刚刚" }
-        if age < 60 { return "\(Int(age)) 秒前" }
-        if age < 3600 { return "\(Int(age / 60)) 分钟前" }
-        return "\(Int(age / 3600)) 小时前"
+        if age < 2 { return L("刚刚") }
+        if age < 60 { return L("\(Int(age)) 秒前") }
+        if age < 3600 { return L("\(Int(age / 60)) 分钟前") }
+        return L("\(Int(age / 3600)) 小时前")
     }
 
     private func memoryCaption(_ mem: TunnelMemoryStats) -> String {
         var parts: [String] = []
         if mem.limitBytes > 0 {
             let headroom = max(0, mem.limitBytes - mem.footprintBytes)
-            parts.append("距 \(ByteFormatter.format(mem.limitBytes)) 上限余 \(ByteFormatter.format(headroom))")
+            parts.append(L("距 \(ByteFormatter.format(mem.limitBytes)) 上限余 \(ByteFormatter.format(headroom))"))
         } else {
             // macOS：NE 扩展没有 iOS 那条 50MB jetsam 硬上限，如实说，别让人找"余量"
-            parts.append("无硬性内存上限")
+            parts.append(L("无硬性内存上限"))
         }
-        parts.append("历史最高 \(ByteFormatter.format(mem.allTimePeakBytes))")
+        parts.append(L("历史最高 \(ByteFormatter.format(mem.allTimePeakBytes))"))
         if mem.warningCount > 0 {
-            parts.append("本次会话越过 40 MB 告警线 \(mem.warningCount) 次")
+            parts.append(L("本次会话越过 40 MB 告警线 \(mem.warningCount) 次"))
         }
         return parts.joined(separator: " · ")
+    }
+
+    /// 扩展没有实时上报时的内存说明行（上次会话峰值 + 历史最高 + 可选上限）。
+    private func idleMemoryCaption(_ mem: TunnelMemoryStats) -> String {
+        var line = L("上次会话峰值 \(ByteFormatter.format(mem.sessionPeakBytes)) · 历史最高 \(ByteFormatter.format(mem.allTimePeakBytes))")
+        if mem.limitBytes > 0 {
+            line += L("（上限 \(ByteFormatter.format(mem.limitBytes))）")
+        }
+        return line
     }
 
     private var proxySection: some View {
@@ -207,12 +214,10 @@ public struct SettingsView: View {
                     Text(AutoStopPresets.label(for: v)).tag(v)
                 }
             }
-            Text("到点自动断开 VPN，只对本次连接生效 —— 断开后不会自动重连，手动重开会重新计时。"
-                 + "VPN 运行中修改会立即从现在起重新计时。注意：启用定时的连接不开启系统自动重连"
-                 + "（On-Demand），若扩展异常退出需手动重开。")
+            Text("到点自动断开 VPN，只对本次连接生效 —— 断开后不会自动重连，手动重开会重新计时。VPN 运行中修改会立即从现在起重新计时。注意：启用定时的连接不开启系统自动重连（On-Demand），若扩展异常退出需手动重开。")
                 .font(.caption2).foregroundStyle(.secondary)
 
-            Text("当前节点：\(state.currentNode?.name ?? "未选")")
+            Text("当前节点：\(state.currentNode?.name ?? L("未选"))")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -228,7 +233,7 @@ public struct SettingsView: View {
                 Picker("优先地区", selection: state.setting(\.preferredRegion)) {
                     Text("无（只比延迟）").tag(String?.none)
                     ForEach(regions, id: \.region) { item in
-                        Text(item.region).tag(String?.some(item.region))
+                        Text(L10n.lookup(item.region)).tag(String?.some(item.region))
                     }
                 }
                 Text("自动择优时，若优先地区有可用节点，从中选最快的；否则全局选最快。")
@@ -238,14 +243,13 @@ public struct SettingsView: View {
                 ForEach(regions, id: \.region) { item in
                     Toggle(isOn: regionExcludedBinding(item.region)) {
                         HStack {
-                            Text(item.region)
+                            Text(L10n.lookup(item.region))
                             Text("\(item.count) 个节点")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                     }
                 }
-                Text("打开开关 = 排除该地区的所有节点（不参与自动择优、不会被自动选中）。"
-                     + "例如排除「香港」以避开 Anthropic / OpenAI 等对香港 IP 的限制。")
+                Text("打开开关 = 排除该地区的所有节点（不参与自动择优、不会被自动选中）。例如排除「香港」以避开 Anthropic / OpenAI 等对香港 IP 的限制。")
                     .font(.caption2).foregroundStyle(.secondary)
             }
         } header: {
@@ -318,7 +322,7 @@ public struct SettingsView: View {
         Section {
             LabeledContent("当前版本") {
                 if state.geoData.hasFullGeoIP, let info = state.geoData.info {
-                    Text("完整版 · \(info.downloadedAt.formatted(date: .abbreviated, time: .shortened)) · 来源：\(info.sourceName)")
+                    Text("完整版 · \(info.downloadedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale))) · 来源：\(L10n.lookup(info.sourceName))")
                         .font(.caption)
                 } else {
                     Text("精简版（内置，GEOIP 仅 cn / private）")
@@ -378,7 +382,7 @@ public struct SettingsView: View {
             if FeatureFlags.sourceAppLabeling {
                 Button(filterEnabled ? "关闭来源 App 标注" : "启用来源 App 标注") {
                     ContentFilterManager.shared.onNeedsApproval = {
-                        state.showToast("请到「系统设置 → 通用 → 登录项与扩展 → 网络扩展」批准轻舟")
+                        state.showToast(L("请到「系统设置 → 通用 → 登录项与扩展 → 网络扩展」批准轻舟"))
                     }
                     Task {
                         do {
@@ -388,10 +392,10 @@ public struct SettingsView: View {
                                 try await ContentFilterManager.shared.activateAndEnable()
                             }
                             filterEnabled = ContentFilterManager.isEnabled
-                            state.showToast(filterEnabled ? "已启用来源 App 标注" : "已关闭来源 App 标注")
+                            state.showToast(filterEnabled ? L("已启用来源 App 标注") : L("已关闭来源 App 标注"))
                         } catch {
                             let ns = error as NSError
-                            state.showToast("失败 [\(ns.domain) #\(ns.code)] \(ns.localizedDescription)")
+                            state.showToast(L("失败 [\(ns.domain) #\(ns.code)] \(ns.localizedDescription)"))
                             state.logger.error("Content filter toggle failed: domain=\(ns.domain) code=\(ns.code) info=\(ns.userInfo)", category: "filter")
                         }
                     }
@@ -477,9 +481,7 @@ public struct SettingsView: View {
                 Label("立即恢复 iCloud 数据", systemImage: "icloud.and.arrow.down")
             }
             .disabled(!state.settings.iCloudSyncEnabled)
-            Text("配置（订阅、节点、规则、设置）会镜像到你 iCloud Drive 的「轻舟」文件夹，"
-                 + "卸载 App 不会丢失，重装或换设备时可一键恢复。云端保留最近 "
-                 + "\(CloudVaultStore.maxBackups) 份历史版本。不含连接记录与流量统计。")
+            Text("配置（订阅、节点、规则、设置）会镜像到你 iCloud Drive 的「轻舟」文件夹，卸载 App 不会丢失，重装或换设备时可一键恢复。云端保留最近 \(CloudVaultStore.maxBackups) 份历史版本。不含连接记录与流量统计。")
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }
@@ -546,7 +548,7 @@ public struct SettingsView: View {
                                         (option.header.nodeCount ?? 1) == 0 ? AnyShapeStyle(.orange)
                                                                             : AnyShapeStyle(.primary))
                                 Text("\(option.header.deviceName) · "
-                                     + option.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                                     + option.header.modifiedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             .contentShape(Rectangle())
@@ -587,9 +589,9 @@ public struct SettingsView: View {
 
     private func label(for mode: ProxyMode) -> String {
         switch mode {
-        case .global: return "全局代理"
-        case .rule:   return "规则代理"
-        case .direct: return "直连"
+        case .global: return L("全局代理")
+        case .rule:   return L("规则代理")
+        case .direct: return L("直连")
         }
     }
 }
