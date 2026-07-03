@@ -234,6 +234,8 @@ public final class AppState {
             category: "app"
         )
         logger.setMinimumLevel(LogLevel(rawValue: settings.logLevel) ?? .info)
+        // 动态字符串（toast / 错误文案）的语言跟随 App 语言设置（静态 UI 靠 \.locale 环境值）
+        L10n.setLanguage(settings.language)
     }
 
     // MARK: - 持久化
@@ -323,6 +325,8 @@ public final class AppState {
         if let lvl = LogLevel(rawValue: settings.logLevel) {
             logger.setMinimumLevel(lvl)
         }
+        // 语言切换即时生效：动态字符串（toast / 错误）改查对应语种的 lproj 子 bundle
+        L10n.setLanguage(settings.language)
     }
 
     // MARK: - iCloud vault（配置的云端镜像，详见 CloudVault.swift 头注释）

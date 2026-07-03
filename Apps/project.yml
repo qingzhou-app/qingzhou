@@ -31,6 +31,11 @@ targets:
     sources:
       - path: iOS/Sources
       - path: iOS/Resources
+      # iOS/macOS 共享的字符串目录（Localizable/AppShortcuts/InfoPlist.xcstrings）。
+      # SPM 包（QingzhouApp）里的 Text("中文") 默认查 Bundle.main —— 目录放在 app target
+      # 里，包内代码不用改就能命中翻译。显式 buildPhase: resources 保证进 Copy Resources。
+      - path: App-Shared
+        buildPhase: resources
     info:
       path: iOS/Info.plist
       properties:
@@ -97,6 +102,9 @@ targets:
     sources:
       - path: macOS/Sources
       - path: macOS/Resources
+      # 同 iOS：共享字符串目录（本地化），见 Qingzhou-iOS 的注释。
+      - path: App-Shared
+        buildPhase: resources
     info:
       path: macOS/Info.plist
       properties:
