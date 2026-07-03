@@ -1066,21 +1066,31 @@ public final class AppState {
         }
     }
 
-    /// 经隧道按序尝试多个探测目标，任一返回 HTTP 响应即算联网。
-    /// 每个目标 8 秒超时（比旧的 6 秒宽松，降低慢出口误报）。
+    /// 经隧道**并发**探测多个目标，任一返回 HTTP 响应即算联网（第一个成功即返回）。
+    /// 并发而非串行：好节点里任一目标秒回即通过；真坏节点则所有目标一起超时，
+    /// 整轮耗时 = 单个超时（~8s）而非串行累加（4×8=32s）—— 坏节点检测从最长 64s 压到 ~16s。
     private static func probeTunnelConnectivity(preferred: String) async -> Bool {
         let config = URLSessionConfiguration.ephemeral
         config.waitsForConnectivity = false
+        config.timeoutIntervalForRequest = 8
         let session = URLSession(configuration: config)
-        for target in ConnectivityProbe.sentinelTargets(preferred: preferred) {
-            guard let url = URL(string: target) else { continue }
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 8
-            if let (_, response) = try? await session.data(for: request), response is HTTPURLResponse {
+        let targets = ConnectivityProbe.sentinelTargets(preferred: preferred).compactMap { URL(string: $0) }
+        guard !targets.isEmpty else { return false }
+        return await withTaskGroup(of: Bool.self) { group in
+            for url in targets {
+                group.addTask {
+                    if let (_, response) = try? await session.data(from: url) {
+                        return response is HTTPURLResponse
+                    }
+                    return false
+                }
+            }
+            for await ok in group where ok {
+                group.cancelAll()   // 一个成功即取消其余，尽快返回
                 return true
             }
+            return false
         }
-        return false
     }
 
     public func stopTunnel() async {

@@ -407,6 +407,16 @@
         }
       }
     },
+    "VPN 已连接，但多个探测目标（Cloudflare / Apple / Google）都访问不通，当前节点可能已失效或凭据错误。若你确认能正常上网，可能只是探测站点被临时阻断——可在设置→测速里换个探测目标，或直接换节点。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The VPN is connected, but several probe targets (Cloudflare / Apple / Google) are all unreachable — the current node may be dead or its credentials wrong. If you can actually browse fine, the probe sites may just be temporarily blocked; change the probe target in Settings → Speed Test, or switch nodes."
+          }
+        }
+      }
+    },
     "VPN 已连接，但通过当前节点无法访问外网。节点可能已失效或凭据错误（这类问题服务端不会回报错误，只能实测发现）。建议：长按节点「测经代理延迟」验证可用性，或直接换一个节点。": {
       "localizations": {
         "en": {
@@ -4373,6 +4383,16 @@
         }
       }
     },
+    "测速探测目标": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latency Probe Target"
+          }
+        }
+      }
+    },
     "浏览器可能在用加密 DNS（DoH），域名解析不经过隧道，轻舟无法看到这些域名。想按域名统计/分流，可在浏览器设置里关闭「安全 DNS」。": {
       "extractionState": "manual",
       "localizations": {
@@ -4851,6 +4871,16 @@
         }
       }
     },
+    "经代理测速和「已连接但无法上网」检测用哪个站点探测。有些节点出口对 Google 会 reset —— 默认用 Cloudflare 更稳。改这里也影响连通性提示的判定。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Which site to probe for proxied latency and the “connected but offline” check. Some nodes' exits reset Google — Cloudflare is more reliable by default. This also affects the connectivity warning."
+          }
+        }
+      }
+    },
     "经代理测速失败": {
       "extractionState": "manual",
       "localizations": {
@@ -5041,6 +5071,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Auto Latency Test"
+          }
+        }
+      }
+    },
+    "自动（Cloudflare，最稳）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto (Cloudflare, most reliable)"
           }
         }
       }

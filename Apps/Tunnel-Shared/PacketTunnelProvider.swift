@@ -170,6 +170,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let ipv4 = NEIPv4Settings(addresses: ["10.0.10.1"], subnetMasks: ["255.255.255.0"])
         ipv4.includedRoutes = [NEIPv4Route.default()]
         settings.ipv4Settings = ipv4
+        // ⚠️ 必须同时接管 IPv6，否则 iOS 上会「连上但打不开网页」（真机踩过，macOS 不明显）：
+        // xray 的 FakeDNS 有 IPv6 假 IP 池（fc00::/18），AAAA 查询会返回 fc00:: 假地址。
+        // iOS 蜂窝多为 IPv6 优先，App 于是去连这个假 IPv6 —— 但 TUN 只声明 IPv4 路由时，
+        // 这个包不进隧道 → 泄漏到真实网络 / 黑洞 → 请求失败。声明 IPv6 默认路由后全栈接管，
+        // 假 IPv6 也进隧道、由 xray 反查回域名代理出去。tun 自身地址取 fc00::/18 之外的 ULA。
+        let ipv6 = NEIPv6Settings(addresses: ["fd00:c0de::1"], networkPrefixLengths: [64])
+        ipv6.includedRoutes = [NEIPv6Route.default()]
+        settings.ipv6Settings = ipv6
         let dns = NEDNSSettings(servers: ["8.8.8.8", "1.1.1.1"])
         dns.matchDomains = [""]
         settings.dnsSettings = dns
