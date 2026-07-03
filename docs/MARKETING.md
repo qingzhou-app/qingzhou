@@ -63,6 +63,10 @@ VPN is running, xray makes a real request to google.com through the node, captur
 true end-to-end experience. Auto-select uses it to re-rank the top direct candidates, so
 a "fast-looking" dead node never becomes your current node.*
 
+> 📝 配套技术博文（宣发时直接引用 / 转载）：[经代理延迟：为什么你的测速数字可能在骗你](proxied-latency.md)
+> （Pages 上线后链接为 `https://qingzhou-app.github.io/qingzhou/proxied-latency.html`；
+> App 内节点页「⋯」菜单已有同主题科普弹窗，后续可加"了解更多"跳转此文）
+
 ### ② 定时关闭
 
 **痛点**：临时开代理下载个更新，忘了关——流量在节点上白跑一整晚（按流量计费的订阅尤其肉疼），
