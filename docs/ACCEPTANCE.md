@@ -111,6 +111,12 @@
 
 > 修复内容：云端与本地内容哈希一致时**静默采认**不弹窗；点「暂不恢复」按云端 revision
 > 持久化记忆；只有云端**真有用户内容变化**才再次弹恢复确认。
+>
+> ⚠️ **常见误解（2026-07-03 验收时踩过）**：在**本机**删订阅 → 杀掉重开 → 不弹恢复确认，
+> 这是**预期行为**，不是 bug。本地编辑（包括删除）是权威操作，会以更高 revision 镜像上云，
+> 云端不比本机新，自然不弹。**误删找回**走：设置 → iCloud 同步 → 「立即恢复 iCloud 数据」→
+> 版本列表选删除前的历史版本（每份带「N 订阅 · M 节点」计数，一眼识别）。
+> 启动弹窗只服务一个场景：**云端比本机新**（另一台设备改过配置 / 卸载重装 / 新设备）。
 
 - **前置条件**：iPhone + Mac 同一 iCloud 账号，两端都装有包含该修复的构建，iCloud 保险柜已启用
 - **操作步骤**：
@@ -142,7 +148,10 @@
   - 步骤 2：开关显示**开**，连接**时长正确**（延续原连接，不是从 0 开始）
   - 步骤 3：同样——开关显示开、时长正确
 - **验收状态**：
-  - [ ] 通过（日期/设备：＿＿＿）
+  - [x] 通过（2026-07-03 · iPhone 14 Pro · Claude 远程实测：DEBUG 钩子开 VPN →
+    显示已连接；`--terminate-existing` 杀掉重开 → 正确采认「已连接 0:01:38」+ 开关绿；
+    钩子停 VPN → 「VPN 未连接」。三态截图一致。注：替换安装（步骤 3）会被 iOS
+    杀掉扩展进程 → VPN 真断，重开显示关闭属**系统行为**，非本 bug）
 
 ---
 
@@ -152,6 +161,15 @@
 > **一次性前置**：两个新 bundle id（`com.sbraveyoung.qingzhou.ios.widget` /
 > `com.sbraveyoung.qingzhou.mac.widget`）需要 App ID + App Group + Network Extensions
 > capability。Xcode 自动签名一般会代办；⌘R 首次失败时去 developer.apple.com 手动补。
+>
+> **2026-07-03 首轮验收打回 4 项，已修复**（详见该日 commit）：
+> 1. 快捷指令搜不到「轻舟」→ AppShortcutsProvider 从 SPM 包移到 app target
+>    （包内不被元数据抽取，`autoShortcuts` 为空的实锤已复验修复）；
+> 2. widget / 控制中心点开关后卡「切换中」→ intent 现在**等 NEVPNStatus 稳态再返回**，
+>    WidgetKit 重载落在最终状态；
+> 3. widget 只有一种尺寸 → 补 systemMedium / systemLarge；
+> 4. intent 全链路加 os_log：Console.app 过滤 subsystem
+>    `com.sbraveyoung.qingzhou.intents` 可直接看失败原因（控制中心若再空转按此诊断）。
 
 ### 6.1 主屏小组件（iOS systemSmall）
 
