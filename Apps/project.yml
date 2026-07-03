@@ -31,6 +31,8 @@ targets:
     sources:
       - path: iOS/Sources
       - path: iOS/Resources
+      # App Shortcuts 必须在 app target（放 SPM 包里抽取不到 autoShortcuts），双平台共享
+      - path: App-Shared
     info:
       path: iOS/Info.plist
       properties:
@@ -101,6 +103,8 @@ targets:
     sources:
       - path: macOS/Sources
       - path: macOS/Resources
+      # 同 iOS：App Shortcuts 必须在 app target
+      - path: App-Shared
     info:
       path: macOS/Info.plist
       properties:

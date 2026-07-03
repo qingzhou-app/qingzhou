@@ -23,6 +23,16 @@ struct VPNiOSApp: App {
                 .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
                 .task {
                     state.startSchedulers()
+                    #if DEBUG
+                    // 远程验收钩子（仅 DEBUG）：让开发机能用
+                    // `devicectl device process launch ... --qz-start-vpn` 驱动真机启停，
+                    // 配合截图 / syslog 实现无人值守的真机回归。Release 构建不编译进来。
+                    if CommandLine.arguments.contains("--qz-start-vpn") {
+                        await state.startTunnel()
+                    } else if CommandLine.arguments.contains("--qz-stop-vpn") {
+                        await state.stopTunnel()
+                    }
+                    #endif
                     // 网络初始化延后到首屏稳定之后再跑：首次启动（尤其墙内/无网）这些请求会挂起，
                     // 别让它们和冷启动争抢。延迟 + 失败都不影响 UI。
                     try? await Task.sleep(for: .seconds(2))

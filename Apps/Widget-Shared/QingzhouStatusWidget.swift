@@ -60,9 +60,10 @@ struct QingzhouStatusWidget: Widget {
         .configurationDisplayName("轻舟 VPN")
         .description("查看连接状态，一键启停。")
         #if os(iOS)
-        .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge,
+                            .accessoryCircular, .accessoryRectangular])
         #else
-        .supportedFamilies([.systemSmall])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         #endif
     }
 }
@@ -108,6 +109,10 @@ struct QingzhouStatusView: View {
             case .accessoryRectangular:
                 rectangular
             #endif
+            case .systemMedium:
+                medium
+            case .systemLarge:
+                large
             default:
                 small
             }
@@ -149,6 +154,62 @@ struct QingzhouStatusView: View {
             .buttonStyle(.borderedProminent)
             .tint(snapshot.phase == .disconnected ? .accentColor : .gray)
             .disabled(snapshot.phase == .transitioning)
+        }
+    }
+
+    /// systemMedium：左侧状态详情，右侧大按钮
+    private var medium: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(statusText, systemImage: statusIcon)
+                    .font(.headline)
+                    .foregroundStyle(statusColor)
+                if let name = snapshot.nodeName, !name.isEmpty {
+                    Text(name)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if let since = snapshot.connectedSince {
+                    Text(since, style: .timer)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button(intent: ToggleVPNIntent()) {
+                VStack(spacing: 4) {
+                    Image(systemName: "power")
+                        .font(.title3.weight(.semibold))
+                    Text(snapshot.phase == .disconnected ? "连接" : "断开")
+                        .font(.footnote.weight(.semibold))
+                }
+                .frame(width: 72, height: 60)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(snapshot.phase == .disconnected ? .accentColor : .gray)
+            .disabled(snapshot.phase == .transitioning)
+        }
+    }
+
+    /// systemLarge：medium 的信息 + 自动化玩法提示（引导发现快捷指令 / 控制中心能力）
+    private var large: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            medium
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                Label("更多玩法", systemImage: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                Group {
+                    Text("• 快捷指令：搜「轻舟」，开 / 关 / 切换、状态判断")
+                    Text("• 自动化：打开某 App 时自动连接，关闭时断开")
+                    Text("• 控制中心：添加「轻舟 VPN」控件，一键启停")
+                    Text("• Siri：对 Siri 说「开启轻舟」")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
         }
     }
 

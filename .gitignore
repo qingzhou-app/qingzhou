@@ -30,3 +30,6 @@ Frameworks/LibXray.xcframework
 .idea/
 *.swp
 *~
+
+# xcodebuild -derivedDataPath 产物（本地构建/安装用，绝不入库）
+build/
