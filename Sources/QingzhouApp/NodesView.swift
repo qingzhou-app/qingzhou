@@ -531,8 +531,10 @@ private struct NodeRow: View {
     }
 
     private func proxiedColor(for ms: Int) -> Color {
-        if ms < 600 { return .green }
-        if ms < 1500 { return .orange }
+        // 经代理延迟 = 直连 RTT + 协议/TLS 握手 + HTTP + 出口跳数，几百毫秒到 1 秒本就正常。
+        // 旧阈值（600/1500）太严，好节点也判黄/红看着吓人 —— 放宽：<1200 绿、<2500 橙、其余红。
+        if ms < 1200 { return .green }
+        if ms < 2500 { return .orange }
         return .red
     }
 }

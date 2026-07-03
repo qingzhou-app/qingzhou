@@ -309,6 +309,22 @@ public final class AppState {
     /// 经 providerMessage 让扩展从现在起按新时长重新计时（不重启隧道、不断流），
     /// 并同步 On-Demand 开关（定时开 → On-Demand 关，见 VPNTunnelManager.configure 注释）。
     /// 消息失败（扩展没响应等）降级为「下次连接生效」，toast 如实告知。
+    /// 「择优用经代理延迟精选」开关。关掉时**顺手清空所有节点已存的经代理延迟**——
+    /// 否则之前测出的黄/红 chip 会一直挂在列表里，让用户误以为「关了还在测」还挺吓人
+    /// （真机反馈）。清空后经代理列干净消失，需要时手动长按某节点再测即可。
+    public func setAutoSelectUsesProxiedLatency(_ enabled: Bool) {
+        guard settings.autoSelectUsesProxiedLatency != enabled else { return }
+        settings.autoSelectUsesProxiedLatency = enabled
+        if !enabled {
+            for i in nodes.indices {
+                nodes[i].lastProxiedLatencyMs = nil
+                nodes[i].lastProxiedTestedAt = nil
+            }
+        }
+        persist()
+        logger.info("Proxied refine \(enabled ? "enabled" : "disabled (cleared proxied latencies)")", category: "app")
+    }
+
     public func setAutoStopSeconds(_ seconds: TimeInterval) {
         guard settings.autoStopSeconds != seconds else { return }
         settings.autoStopSeconds = seconds

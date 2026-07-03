@@ -448,6 +448,16 @@
         }
       }
     },
+    "VPN 运行中择优时，把直连结果为绿色的节点逐个真实走一遍代理再选（更准，多花些时间）：能避开「直连快但出口绕路或已失效」的假好节点。自动测速本身只测直连、不受此开关影响。关闭本开关会清空已测的经代理延迟。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When auto-selecting while the VPN is running, every node whose direct latency is green gets re-tested through the proxy before choosing (more accurate, takes longer): this avoids “fast direct but detoured or dead” impostors. Plain auto-testing only measures direct latency and is unaffected by this switch. Turning this off clears already-measured proxied latencies."
+          }
+        }
+      }
+    },
     "VPN 配置未加载。": {
       "extractionState": "manual",
       "localizations": {

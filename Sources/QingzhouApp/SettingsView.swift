@@ -189,8 +189,11 @@ public struct SettingsView: View {
             Text("开启后会主动把「当前节点」切到测速最快的那个 —— 如果你手选了节点不想被换，关掉这一项。")
                 .font(.caption2).foregroundStyle(.secondary)
 
-            Toggle("择优用经代理延迟精选", isOn: state.setting(\.autoSelectUsesProxiedLatency))
-            Text("VPN 运行中择优时，把直连结果为绿色的节点逐个真实走一遍代理再选（更准，多花些时间）：能避开「直连快但出口绕路或已失效」的假好节点。VPN 未开启时经代理测速无法进行，自动退回直连结果。")
+            Toggle("择优用经代理延迟精选", isOn: Binding(
+                get: { state.settings.autoSelectUsesProxiedLatency },
+                set: { state.setAutoSelectUsesProxiedLatency($0) }
+            ))
+            Text("VPN 运行中择优时，把直连结果为绿色的节点逐个真实走一遍代理再选（更准，多花些时间）：能避开「直连快但出口绕路或已失效」的假好节点。自动测速本身只测直连、不受此开关影响。关闭本开关会清空已测的经代理延迟。")
                 .font(.caption2).foregroundStyle(.secondary)
 
             Picker("测速探测目标", selection: proxiedTargetBinding) {
