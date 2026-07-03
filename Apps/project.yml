@@ -90,6 +90,10 @@ targets:
       - target: Qingzhou-Tunnel-iOS
         embed: true
         codeSign: true
+      # Widget 扩展：主屏小组件 / 锁屏 / iOS 18 控制中心
+      - target: Qingzhou-Widget-iOS
+        embed: true
+        codeSign: true
 
   Qingzhou-macOS:
     type: application
@@ -164,6 +168,10 @@ targets:
         codeSign: true
       # Content Filter 扩展：给连接标注来源 App（需 content-filter-provider entitlement 特批）
       - target: Qingzhou-Filter-macOS
+        embed: true
+        codeSign: true
+      # Widget 扩展：通知中心小组件（与 iOS 主屏版共用实现）
+      - target: Qingzhou-Widget-macOS
         embed: true
         codeSign: true
 
@@ -251,6 +259,90 @@ targets:
       # XrayConfigComposer 现在住在 XrayConfig（纯 Swift，不拖 LibXray）。
       - package: Qingzhou
         product: XrayConfig
+
+  # ===========================================================================
+  # WidgetKit 扩展 targets（Widget 全家桶）
+  # 共享同一份 Widget-Shared/ 源码（仿 Tunnel-Shared 的双平台模式）。
+  # 链接 QingzhouApp（静态 SPM 产品，不含 XrayCore → 没有 85MB Go runtime 问题），
+  # 直接复用其中的 ToggleVPNIntent / VPNTunnelManager / AppGroupStorage。
+  # macOS 的 WidgetKit 扩展也是经典 appex（NSExtension，进 Contents/PlugIns），
+  # 不是 ExtensionKit —— 实测系统 Weather.app 的 WeatherWidget.appex 就是这个形态。
+  # ===========================================================================
+  Qingzhou-Widget-iOS:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widget-Shared
+    info:
+      path: Widget-iOS/Info.plist
+      properties:
+        CFBundleDisplayName: 轻舟小组件
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          # WidgetKit 扩展不需要 NSExtensionPrincipalClass —— 入口是 @main 的 WidgetBundle
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widget-iOS/Widget.entitlements
+      properties:
+        # widget 里 Button(intent:) 的 intent 在 **widget 扩展进程**执行（不是主 App），
+        # 启停 VPN（saveToPreferences / startVPNTunnel）需要和主 App 相同的 NE entitlement，
+        # 缺了点按钮会静默失败。Apple 后台还需给这个 bundle id 建 App ID 并关联
+        # App Group + Network Extensions capability，否则真机装不上。
+        com.apple.developer.networking.networkextension:
+          - packet-tunnel-provider
+        # App Group：读隧道会话标记（tunnel-session.json，已连接时长）用
+        com.apple.security.application-groups:
+          - group.com.sbraveyoung.qingzhou
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sbraveyoung.qingzhou.ios.widget
+        DEVELOPMENT_TEAM: UK7MME38H9
+        SWIFT_VERSION: "6.0"
+    dependencies:
+      - package: Qingzhou
+        product: QingzhouApp
+      - package: Qingzhou
+        product: QingzhouCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+
+  Qingzhou-Widget-macOS:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widget-Shared
+    info:
+      path: Widget-macOS/Info.plist
+      properties:
+        CFBundleDisplayName: 轻舟小组件
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widget-macOS/Widget.entitlements
+      properties:
+        # macOS 扩展必须沙箱化，否则装载校验直接拒绝
+        com.apple.security.app-sandbox: true
+        # 同 iOS：widget 进程内执行 Toggle intent 启停 VPN，需要 NE entitlement
+        com.apple.developer.networking.networkextension:
+          - packet-tunnel-provider
+        com.apple.security.application-groups:
+          - group.com.sbraveyoung.qingzhou
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sbraveyoung.qingzhou.mac.widget
+        DEVELOPMENT_TEAM: UK7MME38H9
+        SWIFT_VERSION: "6.0"
+        ENABLE_HARDENED_RUNTIME: YES
+    dependencies:
+      - package: Qingzhou
+        product: QingzhouApp
+      - package: Qingzhou
+        product: QingzhouCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
 
   # macOS 内容过滤扩展：只观测连接、标注来源 App（bundle id），不阻断。
   # 只在 macOS 有 —— iOS 的 content filter 需要 MDM 监督，普通 App Store app 用不了。
