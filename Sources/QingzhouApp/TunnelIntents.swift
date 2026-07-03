@@ -29,6 +29,12 @@ enum TunnelIntentRunner {
         try? await mgr.setOnDemandEnabled(false)
         mgr.stop()
     }
+    /// 当前隧道是否在跑（含建立中 / 重连中）。给状态查询 Intent 用。
+    @MainActor static func isActive() async throws -> Bool {
+        let mgr = VPNTunnelManager()
+        try await mgr.load()
+        return AppState.isTunnelActive(mgr.status)
+    }
     /// 在跑就关、没跑就开。
     @MainActor static func toggle() async throws {
         let mgr = VPNTunnelManager()
@@ -77,6 +83,20 @@ public struct ToggleVPNIntent: AppIntent {
     public func perform() async throws -> some IntentResult {
         try await TunnelIntentRunner.toggle()
         return .result()
+    }
+}
+
+/// 查询 VPN 当前是否已连接 —— 返回布尔值，供「快捷指令」自动化做条件分支
+/// （例：打开某 App 时「如果 轻舟已连接 = 否 → 开启轻舟」，避免重复启动弹提示）。
+@available(iOS 16.0, macOS 13.0, *)
+public struct GetVPNStatusIntent: AppIntent {
+    public static let title: LocalizedStringResource = "轻舟是否已连接"
+    public static let description = IntentDescription("返回 VPN 当前是否已连接（布尔值），可在自动化里做条件判断。")
+    public static let openAppWhenRun = false
+    public init() {}
+    public func perform() async throws -> some IntentResult & ReturnsValue<Bool> & ProvidesDialog {
+        let connected = try await TunnelIntentRunner.isActive()
+        return .result(value: connected, dialog: IntentDialog(stringLiteral: connected ? "轻舟已连接" : "轻舟未连接"))
     }
 }
 

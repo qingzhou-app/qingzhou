@@ -97,6 +97,13 @@ public final class AppState {
     /// 标记文件：start 提交后到扩展写新标记之间有 1–3 秒窗口，旧文件的 startedAt 会让
     /// 「已连接时长」瞬间显示成几小时。只采纳不早于本次启动的 startedAt。
     private var lastTunnelStartAt: Date?
+    #if os(macOS)
+    /// 「打开指定 App 自动连」的监听器（见 AppLaunchWatcher.swift）。settings 驱动启停。
+    private var appLaunchWatcher: AppLaunchWatcher?
+    /// 当前隧道是否由自动连拉起 —— 只有自动拉起的会话才在触发 App 全退出时自动断开，
+    /// 用户手动开的 VPN 不能因为关掉某个 App 被误断。任何 stop 都会清掉。
+    private var tunnelStartedByAutoConnect = false
+    #endif
     /// 当前 xray-core 版本。由 app 入口注入（QingzhouApp 库本身不依赖 XrayCore，避免拖进 380MB xcframework）。
     public var coreVersion: String?
 
@@ -319,12 +326,52 @@ public final class AppState {
     }
 
     /// settings 任意字段变化后调用：把字段的「执行性」副作用真正落地。
-    /// 当前涉及：logger 级别。未来可加：macOS 系统代理端口变化时重新应用。
+    /// 当前涉及：logger 级别、macOS「打开 App 自动连」监听器启停。
     private func applySettingsSideEffects() {
         if let lvl = LogLevel(rawValue: settings.logLevel) {
             logger.setMinimumLevel(lvl)
         }
+        #if os(macOS)
+        syncAppLaunchWatcher()
+        #endif
     }
+
+    #if os(macOS)
+    /// 同步「打开指定 App 自动连」监听器：开关开且触发列表非空才监听。幂等，可重复调。
+    ///
+    /// 语义（见 AppLaunchWatcher 头注释）：任一触发 App 启动 → 自动开 VPN；
+    /// 最后一个触发 App 退出 → 自动断（仅断由自动连拉起的会话）。
+    private func syncAppLaunchWatcher() {
+        guard settings.autoConnectOnAppLaunch, !settings.autoConnectApps.isEmpty else {
+            appLaunchWatcher?.stop()
+            return
+        }
+        if appLaunchWatcher == nil {
+            appLaunchWatcher = AppLaunchWatcher(
+                onActivate: { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.isVPNRunning, !self.isSwitchingTunnel else { return }
+                        self.tunnelStartedByAutoConnect = true
+                        await self.startTunnel()
+                        if self.isVPNRunning {
+                            self.showToast("已随触发 App 自动连接")
+                        } else {
+                            self.tunnelStartedByAutoConnect = false   // 没起来，别把后续手动会话误标
+                        }
+                    }
+                },
+                onDeactivate: { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.tunnelStartedByAutoConnect, self.isVPNRunning else { return }
+                        await self.stopTunnel()
+                        self.showToast("触发 App 已全部退出，已自动断开")
+                    }
+                }
+            )
+        }
+        appLaunchWatcher?.start(triggers: settings.autoConnectApps)
+    }
+    #endif
 
     // MARK: - iCloud vault（配置的云端镜像，详见 CloudVault.swift 头注释）
 
@@ -985,6 +1032,9 @@ public final class AppState {
         }
         tunnelManager.stop()
         isVPNRunning = false
+        #if os(macOS)
+        tunnelStartedByAutoConnect = false   // 会话结束，自动连的归属随之失效
+        #endif
         autoStopDeadline = nil       // 手动关了，倒计时立即消失（不等下一秒轮询）
         connectedSince = nil         // 已连接时长同理，立即清零
         markAllConnectionsClosed()   // 隧道停了，活跃连接全部立即归入「已关闭」
@@ -1414,6 +1464,10 @@ public final class AppState {
     /// 启动后台调度：根据设置定期跑自动择优 + 订阅刷新；同时启动示例连接产线（直到真隧道接入）。
     public func startSchedulers() {
         stopSchedulers()
+        #if os(macOS)
+        // 「打开 App 自动连」监听器随 app 启动就位（之后由 settings 副作用保持同步）
+        syncAppLaunchWatcher()
+        #endif
         // 与系统实际 VPN 状态对齐：隧道扩展是独立进程，主 App 被杀重开（或替换安装）后
         // 它可能还在跑 —— isVPNRunning 初值 false 会让开关错误显示「关闭」，实际流量仍在代理。
         Task { @MainActor [weak self] in
