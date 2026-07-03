@@ -394,23 +394,12 @@ private struct NodeRow: View {
                     .font(.caption.monospaced()).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            // 两个延迟维度**竖排**：上「直连」（TCP 握手 RTT）、下「经代理」（VPN 开着时
-            // 真实走节点测的全链路延迟）。曾经横排 —— iPhone 窄屏 + 长节点名会把其中
-            // 一枚挤出屏幕（真机验收打回）。竖排利用行高（名称本就两行），永不互挤；
-            // chips 加 layoutPriority，宁可截断节点名也不截断延迟。
-            VStack(alignment: .trailing, spacing: 3) {
-                if state.measuringNodeIds.contains(node.id) {
-                    ProgressView().controlSize(.small)
-                } else {
-                    latencyChip(node.lastLatencyMs)
-                }
-                if state.proxiedMeasuringNodeIds.contains(node.id) {
-                    ProgressView().controlSize(.small)
-                } else if let pms = node.lastProxiedLatencyMs {
-                    proxiedLatencyChip(pms)
-                }
-            }
-            .layoutPriority(1)
+            // 两个延迟维度：iOS **竖排**（上直连、下经代理）—— iPhone 窄屏 + 长节点名
+            // 横排会把其中一枚挤出屏幕（真机验收打回）；macOS 窗口宽裕，保持横排
+            //（左经代理、右直连）信息密度更好。chips 加 layoutPriority，
+            // 宁可截断节点名也不截断延迟。
+            latencyChips
+                .layoutPriority(1)
         }
         .contentShape(Rectangle())
         .onTapGesture { state.select(node) }
@@ -463,6 +452,39 @@ private struct NodeRow: View {
                 Label("详情", systemImage: "info.circle")
             }
             .tint(.gray)
+        }
+    }
+
+    @ViewBuilder
+    private var latencyChips: some View {
+        #if os(iOS)
+        VStack(alignment: .trailing, spacing: 3) {
+            directChipOrSpinner
+            proxiedChipOrSpinner
+        }
+        #else
+        HStack(spacing: 6) {
+            proxiedChipOrSpinner
+            directChipOrSpinner
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private var directChipOrSpinner: some View {
+        if state.measuringNodeIds.contains(node.id) {
+            ProgressView().controlSize(.small)
+        } else {
+            latencyChip(node.lastLatencyMs)
+        }
+    }
+
+    @ViewBuilder
+    private var proxiedChipOrSpinner: some View {
+        if state.proxiedMeasuringNodeIds.contains(node.id) {
+            ProgressView().controlSize(.small)
+        } else if let pms = node.lastProxiedLatencyMs {
+            proxiedLatencyChip(pms)
         }
     }
 

@@ -182,6 +182,14 @@ public struct SettingsView: View {
                  + "能避开「直连快但出口绕路或已失效」的假好节点。VPN 未开启时自动退回直连结果。")
                 .font(.caption2).foregroundStyle(.secondary)
 
+            NavigationLink {
+                AutomationGuideView()
+            } label: {
+                Label("自动化玩法指南", systemImage: "sparkles")
+            }
+            Text("快捷指令 / Siri / 打开某 App 自动连 / 小组件 —— 全部配方一页看懂。")
+                .font(.caption2).foregroundStyle(.secondary)
+
             Picker("订阅自动刷新", selection: state.setting(\.subscriptionRefreshIntervalSeconds)) {
                 Text("关闭").tag(TimeInterval(0))
                 Text("15 分钟").tag(TimeInterval(15 * 60))

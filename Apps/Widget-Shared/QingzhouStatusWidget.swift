@@ -161,9 +161,14 @@ struct QingzhouStatusView: View {
     private var medium: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Label(statusText, systemImage: statusIcon)
-                    .font(.headline)
-                    .foregroundStyle(statusColor)
+                // 与 small 同款风格：**只有图标带状态色，文字用主文本色** ——
+                // 曾用 Label 整体染色（绿字），三种尺寸风格不一致（真机验收打回）
+                HStack(spacing: 5) {
+                    Image(systemName: statusIcon)
+                        .foregroundStyle(statusColor)
+                    Text(statusText)
+                }
+                .font(.headline)
                 if let name = snapshot.nodeName, !name.isEmpty {
                     Text(name)
                         .font(.subheadline)

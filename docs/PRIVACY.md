@@ -1,7 +1,7 @@
 # 轻舟 隐私政策 / Qingzhou Privacy Policy
 
-> 生效日期 / Effective Date：__待填__
-> 最后更新 / Last Updated：__待填__
+> 生效日期 / Effective Date：2026-07-03
+> 最后更新 / Last Updated：2026-07-03
 
 ---
 
