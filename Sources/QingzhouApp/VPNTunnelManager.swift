@@ -30,24 +30,24 @@ public final class VPNTunnelManager {
         public var errorDescription: String? {
             switch self {
             case .entitlementMissing:
-                return "缺少 Network Extension entitlement —— provisioning profile 没带这个 capability，或者 app 是 ad-hoc 签名的（必须用 Apple Developer 真签）。"
+                return L("缺少 Network Extension entitlement —— provisioning profile 没带这个 capability，或者 app 是 ad-hoc 签名的（必须用 Apple Developer 真签）。")
             case .managerNotLoaded:
-                return "VPN 配置未加载。"
+                return L("VPN 配置未加载。")
             case .noCurrentNode:
-                return "没选中节点。"
+                return L("没选中节点。")
             case .configurationPermissionDenied:
-                return """
+                return L("""
                 permission denied —— macOS 拒绝写入 VPN 配置。最常见原因：
                 1. app 是 ad-hoc 签名（用 install.sh 装的）。改用 Xcode ⌘R 启动；
                 2. 「系统设置 → 隐私与安全性」最下面有「VPN 配置已被阻止」红字，点「允许」；
                 3. 你没在弹出的「允许 VPN 配置」密码框里输入 Mac 登录密码。
-                """
+                """)
             case .configurationStale:
-                return "VPN 配置过期了。先在系统设置里把旧 VPN 删掉重试。"
+                return L("VPN 配置过期了。先在系统设置里把旧 VPN 删掉重试。")
             case .configurationDisabled:
-                return "VPN 配置被禁用了（系统设置里 toggle 是关闭状态）。"
+                return L("VPN 配置被禁用了（系统设置里 toggle 是关闭状态）。")
             case .configRejected(let msg):
-                return "节点配置预检未通过：\(msg)"
+                return L("节点配置预检未通过：\(msg)")
             case .underlying(let e):
                 return e.localizedDescription
             }
@@ -204,7 +204,7 @@ public final class VPNTunnelManager {
         case .file(let path):  msg["userRulesPath"] = path
         case .none:            break
         }
-        try await sendCommand(msg, timeoutSeconds: 5, timeoutLabel: "原地重配超时", failureLabel: "扩展重配失败")
+        try await sendCommand(msg, timeoutSeconds: 5, timeoutLabel: L("原地重配超时"), failureLabel: L("扩展重配失败"))
     }
 
     /// 给**运行中**的扩展重设定时关闭（从现在起按新时长重新计时；0 = 取消定时）。
@@ -213,7 +213,7 @@ public final class VPNTunnelManager {
     public func setAutoStop(seconds: TimeInterval) async throws {
         try await sendCommand(
             ["command": "setAutoStop", "seconds": String(seconds)],
-            timeoutSeconds: 3, timeoutLabel: "定时设置超时", failureLabel: "扩展定时设置失败"
+            timeoutSeconds: 3, timeoutLabel: L("定时设置超时"), failureLabel: L("扩展定时设置失败")
         )
     }
 
@@ -229,12 +229,12 @@ public final class VPNTunnelManager {
                 "timeout": String(timeoutSeconds)
             ],
             timeoutSeconds: Double(timeoutSeconds) + 8,
-            timeoutLabel: "经代理测速超时", failureLabel: "经代理测速失败"
+            timeoutLabel: L("经代理测速超时"), failureLabel: L("经代理测速失败")
         )
         guard let ms = (reply["delayMs"] as? NSNumber)?.intValue else {
             throw TunnelError.underlying(NSError(
                 domain: "qingzhou.tunnel", code: -3,
-                userInfo: [NSLocalizedDescriptionKey: "扩展回执缺少 delayMs"]))
+                userInfo: [NSLocalizedDescriptionKey: L("扩展回执缺少 delayMs")]))
         }
         return ms
     }
@@ -257,7 +257,7 @@ public final class VPNTunnelManager {
         }
         let reply = try await sendCommandForReply(
             msg, timeoutSeconds: 8,
-            timeoutLabel: "配置预检超时", failureLabel: "配置预检失败",
+            timeoutLabel: L("配置预检超时"), failureLabel: L("配置预检失败"),
             rejectionAsConfigError: true
         )
         _ = reply

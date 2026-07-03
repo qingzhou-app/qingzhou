@@ -85,22 +85,22 @@ public struct ConnectionsView: View {
                            hiddenIPCount: Int, vpnRunning: Bool)
         -> (title: String, description: String, icon: String) {
         if searching || hiddenIPCount > 0 {
-            var d = "当前搜索/过滤条件下没有匹配项。"
+            var d = L("当前搜索/过滤条件下没有匹配项。")
             if hiddenIPCount > 0 {
-                d += "「忽略 IP」已隐藏 \(hiddenIPCount) 条纯 IP 连接。"
+                d += L("「忽略 IP」已隐藏 \(hiddenIPCount) 条纯 IP 连接。")
             }
-            return ("没有匹配的连接", d, "line.3.horizontal.decrease.circle")
+            return (L("没有匹配的连接"), d, "line.3.horizontal.decrease.circle")
         }
         if filter == .closed {
-            return ("还没有已关闭的连接",
-                    "活跃连接约 \(Int(ConnectionTracker.idleTimeout)) 秒无活动后会归入这里。",
+            return (L("还没有已关闭的连接"),
+                    L("活跃连接约 \(Int(ConnectionTracker.idleTimeout)) 秒无活动后会归入这里。"),
                     "clock.arrow.circlepath")
         }
         if vpnRunning {
-            return ("暂无连接记录", "浏览网页后这里会实时更新。",
+            return (L("暂无连接记录"), L("浏览网页后这里会实时更新。"),
                     "antenna.radiowaves.left.and.right")
         }
-        return ("暂无连接", "开启 VPN 后，这里会展示真实的访问记录。",
+        return (L("暂无连接"), L("开启 VPN 后，这里会展示真实的访问记录。"),
                 "antenna.radiowaves.left.and.right.slash")
     }
 
@@ -109,7 +109,7 @@ public struct ConnectionsView: View {
             HStack(spacing: 8) {
                 Picker("", selection: $filter) {
                     ForEach(ConnectionFilter.allCases) { f in
-                        Text(f.rawValue).tag(f)
+                        Text(L10n.lookup(f.rawValue)).tag(f)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -184,7 +184,7 @@ public struct ConnectionsView: View {
             }
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.swap").imageScale(.small)
-                Text(c.matchedRule).font(.caption.monospaced()).lineLimit(1)
+                Text(L10n.lookup(c.matchedRule)).font(.caption.monospaced()).lineLimit(1)
                 Text("→ \(c.route)").font(.caption.monospaced())
                 Spacer()
                 // 字节/速率在接上 xray QueryStats 前没有真实来源（恒 0），先不显示假数字；

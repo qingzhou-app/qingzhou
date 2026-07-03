@@ -79,11 +79,11 @@ public struct NodesView: View {
                         await state.autoSelectBestNode()
                         isAutoSelecting = false
                         if state.currentNodeId == before, before != nil {
-                            autoSelectMessage = "未找到比当前节点更快的"
+                            autoSelectMessage = L("未找到比当前节点更快的")
                         } else if let n = state.currentNode {
-                            autoSelectMessage = "已选: \(n.name)" + (n.lastLatencyMs.map { " (\($0) ms)" } ?? "")
+                            autoSelectMessage = L("已选: \(n.name)") + (n.lastLatencyMs.map { L(" (\($0) ms)") } ?? "")
                         } else {
-                            autoSelectMessage = "所有节点测速失败，未做切换"
+                            autoSelectMessage = L("所有节点测速失败，未做切换")
                         }
                         // 4 秒后自动消失
                         try? await Task.sleep(for: .seconds(4))
@@ -120,7 +120,7 @@ public struct NodesView: View {
                         let text = NodeEncoder.shareLinks(state.nodes)
                         guard !text.isEmpty else { return }
                         copyLink(text)
-                        state.showToast("已复制 \(text.split(separator: "\n").count) 条节点分享链接")
+                        state.showToast(L("已复制 \(text.split(separator: "\n").count) 条节点分享链接"))
                     } label: {
                         Label("导出全部节点链接（复制）", systemImage: "square.and.arrow.up.on.square")
                     }
@@ -236,7 +236,7 @@ public struct NodesView: View {
             HStack {
                 Text("添加节点").font(.headline)
                 Spacer()
-                Button("关闭") {
+                Button("完成") {
                     showAdd = false
                     addInput = ""
                     addError = nil
@@ -264,7 +264,7 @@ public struct NodesView: View {
                 Button("添加") {
                     let result = state.addNodes(fromText: addInput)
                     if result.added == 0 {
-                        addError = result.errors.first.map { "解析失败：\($0.1)" } ?? "输入不像节点链接"
+                        addError = result.errors.first.map { L("解析失败：\(String(describing: $0.1))") } ?? L("输入不像节点链接")
                         return
                     }
                     showAdd = false
@@ -292,7 +292,7 @@ public struct NodesView: View {
                 } label: {
                     Label("复制链接", systemImage: "doc.on.doc")
                 }
-                Button("关闭") { qrShareNode = nil }
+                Button("完成") { qrShareNode = nil }
             }
         }
         .padding()
@@ -402,7 +402,7 @@ private struct NodeRow: View {
             Button {
                 if let link = NodeEncoder.shareLink(node) {
                     copyToPasteboard(link)
-                    state.showToast("已复制分享链接")
+                    state.showToast(L("已复制分享链接"))
                 }
             } label: {
                 Label("复制分享链接", systemImage: "doc.on.doc")
@@ -437,7 +437,7 @@ private struct NodeRow: View {
         }
     }
 
-    private func tag(_ text: String, color: Color) -> some View {
+    private func tag(_ text: LocalizedStringKey, color: Color) -> some View {
         Text(text)
             .font(.caption2)
             .padding(.horizontal, 6).padding(.vertical, 2)

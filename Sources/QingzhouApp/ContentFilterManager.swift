@@ -51,7 +51,7 @@ public final class ContentFilterManager: NSObject {
             c.filterPackets = false
             m.providerConfiguration = c
         }
-        m.localizedDescription = "轻舟 · 来源 App 标注"
+        m.localizedDescription = L("轻舟 · 来源 App 标注")
         m.isEnabled = true
         try await m.saveToPreferences()
     }

@@ -305,16 +305,16 @@ public final class AppState {
                     // 「On-Demand 开 + 定时开」—— 到点自停后被立刻拉回，定时形同虚设。
                     try await tunnelManager.setOnDemandEnabled(false)
                     try await tunnelManager.setAutoStop(seconds: seconds)
-                    showToast("已重新计时：\(AutoStopPresets.label(for: seconds))后自动断开")
+                    showToast(L("已重新计时：\(AutoStopPresets.label(for: seconds))后自动断开"))
                 } else {
                     try await tunnelManager.setAutoStop(seconds: 0)
                     try await tunnelManager.setOnDemandEnabled(true)
                     autoStopDeadline = nil
-                    showToast("已取消定时断开")
+                    showToast(L("已取消定时断开"))
                 }
             } catch {
                 logger.warn("Apply auto-stop to running tunnel failed: \(error)", category: "tunnel")
-                showToast("定时设置将在下次连接时生效")
+                showToast(L("定时设置将在下次连接时生效"))
             }
         }
     }
@@ -481,17 +481,17 @@ public final class AppState {
                 document = try await cloudVault.loadDocument()
             }
         } catch {
-            showToast("读取 iCloud 数据失败：\(error.localizedDescription)")
+            showToast(L("读取 iCloud 数据失败：\(error.localizedDescription)"))
             logger.error("iCloud vault restore read failed: \(error)", category: "cloud")
             return
         }
         guard let document else {
-            showToast("iCloud 上没有找到备份")
+            showToast(L("iCloud 上没有找到备份"))
             return
         }
         guard document.schemaVersion <= VaultDocument.currentSchemaVersion else {
             cloudSyncStatus = .incompatibleCloud(schemaVersion: document.schemaVersion)
-            showToast("iCloud 数据来自更新版本的轻舟，请先升级 App")
+            showToast(L("iCloud 数据来自更新版本的轻舟，请先升级 App"))
             return
         }
         // 覆盖本地前留一份备份 —— 恢复错了还能救
@@ -541,9 +541,9 @@ public final class AppState {
         let now = Date()
         logger.info("Restored from iCloud vault rev \(document.revision) (\(document.deviceName))", category: "cloud")
         if snapshot.nodes.isEmpty {
-            showToast("已从 iCloud 恢复（\(snapshot.subscriptions.count) 个订阅、0 个节点）")
+            showToast(L("已从 iCloud 恢复（\(snapshot.subscriptions.count) 个订阅、0 个节点）"))
         } else {
-            showToast("已恢复（\(snapshot.subscriptions.count) 个订阅、\(snapshot.nodes.count) 个节点），正在测速择优…")
+            showToast(L("已恢复（\(snapshot.subscriptions.count) 个订阅、\(snapshot.nodes.count) 个节点），正在测速择优…"))
         }
 
         if candidate?.backupFileName != nil {
@@ -572,7 +572,7 @@ public final class AppState {
         if !nodes.isEmpty {
             await autoSelectBestNode()
             if let best = currentNode {
-                showToast("已为你选择延迟最优节点：\(best.name)")
+                showToast(L("已为你选择延迟最优节点：\(best.name)"))
             }
         }
     }
@@ -608,15 +608,15 @@ public final class AppState {
     /// 纯读取：把云端主文档 + 历史备份拼成候选列表，不碰 UI 状态。
     private func fetchCloudVersionOptions() async -> CloudVersionLoadState {
         guard await cloudVault.isAvailable() else {
-            return .failed("iCloud 不可用（未登录或未开启 iCloud Drive）")
+            return .failed(L("iCloud 不可用（未登录或未开启 iCloud Drive）"))
         }
         let mainHeader: VaultHeader?
         do {
             mainHeader = try await cloudVault.loadHeader()
         } catch let error as CloudVaultStore.StoreError where error == .notYetDownloaded {
-            return .failed("iCloud 数据还在下载中，稍等片刻再试")
+            return .failed(L("iCloud 数据还在下载中，稍等片刻再试"))
         } catch {
-            return .failed("读取 iCloud 数据失败：\(error.localizedDescription)")
+            return .failed(L("读取 iCloud 数据失败：\(error.localizedDescription)"))
         }
         var options: [VaultRestoreCandidate] = []
         if let mainHeader, mainHeader.schemaVersion <= VaultDocument.currentSchemaVersion {
@@ -631,8 +631,8 @@ public final class AppState {
             // 也走 .failed 留在 sheet 内展示（带重试）—— iCloud 元数据可能还没同步完，
             // 稍后重试常常就有了；比 toast 一闪而过可操作性强。
             return .failed(mainHeader != nil
-                ? "iCloud 数据来自更新版本的轻舟，请先升级 App"
-                : "iCloud 上没有找到备份")
+                ? L("iCloud 数据来自更新版本的轻舟，请先升级 App")
+                : L("iCloud 上没有找到备份"))
         }
         // 只有一份也在列表里展示（点一下即进确认弹窗）——sheet 已经在屏了，
         // 自动收起再弹 alert 反而突兀。
@@ -838,7 +838,7 @@ public final class AppState {
         }
 
         guard let shareLink = NodeEncoder.shareLink(node) else {
-            tunnelError = "无法把节点编码成分享链接"
+            tunnelError = L("无法把节点编码成分享链接")
             isVPNRunning = false
             return
         }
@@ -851,7 +851,7 @@ public final class AppState {
                 shareLink: shareLink,
                 rules: effectiveUserRules,
                 autoStopSeconds: settings.autoStopSeconds,
-                description: "轻舟 · \(node.name)"
+                description: L("轻舟 · \(node.name)")
             )
             try await tunnelManager.start()
             isVPNRunning = true
@@ -859,7 +859,7 @@ public final class AppState {
             tunnelError = nil
             logger.info("Tunnel started for node \(node.name)", category: "tunnel")
             if settings.autoStopSeconds > 0 {
-                showToast("已开启定时：\(AutoStopPresets.label(for: settings.autoStopSeconds))后自动断开")
+                showToast(L("已开启定时：\(AutoStopPresets.label(for: settings.autoStopSeconds))后自动断开"))
             }
             scheduleIPRefresh()   // 隧道生效后刷新公网 IP → 落到「节点出口」那栏
             watchTunnelStartFailure()   // 扩展启动失败（配置错误等）→ 把可读原因端给用户
@@ -897,7 +897,7 @@ public final class AppState {
                     let reason = await self.tunnelManager.lastDisconnectError()
                     self.isVPNRunning = false
                     self.connectedSince = nil
-                    self.tunnelError = "VPN 启动失败：\(reason ?? "扩展未报告原因，可在设置→日志查看")"
+                    self.tunnelError = L("VPN 启动失败：\(reason ?? L("扩展未报告原因，可在设置→日志查看"))")
                     self.logger.error("Tunnel start failed after submit: \(reason ?? "unknown")", category: "tunnel")
                     // 与 startTunnel 失败路径同款收尾：防 On-Demand 拿坏配置反复重连。
                     try? await self.tunnelManager.setOnDemandEnabled(false)
@@ -968,7 +968,7 @@ public final class AppState {
                 node: node, mode: settings.proxyMode, shareLink: shareLink, rules: effectiveUserRules
             )
         } catch VPNTunnelManager.TunnelError.configRejected(let reason) {
-            tunnelError = "已保持当前节点连接不变。切换目标节点配置无效：\(reason)"
+            tunnelError = L("已保持当前节点连接不变。切换目标节点配置无效：\(reason)")
             logger.error("Pre-switch config test rejected \(node.name): \(reason)", category: "tunnel")
             return   // 旧隧道原样保留
         } catch {
@@ -986,7 +986,7 @@ public final class AppState {
                 // 热切换 = 全量重启 = 新会话：定时按设置的时长**重新计时**（切节点/模式后
                 // 从头再数）。不带旧剩余时间过去 —— 语义简单、扩展侧无需额外状态。
                 autoStopSeconds: settings.autoStopSeconds,
-                description: "轻舟 · \(node.name)"
+                description: L("轻舟 · \(node.name)")
             )
             tunnelManager.stop()
             markAllConnectionsClosed()   // 热切换 = 旧隧道进程整个换掉，旧连接全部已死
@@ -1094,7 +1094,7 @@ public final class AppState {
     @discardableResult
     public func measureProxiedLatency(_ node: Node, showToastOnError: Bool = true) async -> Int? {
         guard isVPNRunning else {
-            if showToastOnError { showToast("经代理测速需要 VPN 运行中（直连延迟请用普通测速）") }
+            if showToastOnError { showToast(L("经代理测速需要 VPN 运行中（直连延迟请用普通测速）")) }
             return nil
         }
         proxiedMeasuringNodeIds.insert(node.id)
@@ -1115,7 +1115,7 @@ public final class AppState {
             }
             persist()
             if showToastOnError {
-                showToast("经代理测速失败：\((error as? LocalizedError)?.errorDescription ?? "\(error)")")
+                showToast(L("经代理测速失败：\((error as? LocalizedError)?.errorDescription ?? "\(error)")"))
             }
             logger.warn("Proxied ping failed for \(node.name): \(error)", category: "tunnel")
             return nil
@@ -1127,7 +1127,7 @@ public final class AppState {
     /// 进度通过 `proxiedMeasuringNodeIds` 递减反映（UI 显示 n/total）。
     public func measureAllProxiedLatencies() async {
         guard isVPNRunning else {
-            showToast("经代理测速需要 VPN 运行中")
+            showToast(L("经代理测速需要 VPN 运行中"))
             return
         }
         let targets = nodes.filter { !$0.isExcluded }
@@ -1152,7 +1152,7 @@ public final class AppState {
         if subscriptionErrors[sub.id] == nil, !nodes.isEmpty {
             await autoSelectBestNode()
             if let best = currentNode {
-                showToast("已为你选择延迟最优节点：\(best.name)")
+                showToast(L("已为你选择延迟最优节点：\(best.name)"))
             }
         }
     }
@@ -1258,7 +1258,7 @@ public final class AppState {
     public func quickAddDomainRule(forHost host: String, target: RuleTarget) -> QuickRuleOutcome {
         let domain = DomainAnalyzer.registrableDomain(host)
         guard !HostClassifier.isBareIP(host), domain.contains(".") else {
-            showToast("「\(host)」不是域名，无法生成域名规则")
+            showToast(L("「\(host)」不是域名，无法生成域名规则"))
             return .notADomain(host: host)
         }
         let targetName = Self.quickRuleTargetName(target)
@@ -1267,7 +1267,7 @@ public final class AppState {
         }) {
             let old = customRules[idx].target
             guard old != target else {
-                showToast("已有规则：\(customRules[idx].lineForm)")
+                showToast(L("已有规则：\(customRules[idx].lineForm)"))
                 return .unchanged(domain: domain)
             }
             customRules[idx].target = target
@@ -1276,11 +1276,11 @@ public final class AppState {
                         category: "rules")
             persist()
             reapplyForRulesChange()
-            showToast("\(domain) 已从\(Self.quickRuleTargetName(old))改为\(targetName)，规则已生效")
+            showToast(L("\(domain) 已从\(Self.quickRuleTargetName(old))改为\(targetName)，规则已生效"))
             return .retargeted(domain: domain, from: old, to: target)
         }
         addCustomRule(Rule(type: .domainSuffix, value: domain, target: target, comment: "一键添加"))
-        showToast("已加入\(targetName)：\(domain)，规则已生效")
+        showToast(L("已加入\(targetName)：\(domain)，规则已生效"))
         return .added(domain: domain)
     }
 
@@ -1297,7 +1297,7 @@ public final class AppState {
         guard live.count == suggestion.rules.count,
               live.allSatisfy({ $0.target == suggestion.target }),
               let firstIdx = customRules.firstIndex(where: { ids.contains($0.id) }) else {
-            showToast("规则已变化，建议已过期")
+            showToast(L("规则已变化，建议已过期"))
             return false
         }
         customRules.removeAll { ids.contains($0.id) }
@@ -1307,15 +1307,15 @@ public final class AppState {
         logger.info("Merged \(suggestion.rules.count) rules into \(merged.lineForm)", category: "rules")
         persist()
         reapplyForRulesChange()
-        showToast("已合并 \(suggestion.rules.count) 条为 \(merged.lineForm)，规则已生效")
+        showToast(L("已合并 \(suggestion.rules.count) 条为 \(merged.lineForm)，规则已生效"))
         return true
     }
 
     private static func quickRuleTargetName(_ t: RuleTarget) -> String {
         switch t {
-        case .proxy:  return "代理"
-        case .direct: return "直连"
-        case .reject: return "拒绝"
+        case .proxy:  return L("代理")
+        case .direct: return L("直连")
+        case .reject: return L("拒绝")
         }
     }
 
@@ -1719,7 +1719,7 @@ public final class AppState {
             connectedSince = nil
             markAllConnectionsClosed()
             scheduleIPRefresh()
-            showToast("已按定时自动断开 VPN")
+            showToast(L("已按定时自动断开 VPN"))
             logger.info("Auto-stop observed from extension (stoppedAt=\(s.stoppedAt!))", category: "tunnel")
         }
     }

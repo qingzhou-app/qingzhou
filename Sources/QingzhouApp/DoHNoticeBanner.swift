@@ -21,8 +21,7 @@ struct DoHNoticeBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("大量连接仅显示 IP")
                     .font(.caption).fontWeight(.medium)
-                Text("浏览器可能在用加密 DNS（DoH），域名解析不经过隧道，轻舟无法看到这些域名。"
-                     + "想按域名统计/分流，可在浏览器设置里关闭「安全 DNS」。")
+                Text("浏览器可能在用加密 DNS（DoH），域名解析不经过隧道，轻舟无法看到这些域名。想按域名统计/分流，可在浏览器设置里关闭「安全 DNS」。")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()

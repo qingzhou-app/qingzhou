@@ -145,10 +145,10 @@ public struct LogsView: View {
             guard response == .OK, let url = panel.url else { return }
             do {
                 try text.write(to: url, atomically: true, encoding: .utf8)
-                state.showToast("日志已导出：\(url.lastPathComponent)")
+                state.showToast(L("日志已导出：\(url.lastPathComponent)"))
             } catch {
                 state.logger.error("导出日志失败: \(error)", category: "app")
-                state.showToast("导出失败，详见日志")
+                state.showToast(L("导出失败，详见日志"))
             }
         }
         // 优先挂到当前窗口做 sheet —— 独立 panel.begin() 在个别情况下会沉底/不获焦；

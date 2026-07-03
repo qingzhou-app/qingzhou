@@ -12,12 +12,12 @@ enum DomainStatsCSV {
 
     /// 带 UTF-8 BOM —— Excel 打开无 BOM 的 UTF-8 CSV 中文会乱码。
     static func render(_ stats: [DomainStat]) -> String {
-        var lines = ["域名,路由,连接次数,命中规则,首次出现,最近出现"]
+        var lines = [L("域名,路由,连接次数,命中规则,首次出现,最近出现")]
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
         for s in stats {
             let rule = DomainAnalyzer.isUnmatchedRule(s.lastMatchedRule)
-                ? Connection.noMatchedRule : s.lastMatchedRule
+                ? L10n.lookup(Connection.noMatchedRule) : L10n.lookup(s.lastMatchedRule)
             lines.append([
                 s.domain, routeName(s.route), "\(s.connectionCount)", rule,
                 f.string(from: s.firstSeen), f.string(from: s.lastSeen),
@@ -34,10 +34,10 @@ enum DomainStatsCSV {
 
     private static func routeName(_ r: DomainRoute) -> String {
         switch r {
-        case .proxy:  return "代理"
-        case .direct: return "直连"
-        case .reject: return "拒绝"
-        case .mixed:  return "混合"
+        case .proxy:  return L("代理")
+        case .direct: return L("直连")
+        case .reject: return L("拒绝")
+        case .mixed:  return L("混合")
         }
     }
 
@@ -92,10 +92,10 @@ struct DomainStatsExportButton: View {
             guard response == .OK, let url = panel.url else { return }
             do {
                 try text.write(to: url, atomically: true, encoding: .utf8)
-                state.showToast("已导出 \(stats.count) 个域名：\(url.lastPathComponent)")
+                state.showToast(L("已导出 \(stats.count) 个域名：\(url.lastPathComponent)"))
             } catch {
                 state.logger.error("导出域名统计失败: \(error)", category: "app")
-                state.showToast("导出失败，详见日志")
+                state.showToast(L("导出失败，详见日志"))
             }
         }
         // 同 LogsView：优先挂当前窗口做 sheet，拿不到就模态兜底

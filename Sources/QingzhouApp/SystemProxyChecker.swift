@@ -44,9 +44,8 @@ enum SystemProxyChecker {
         // 信息性提示，不是硬冲突：系统代理（走环回、不经 TUN）与轻舟 TUN 可共存，只是形成
         // App→系统代理→轻舟 的冗余双重代理，一般不影响联网。真正会互斥的是「另一个 TUN 代理」
         // 抢默认路由（那种得关一个），但那个沙箱内难可靠检测，只能靠用户判断。
-        return "检测到系统代理已开启（\(hits.joined(separator: "、"))，可能是 Clash 等工具）。"
-             + "轻舟是 TUN 模式，可与它共存（会形成冗余的双重代理，一般不影响使用）；"
-             + "若个别 App 联网异常，可先关掉系统代理排除干扰。"
+        let hitList = hits.joined(separator: L("、"))
+        return L("检测到系统代理已开启（\(hitList)，可能是 Clash 等工具）。轻舟是 TUN 模式，可与它共存（会形成冗余的双重代理，一般不影响使用）；若个别 App 联网异常，可先关掉系统代理排除干扰。")
         #else
         return nil
         #endif

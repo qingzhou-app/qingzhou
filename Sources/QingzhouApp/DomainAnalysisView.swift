@@ -229,8 +229,8 @@ public struct DomainAnalysisView: View {
     static func suggestionModeNotice(for mode: ProxyMode) -> String? {
         switch mode {
         case .rule:   return nil
-        case .global: return "全局模式下所有流量都走代理，分流建议仅供参考（切回规则模式后可按建议行动）"
-        case .direct: return "直连模式下所有流量都直连，分流建议仅供参考（切回规则模式后可按建议行动）"
+        case .global: return L("全局模式下所有流量都走代理，分流建议仅供参考（切回规则模式后可按建议行动）")
+        case .direct: return L("直连模式下所有流量都直连，分流建议仅供参考（切回规则模式后可按建议行动）")
         }
     }
 
@@ -259,7 +259,7 @@ public struct DomainAnalysisView: View {
                 if DomainAnalyzer.isUnmatchedRule(s.lastMatchedRule) {
                     Text("未命中规则（默认策略）").font(.caption2).foregroundStyle(.orange)
                 } else {
-                    Text(s.lastMatchedRule).font(.caption2.monospaced()).foregroundStyle(.tertiary).lineLimit(1)
+                    Text(L10n.lookup(s.lastMatchedRule)).font(.caption2.monospaced()).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
         }
@@ -284,8 +284,7 @@ public struct DomainAnalysisView: View {
             ContentUnavailableView {
                 Label("来源 App 标注未开启", systemImage: "app.dashed")
             } description: {
-                Text("开启后这里会按 App 分组展示各自访问的域名与连接次数。\n"
-                     + "入口：设置 → macOS 集成 → 启用来源 App 标注（首次需在系统设置批准扩展）。")
+                Text("开启后这里会按 App 分组展示各自访问的域名与连接次数。\n入口：设置 → macOS 集成 → 启用来源 App 标注（首次需在系统设置批准扩展）。")
             }
         }
         // 搜索无结果时明确说「是搜索导致的空」——下面的「暂无来源 App 数据」会误导
@@ -297,8 +296,7 @@ public struct DomainAnalysisView: View {
             ContentUnavailableView {
                 Label("暂无来源 App 数据", systemImage: "app.badge.checkmark")
             } description: {
-                Text("「来源 App 标注」已启用，还没有可归属的连接。\n"
-                     + "确认 VPN 已开启并浏览一会儿；启用标注之前建立的连接无法补标。")
+                Text("「来源 App 标注」已启用，还没有可归属的连接。\n确认 VPN 已开启并浏览一会儿；启用标注之前建立的连接无法补标。")
             }
         } else {
             ForEach(appStats) { appSection($0) }
@@ -361,10 +359,22 @@ public struct DomainAnalysisView: View {
             Image(systemName: icon).foregroundStyle(color).font(.title3)
             VStack(alignment: .leading, spacing: 2) {
                 Text(s.domain).font(.subheadline).fontWeight(.medium)
-                Text(s.reason).font(.caption).foregroundStyle(.secondary)
+                Text(Self.localizedReason(s)).font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// 分流建议 reason 的显示层本地化。reason 由 QingzhouCore.DomainAnalyzer 生成（Core 无 UI
+    /// 依赖、不做本地化）：三条固定文案走查表；追踪器一条内嵌连接次数，按 kind 提取次数后
+    /// 用带占位符的 key 重建。任何不认识的 reason 原样返回（查表回落是 no-op），永不丢信息。
+    static func localizedReason(_ s: RuleSuggestion) -> String {
+        if s.kind == .shouldReject,
+           let range = s.reason.range(of: #"连接 (\d+) 次"#, options: .regularExpression),
+           let n = Int(s.reason[range].dropFirst(3).dropLast(2)) {
+            return L("已知追踪器域名（连接 \(n) 次），拒绝可减少行为追踪；个别 App 的统计功能可能受影响")
+        }
+        return L10n.lookup(s.reason)
     }
 
     private func dailyHeader(_ d: DailyDigest, searching: Bool) -> some View {
@@ -393,10 +403,10 @@ public struct DomainAnalysisView: View {
     private func routeBadge(_ r: DomainRoute) -> some View {
         let info: (String, Color)
         switch r {
-        case .proxy:  info = ("代理", .blue)
-        case .direct: info = ("直连", .green)
-        case .reject: info = ("拒绝", .red)
-        case .mixed:  info = ("混合", .orange)
+        case .proxy:  info = (L("代理"), .blue)
+        case .direct: info = (L("直连"), .green)
+        case .reject: info = (L("拒绝"), .red)
+        case .mixed:  info = (L("混合"), .orange)
         }
         return Text(info.0)
             .font(.caption2).fontWeight(.medium)
