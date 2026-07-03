@@ -1209,10 +1209,13 @@ public final class AppState {
         nodes = measured
         let previousId = currentNodeId
         if var best = pickBestRespectingRegions(from: measured) {
-            // 经代理精选（VPN 在跑且开关开着）：直连排名前几的候选逐个真实走节点测，
+            // 经代理精选（VPN 在跑且开关开着）：直连绿色候选逐个真实走节点测，
             // 避开「直连快但出口绕路 / 已失效」的假好节点。VPN 没开时测不了，直接用直连结果。
             if settings.autoSelectUsesProxiedLatency, isVPNRunning, !isSwitchingTunnel {
                 best = await refineWithProxiedLatency(fallback: best)
+            } else if settings.autoSelectUsesProxiedLatency {
+                // 静默跳过会让用户以为精选没跑（真机反馈过）—— 至少留下日志可查
+                logger.info("Proxied refine skipped — VPN not running", category: "app")
             }
             currentNodeId = best.id
             logger.info("Auto-selected \(best.name) [\(best.region)] (direct \(best.lastLatencyMs ?? -1)ms / proxied \(best.lastProxiedLatencyMs ?? -1)ms)", category: "app")
@@ -1226,16 +1229,19 @@ public final class AppState {
         }
     }
 
-    /// 经代理延迟精选的候选数量：串行逐个测（扩展内存约束），个数×每个 1–2 秒，
-    /// 5 个在后台调度里可接受；太多则批量测速时长失控。
-    private static let proxiedRefineCandidateCount = 5
+    /// 直连延迟的「绿色」阈值（毫秒）—— 节点列表 chip 配色与经代理精选候选池共用同一口径。
+    static let directGreenThresholdMs = 200
+    /// 没有绿色候选时的退化候选数（取直连最快的前几个，别让精选完全没得跑）。
+    private static let proxiedRefineFallbackCount = 3
 
-    /// 用「经代理延迟」在直连排名靠前的候选里精选最优。
+    /// 用「经代理延迟」在**直连为绿色**的候选池里精选最优（用户口径：不限前 5，
+    /// 绿色列表全员参赛 —— 绿色说明到节点的线路健康，值得花时间实测出口质量；
+    /// 黄/红直连本身已说明线路差，不浪费实测名额）。
     ///
     /// 直连延迟只反映「设备→节点」的距离：出口绕路的节点直连照样漂亮、密码错的节点
-    /// 直连也测不出来。这里取与 pickBestRespectingRegions 同口径（地区优先池）的
-    /// 直连前 K 名，逐个真实走节点测全链路延迟，选最低者；**测不通的候选直接淘汰**
-    /// （顺带把失效节点挡在自动择优之外）。全部失败 → 退回直连最优。
+    /// 直连也测不出来。逐个真实走节点测全链路延迟（串行 —— 扩展 50MB 内存约束），
+    /// 选最低者；**测不通的候选直接淘汰**（失效节点进不了当前节点）。
+    /// 全部失败 → 退回直连最优，并 toast 说明（不能无声回退，用户会以为精选没跑）。
     private func refineWithProxiedLatency(fallback: Node) async -> Node {
         let viable = nodes.filter { !isEffectivelyExcluded($0) && $0.lastLatencyMs != nil }
         var pool = viable
@@ -1243,23 +1249,38 @@ public final class AppState {
             let inPref = viable.filter { $0.region == pref }
             if !inPref.isEmpty { pool = inPref }
         }
-        let candidates = pool
+        var candidates = pool
+            .filter { ($0.lastLatencyMs ?? .max) < Self.directGreenThresholdMs }
             .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
-            .prefix(Self.proxiedRefineCandidateCount)
+        if candidates.isEmpty {
+            // 一个绿色都没有（网络差 / 节点普遍远）：退化取直连前几名，精选仍有意义
+            candidates = Array(pool
+                .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
+                .prefix(Self.proxiedRefineFallbackCount))
+        }
         var bestNode: Node?
         var bestMs = Int.max
+        var failedCount = 0
         for candidate in candidates {
             guard isVPNRunning, !isSwitchingTunnel else { break }   // 中途关了 VPN 就停
-            if let ms = await measureProxiedLatency(candidate, showToastOnError: false), ms < bestMs {
-                bestMs = ms
-                bestNode = candidate
+            if let ms = await measureProxiedLatency(candidate, showToastOnError: false) {
+                if ms < bestMs {
+                    bestMs = ms
+                    bestNode = candidate
+                }
+            } else {
+                failedCount += 1
             }
         }
         if let bestNode {
-            logger.info("Proxied refine picked \(bestNode.name) (\(bestMs)ms) from \(candidates.count) candidates", category: "app")
+            logger.info("Proxied refine picked \(bestNode.name) (\(bestMs)ms) from \(candidates.count) green candidates (\(failedCount) failed)", category: "app")
+            if failedCount > 0 {
+                showToast("经代理精选完成：实测 \(candidates.count) 个候选，避开 \(failedCount) 个不可用节点")
+            }
             return bestNode
         }
         logger.warn("Proxied refine: all \(candidates.count) candidates failed — falling back to direct best", category: "app")
+        showToast("经代理精选：\(candidates.count) 个候选实测均失败，本次按直连结果选择")
         return fallback
     }
 

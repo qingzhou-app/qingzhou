@@ -178,8 +178,9 @@ public struct SettingsView: View {
                 .font(.caption2).foregroundStyle(.secondary)
 
             Toggle("择优用经代理延迟精选", isOn: state.setting(\.autoSelectUsesProxiedLatency))
-            Text("VPN 运行中择优时，把直连最快的前 5 个节点真实走一遍代理再选（更准，多花几秒）："
-                 + "能避开「直连快但出口绕路或已失效」的假好节点。VPN 未开启时自动退回直连结果。")
+            Text("VPN 运行中择优时，把**直连结果为绿色**的节点逐个真实走一遍代理再选（更准，"
+                 + "多花些时间）：能避开「直连快但出口绕路或已失效」的假好节点。"
+                 + "VPN 未开启时经代理测速无法进行，自动退回直连结果。")
                 .font(.caption2).foregroundStyle(.secondary)
 
             NavigationLink {

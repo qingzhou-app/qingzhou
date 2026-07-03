@@ -530,7 +530,8 @@ private struct NodeRow: View {
     }
 
     private func color(for ms: Int) -> Color {
-        if ms < 200 { return .green }
+        // 绿色阈值与经代理精选的候选池同口径（AppState.directGreenThresholdMs）
+        if ms < AppState.directGreenThresholdMs { return .green }
         if ms < 500 { return .orange }
         return .red
     }
