@@ -76,7 +76,11 @@ public final class AppState {
     /// 上报；VPN 停了或数据过期时为 nil。与 TUN 层总量（trafficHistory）口径不同：
     /// 这里是应用层 payload 字节，供占比展示，不驱动波形。
     public internal(set) var outboundStats: XrayOutboundStats?
-    public var isVPNRunning: Bool = false
+    /// didSet 是小组件的主刷新时机：连接成功 / 断开 / 定时自停 / 启动采认……所有改到
+    /// 这个值的路径都会踢一脚 WidgetKit（拉模型，不踢它 30 分钟才兜底刷新）。
+    public var isVPNRunning: Bool = false {
+        didSet { if oldValue != isVPNRunning { WidgetRefresher.reload() } }
+    }
     /// 热切换窗口标志：VPN 运行中切节点/模式触发全量重启（stop→start）期间为 true。
     /// UI 用它把开关滑到"关"、显示"切换中…"——跟真实断流窗口一致，不做假动画。
     /// 不翻转 isVPNRunning：那个承载"用户意图上 VPN 是开的"，被 reapply 入口 guard
@@ -1075,7 +1079,12 @@ public final class AppState {
               let node = currentNode,
               let shareLink = NodeEncoder.shareLink(node) else { return }
         isSwitchingTunnel = true
-        defer { isSwitchingTunnel = false }
+        // 热切换里 isVPNRunning 不变但节点（providerConfiguration 里的节点名）变了 ——
+        // 退出时踢一次小组件刷新，别让 widget 上的节点名停留在旧值。
+        defer {
+            isSwitchingTunnel = false
+            WidgetRefresher.reload()
+        }
         // 配置预检：趁旧隧道还在跑，先让扩展用同款构建流程校验新节点的配置（libXray
         // TestXray）。配置非法 → 不拆在跑的隧道，直接报错返回 —— 否则坏配置会把好隧道
         // 换成起不来的新会话，用户直接断网。预检本身没跑成（超时等）不拦：尽力而为继续切。
