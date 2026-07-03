@@ -1009,7 +1009,10 @@ public final class AppState {
             for _ in 0..<40 {   // 最多观察 ~20 秒（规则模式加载 geo 就要几秒）
                 guard let self, self.isVPNRunning, !self.isSwitchingTunnel else { return }
                 let status = self.tunnelManager.status
-                if status == .connected { return }
+                if status == .connected {
+                    self.verifyTunnelConnectivity()
+                    return
+                }
                 if status == .disconnected || status == .invalid {
                     let reason = await self.tunnelManager.lastDisconnectError()
                     self.isVPNRunning = false
@@ -1023,6 +1026,47 @@ public final class AppState {
                 }
                 try? await Task.sleep(for: .milliseconds(500))
             }
+        }
+    }
+
+    /// 隧道连上后的连通性哨兵。补配置预检的盲区：**配置合法 ≠ 节点可用** ——
+    /// 密码错误的 trojan / 已下线的节点，xray 照样正常启动、系统显示「已连接」，
+    /// 但所有代理流量石沉大海（trojan 等协议的服务端不回「认证失败」，只是静默丢弃）。
+    /// 连上后真实访问一次 generate_204（此刻流量经隧道），两次都失败 → 明确告诉用户
+    /// 「连上了但没网」+ 排查建议，别让人对着绿开关干瞪眼（真机验收打回的场景）。
+    ///
+    /// 直连模式不探测：没有代理链路，墙内访问 google 本来就通不了，会误报。
+    private func verifyTunnelConnectivity() {
+        guard settings.proxyMode != .direct else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))   // 给 xray 出站起身时间，降低刚建链的误报
+            guard let self, self.isVPNRunning, !self.isSwitchingTunnel else { return }
+            for attempt in 0..<2 {
+                if await Self.probeTunnelConnectivity() {
+                    self.logger.info("Connectivity probe OK", category: "tunnel")
+                    return
+                }
+                if attempt == 0 { try? await Task.sleep(for: .seconds(3)) }
+                guard self.isVPNRunning, !self.isSwitchingTunnel else { return }
+            }
+            self.tunnelError = "VPN 已连接，但通过当前节点无法访问外网。节点可能已失效或凭据错误"
+                + "（这类问题服务端不会回报错误，只能实测发现）。建议：长按节点「测经代理延迟」"
+                + "验证可用性，或直接换一个节点。"
+            self.logger.error("Connectivity probe failed after tunnel connected — node likely dead/bad credentials", category: "tunnel")
+        }
+    }
+
+    /// 经隧道真实访问一次 generate_204。任何 HTTP 响应都算通（204 是预期，3xx/2xx 也说明链路活着）。
+    private static func probeTunnelConnectivity() async -> Bool {
+        var request = URLRequest(url: URL(string: "https://www.google.com/generate_204")!)
+        request.timeoutInterval = 6
+        let config = URLSessionConfiguration.ephemeral
+        config.waitsForConnectivity = false
+        do {
+            let (_, response) = try await URLSession(configuration: config).data(for: request)
+            return response is HTTPURLResponse
+        } catch {
+            return false
         }
     }
 
@@ -1132,6 +1176,7 @@ public final class AppState {
                 if tunnelManager.status == .connected { break }
                 try? await Task.sleep(for: .milliseconds(100))
             }
+            verifyTunnelConnectivity()   // 热切换后同样要哨兵：配置合法 ≠ 节点真的可用
             logger.info("Clean-restart switched tunnel to \(node.name) / \(settings.proxyMode.rawValue)", category: "tunnel")
         } catch {
             tunnelError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
@@ -1163,9 +1208,14 @@ public final class AppState {
         }
         nodes = measured
         let previousId = currentNodeId
-        if let best = pickBestRespectingRegions(from: measured) {
+        if var best = pickBestRespectingRegions(from: measured) {
+            // 经代理精选（VPN 在跑且开关开着）：直连排名前几的候选逐个真实走节点测，
+            // 避开「直连快但出口绕路 / 已失效」的假好节点。VPN 没开时测不了，直接用直连结果。
+            if settings.autoSelectUsesProxiedLatency, isVPNRunning, !isSwitchingTunnel {
+                best = await refineWithProxiedLatency(fallback: best)
+            }
             currentNodeId = best.id
-            logger.info("Auto-selected \(best.name) [\(best.region)] (\(best.lastLatencyMs ?? -1)ms)", category: "app")
+            logger.info("Auto-selected \(best.name) [\(best.region)] (direct \(best.lastLatencyMs ?? -1)ms / proxied \(best.lastProxiedLatencyMs ?? -1)ms)", category: "app")
         } else {
             logger.warn("Auto-select found no viable node", category: "app")
         }
@@ -1174,6 +1224,43 @@ public final class AppState {
         if currentNodeId != previousId {
             await reapplyRunningTunnel()
         }
+    }
+
+    /// 经代理延迟精选的候选数量：串行逐个测（扩展内存约束），个数×每个 1–2 秒，
+    /// 5 个在后台调度里可接受；太多则批量测速时长失控。
+    private static let proxiedRefineCandidateCount = 5
+
+    /// 用「经代理延迟」在直连排名靠前的候选里精选最优。
+    ///
+    /// 直连延迟只反映「设备→节点」的距离：出口绕路的节点直连照样漂亮、密码错的节点
+    /// 直连也测不出来。这里取与 pickBestRespectingRegions 同口径（地区优先池）的
+    /// 直连前 K 名，逐个真实走节点测全链路延迟，选最低者；**测不通的候选直接淘汰**
+    /// （顺带把失效节点挡在自动择优之外）。全部失败 → 退回直连最优。
+    private func refineWithProxiedLatency(fallback: Node) async -> Node {
+        let viable = nodes.filter { !isEffectivelyExcluded($0) && $0.lastLatencyMs != nil }
+        var pool = viable
+        if let pref = settings.preferredRegion {
+            let inPref = viable.filter { $0.region == pref }
+            if !inPref.isEmpty { pool = inPref }
+        }
+        let candidates = pool
+            .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
+            .prefix(Self.proxiedRefineCandidateCount)
+        var bestNode: Node?
+        var bestMs = Int.max
+        for candidate in candidates {
+            guard isVPNRunning, !isSwitchingTunnel else { break }   // 中途关了 VPN 就停
+            if let ms = await measureProxiedLatency(candidate, showToastOnError: false), ms < bestMs {
+                bestMs = ms
+                bestNode = candidate
+            }
+        }
+        if let bestNode {
+            logger.info("Proxied refine picked \(bestNode.name) (\(bestMs)ms) from \(candidates.count) candidates", category: "app")
+            return bestNode
+        }
+        logger.warn("Proxied refine: all \(candidates.count) candidates failed — falling back to direct best", category: "app")
+        return fallback
     }
 
     /// 在测速结果里挑最佳节点，应用「地区排除」+「地区优先」：
@@ -1766,9 +1853,20 @@ public final class AppState {
     /// 连续几秒读不到新鲜数据（VPN 停了或没上报）才清空波形。
     private func trafficPollingLoop() async {
         var staleSeconds = 0
+        // 小组件刷新的权威触发器：NEVPNStatus 每一次**真实跃迁**（connecting→connected、
+        // disconnecting→disconnected…）都踢一脚 WidgetKit。只盯 isVPNRunning 不够——
+        // 开 VPN 时它在「提交」瞬间就翻 true（那一刻还是 connecting），隧道真正 connected
+        // 时没有任何事件再刷，widget 会永远停在「切换中」（真机踩过）。
+        var lastWidgetStatus = tunnelManager.status
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(1))
             if Task.isCancelled { break }
+            let status = tunnelManager.status
+            if status != lastWidgetStatus {
+                lastWidgetStatus = status
+                WidgetRefresher.reload()
+                logger.debug("NEVPNStatus → \(status.description)，已触发小组件刷新", category: "widget")
+            }
             syncAutoStopState()   // 定时关闭：刷新倒计时 + 识别「扩展已按定时自停」
             syncTunnelMemory()    // 扩展内存观测：读快照 + 新增告警转写进主 App 日志
             // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）

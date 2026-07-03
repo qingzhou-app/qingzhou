@@ -257,6 +257,8 @@ final class VaultSnapshotNormalizerTests: XCTestCase {
         var latencyChanged = base
         latencyChanged.nodes[0].lastLatencyMs = 999
         latencyChanged.nodes[0].lastTestedAt = Date(timeIntervalSinceNow: 100)
+        latencyChanged.nodes[0].lastProxiedLatencyMs = 456
+        latencyChanged.nodes[0].lastProxiedTestedAt = Date(timeIntervalSinceNow: 50)
         latencyChanged.currentNodeId = nil
         latencyChanged.subscriptions[0].usedBytes = 9999
 

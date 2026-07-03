@@ -27,6 +27,9 @@ public struct Settings: Codable, Sendable {
     public var proxyMode: ProxyMode
     public var autoSelectTrigger: AutoSelectTrigger
     public var autoSelectIntervalSeconds: TimeInterval   // 仅在 .interval / 组合时有效
+    /// 自动择优时用「经代理延迟」精选（VPN 运行中才生效）：直连延迟先排序取前几名，
+    /// 再逐个真实走节点测全链路延迟选最优 —— 避开「直连快但出口绕路 / 已失效」的假好节点。
+    public var autoSelectUsesProxiedLatency: Bool
     /// 后台周期性"只测速、不换节点"间隔，秒。0 = 关闭。
     /// 这跟 autoSelect 是两回事：autoSelect 会偷偷把 currentNodeId 改成最快的那个；
     /// 这个只刷新延迟列，currentNodeId 不动，让 UI 的延迟数据保持新鲜。
@@ -60,6 +63,7 @@ public struct Settings: Codable, Sendable {
         proxyMode: ProxyMode = .rule,
         autoSelectTrigger: AutoSelectTrigger = .onAppLaunch,
         autoSelectIntervalSeconds: TimeInterval = 30 * 60,
+        autoSelectUsesProxiedLatency: Bool = true,
         autoMeasureIntervalSeconds: TimeInterval = 30 * 60,
         subscriptionRefreshIntervalSeconds: TimeInterval = 3600,
         nodeSortOrder: NodeSortOrder = .latency,
@@ -78,6 +82,7 @@ public struct Settings: Codable, Sendable {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
         self.autoSelectIntervalSeconds = autoSelectIntervalSeconds
+        self.autoSelectUsesProxiedLatency = autoSelectUsesProxiedLatency
         self.autoMeasureIntervalSeconds = autoMeasureIntervalSeconds
         self.subscriptionRefreshIntervalSeconds = subscriptionRefreshIntervalSeconds
         self.nodeSortOrder = nodeSortOrder
@@ -97,6 +102,7 @@ public struct Settings: Codable, Sendable {
     /// 旧版没有这些 interval 字段；解码时给个默认值。
     enum CodingKeys: String, CodingKey {
         case proxyMode, autoSelectTrigger, autoSelectIntervalSeconds
+        case autoSelectUsesProxiedLatency
         case autoMeasureIntervalSeconds
         case subscriptionRefreshIntervalSeconds
         case nodeSortOrder, excludedRegions, preferredRegion
@@ -112,6 +118,7 @@ public struct Settings: Codable, Sendable {
         self.proxyMode = try c.decodeIfPresent(ProxyMode.self, forKey: .proxyMode) ?? .rule
         self.autoSelectTrigger = try c.decodeIfPresent(AutoSelectTrigger.self, forKey: .autoSelectTrigger) ?? .onAppLaunch
         self.autoSelectIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoSelectIntervalSeconds) ?? 30 * 60
+        self.autoSelectUsesProxiedLatency = try c.decodeIfPresent(Bool.self, forKey: .autoSelectUsesProxiedLatency) ?? true
         self.autoMeasureIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoMeasureIntervalSeconds) ?? 30 * 60
         self.subscriptionRefreshIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .subscriptionRefreshIntervalSeconds) ?? 3600
         self.nodeSortOrder = try c.decodeIfPresent(NodeSortOrder.self, forKey: .nodeSortOrder) ?? .latency

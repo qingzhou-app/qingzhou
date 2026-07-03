@@ -186,6 +186,10 @@ public enum VaultSnapshotNormalizer {
             var n = node
             n.lastLatencyMs = nil
             n.lastTestedAt = nil
+            // 经代理延迟同为「这台设备经这条隧道」的瞬态测量（#11B 后补：漏剥会让每次
+            // 经代理测速都产生新 revision，把恢复弹窗降噪的努力全吃掉）
+            n.lastProxiedLatencyMs = nil
+            n.lastProxiedTestedAt = nil
             return n
         }
         s.subscriptions = s.subscriptions.map { subscription in

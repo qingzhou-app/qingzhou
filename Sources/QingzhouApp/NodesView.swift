@@ -7,6 +7,8 @@ public struct NodesView: View {
     @State private var searchText: String = ""
     @State private var showAdd = false
     @State private var showScanner = false
+    /// 「什么是经代理延迟？」科普弹窗（工具栏「⋯」菜单入口）
+    @State private var showProxiedLatencyExplainer = false
     @State private var addInput: String = ""
     @State private var addError: String?
     @State private var qrShareNode: Node?
@@ -115,6 +117,11 @@ public struct NodesView: View {
                     if !state.isVPNRunning {
                         Text("经代理测速需要 VPN 运行中")
                     }
+                    Button {
+                        showProxiedLatencyExplainer = true
+                    } label: {
+                        Label("什么是经代理延迟？", systemImage: "info.circle")
+                    }
                     Divider()
                     Button {
                         let text = NodeEncoder.shareLinks(state.nodes)
@@ -140,13 +147,30 @@ public struct NodesView: View {
                 .help("批量操作：经代理测速 / 导出全部节点")
             }
         }
+        .alert("经代理延迟是什么？", isPresented: $showProxiedLatencyExplainer) {
+            Button("知道了", role: .cancel) {}
+        } message: {
+            Text("""
+            普通测速（无图标的数字）是设备直接对节点服务器握手一次，只说明「节点离你近不近、\
+            活着没」——密码错误的节点它也照样显示很快。
+
+            经代理延迟（带 ⋱ 图标）是 VPN 运行时，让 xray 携带完整协议真实通过该节点访问一次 \
+            google.com，测出的是你实际用它上网的端到端耗时——协议握手、节点转发、出口线路质量\
+            全部包含。数值天然比直连大，但它才是真实体感：直连快、经代理慢 = 节点出口绕路；\
+            直连快、经代理失败 = 节点不可用（如凭据错误）。
+            """)
+        }
         .sheet(isPresented: $showAdd) { addSheet }
         .sheet(item: $qrShareNode) { node in qrShareSheet(node) }
         .sheet(item: $detailNode) { node in
             NavigationStack {
                 NodeDetailView(state: state, node: node)
             }
+            // ⚠️ 这个 minWidth 只能给 macOS：iPhone 屏宽不足 480pt，强设会把 sheet
+            // 内容撑出屏幕，观感像「整页被放大」（真机验收打回）。iOS 交给系统 sheet 布局。
+            #if os(macOS)
             .frame(minWidth: 480, minHeight: 520)
+            #endif
         }
         #if os(iOS)
         .sheet(isPresented: $showScanner) { scannerSheet }
@@ -356,7 +380,7 @@ private struct NodeRow: View {
                     if state.currentNodeId == node.id {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                     }
-                    Text(node.name).font(.body)
+                    Text(node.name).font(.body).lineLimit(1)
                     if node.isExcluded {
                         tag("已排除", color: .secondary)
                     } else if state.settings.excludedRegions.contains(node.region) {
@@ -369,19 +393,24 @@ private struct NodeRow: View {
                 Text("\(node.protocolType.rawValue.uppercased()) · \(node.host):\(node.port)")
                     .font(.caption.monospaced()).foregroundStyle(.secondary)
             }
-            Spacer()
-            // 两个延迟维度并排：左「经代理」（VPN 开着时真实走节点测的全链路延迟）、
-            // 右「直连」（TCP 握手 RTT）。经代理列只在测过 / 测速中才占位。
-            if state.proxiedMeasuringNodeIds.contains(node.id) {
-                ProgressView().controlSize(.small)
-            } else if let pms = node.lastProxiedLatencyMs {
-                proxiedLatencyChip(pms)
+            Spacer(minLength: 8)
+            // 两个延迟维度**竖排**：上「直连」（TCP 握手 RTT）、下「经代理」（VPN 开着时
+            // 真实走节点测的全链路延迟）。曾经横排 —— iPhone 窄屏 + 长节点名会把其中
+            // 一枚挤出屏幕（真机验收打回）。竖排利用行高（名称本就两行），永不互挤；
+            // chips 加 layoutPriority，宁可截断节点名也不截断延迟。
+            VStack(alignment: .trailing, spacing: 3) {
+                if state.measuringNodeIds.contains(node.id) {
+                    ProgressView().controlSize(.small)
+                } else {
+                    latencyChip(node.lastLatencyMs)
+                }
+                if state.proxiedMeasuringNodeIds.contains(node.id) {
+                    ProgressView().controlSize(.small)
+                } else if let pms = node.lastProxiedLatencyMs {
+                    proxiedLatencyChip(pms)
+                }
             }
-            if state.measuringNodeIds.contains(node.id) {
-                ProgressView().controlSize(.small)
-            } else {
-                latencyChip(node.lastLatencyMs)
-            }
+            .layoutPriority(1)
         }
         .contentShape(Rectangle())
         .onTapGesture { state.select(node) }

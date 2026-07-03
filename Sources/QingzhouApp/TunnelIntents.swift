@@ -37,6 +37,9 @@ enum TunnelIntentRunner {
         // 重载时间线 —— 提交即返回会让重载落在 connecting 窗口，widget 长时间停在「切换中」
         // （真机上 .after(15s) 的补刷并不可靠，实测会卡住）。
         await waitUntilSettled(mgr)
+        // 主动刷全部表面（主屏 + 锁屏 + 控制中心）：系统只自动重载被点的那个 widget kind，
+        // 从主屏按钮开的 VPN 不刷控制中心 → 各处状态不一致（真机踩过）。
+        WidgetRefresher.reload()
         log.info("start: settled at \(mgr.status.rawValue)")
     }
     @MainActor static func stop() async throws {
@@ -52,6 +55,7 @@ enum TunnelIntentRunner {
         try? await mgr.setOnDemandEnabled(false)
         mgr.stop()
         await waitUntilSettled(mgr)
+        WidgetRefresher.reload()
         log.info("stop: settled at \(mgr.status.rawValue)")
     }
     /// 当前隧道是否在跑（含建立中 / 重连中）。给状态查询 Intent 用。
@@ -81,6 +85,7 @@ enum TunnelIntentRunner {
             }
         }
         await waitUntilSettled(mgr)
+        WidgetRefresher.reload()
         log.info("toggle: settled at \(mgr.status.rawValue)")
     }
 

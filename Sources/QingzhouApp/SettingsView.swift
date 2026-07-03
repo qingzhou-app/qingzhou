@@ -177,6 +177,11 @@ public struct SettingsView: View {
             Text("开启后会主动把「当前节点」切到测速最快的那个 —— 如果你手选了节点不想被换，关掉这一项。")
                 .font(.caption2).foregroundStyle(.secondary)
 
+            Toggle("择优用经代理延迟精选", isOn: state.setting(\.autoSelectUsesProxiedLatency))
+            Text("VPN 运行中择优时，把直连最快的前 5 个节点真实走一遍代理再选（更准，多花几秒）："
+                 + "能避开「直连快但出口绕路或已失效」的假好节点。VPN 未开启时自动退回直连结果。")
+                .font(.caption2).foregroundStyle(.secondary)
+
             Picker("订阅自动刷新", selection: state.setting(\.subscriptionRefreshIntervalSeconds)) {
                 Text("关闭").tag(TimeInterval(0))
                 Text("15 分钟").tag(TimeInterval(15 * 60))

@@ -49,9 +49,19 @@ always-on in the background, or wired into your automations.*
 **轻舟**：一键批量并发测速；自动定时测速；测完**自动切到最优节点**（切换后 toast 告知，
 不打断你手头的事）。网络变差时，它比你先发现、先处理。
 
-*EN: Concurrent batch latency tests, scheduled auto-testing, and automatic best-node
-switching (with a toast, not an interruption). When the network degrades, Qingzhou
-notices before you do.*
+**独有的「经代理延迟」双维度测速**：市面上多数客户端只测「设备到节点」的直连握手——
+它只说明节点离你近，测不出出口绕路，更测不出**密码错误 / 已下线的假活节点**（直连延迟
+照样漂亮）。轻舟额外提供全链路实测：VPN 运行中让 xray 携带完整协议**真实通过节点访问一次
+google.com**，测出你实际上网的端到端耗时。两个数字并排一比：直连快、经代理慢 = 出口绕路；
+直连快、经代理失败 = 节点根本不可用。**自动择优默认用它精选**——先按直连排序取前几名，
+再逐个真实走一遍代理选真冠军，假好节点永远混不进你的「当前节点」。
+
+*EN: Dual-dimension latency. Most clients only measure the TCP handshake to the node —
+which says nothing about exit routing, and happily shows great numbers for dead or
+misconfigured nodes. Qingzhou additionally measures **through-proxy latency**: while the
+VPN is running, xray makes a real request to google.com through the node, capturing the
+true end-to-end experience. Auto-select uses it to re-rank the top direct candidates, so
+a "fast-looking" dead node never becomes your current node.*
 
 ### ② 定时关闭
 
