@@ -1,4 +1,5 @@
 import Foundation
+import NetworkExtension
 import Observation
 // 不全量 `import SwiftUI` —— SwiftUI 里也有一个叫 Settings 的类型（用于 Settings scene），
 // 会和我们的 QingzhouCore.Settings 冲突。只 import 需要的 Binding 类型。
@@ -863,6 +864,30 @@ public final class AppState {
         )
     }
 
+    /// 启动时采认已在跑的隧道：隧道扩展是独立进程，主 App 被杀重开 / 替换安装后它照常
+    /// 转发流量，但本进程的 isVPNRunning 初值是 false —— 开关会错误显示「关闭」。
+    /// 这里 load 系统 VPN 配置、按真实 NEVPNStatus 回填。只在启动路径跑一次（幂等）；
+    /// 本进程内的启停由各自流程维护，不受影响。
+    func adoptRunningTunnelState() async {
+        guard !isVPNRunning, !isSwitchingTunnel else { return }
+        try? await tunnelManager.load()
+        guard Self.isTunnelActive(tunnelManager.status) else { return }
+        isVPNRunning = true
+        // 会话起点 / 定时截止由轮询从 App Group 会话标记回填。本进程没有 start 记录，
+        // 放宽 lastTunnelStartAt 下限：标记 stoppedAt == nil 且系统状态确为连接，标记可信。
+        lastTunnelStartAt = .distantPast
+        scheduleIPRefresh()
+        logger.info("Adopted running tunnel from system (status: \(tunnelManager.status.description))", category: "tunnel")
+    }
+
+    /// NEVPNStatus 里算「隧道在跑」的状态（含建立中 / 网络切换重连中）。
+    static func isTunnelActive(_ status: NEVPNStatus) -> Bool {
+        switch status {
+        case .connected, .connecting, .reasserting: return true
+        default: return false
+        }
+    }
+
     /// 启动 tunnel。捕获所有错误写到 `tunnelError`，UI 弹 alert。
     ///
     /// 流程：
@@ -1389,6 +1414,11 @@ public final class AppState {
     /// 启动后台调度：根据设置定期跑自动择优 + 订阅刷新；同时启动示例连接产线（直到真隧道接入）。
     public func startSchedulers() {
         stopSchedulers()
+        // 与系统实际 VPN 状态对齐：隧道扩展是独立进程，主 App 被杀重开（或替换安装）后
+        // 它可能还在跑 —— isVPNRunning 初值 false 会让开关错误显示「关闭」，实际流量仍在代理。
+        Task { @MainActor [weak self] in
+            await self?.adoptRunningTunnelState()
+        }
         // iCloud vault 启动检查（云端更新 → 提示恢复；无云端文档 → 镜像上去）
         Task { @MainActor [weak self] in
             await self?.runCloudVaultStartupCheck()

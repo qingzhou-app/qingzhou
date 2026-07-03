@@ -326,4 +326,36 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(state.connections.allSatisfy { !$0.isActive })
         XCTAssertTrue(state.connections.allSatisfy { $0.closedAt == t0 + 30 })
     }
+
+    // MARK: - 启动采认在跑的隧道（主 App 被杀重开 / 替换安装后开关显示要对）
+
+    func testTunnelActiveStatusMapping() {
+        XCTAssertTrue(AppState.isTunnelActive(.connected))
+        XCTAssertTrue(AppState.isTunnelActive(.connecting))
+        XCTAssertTrue(AppState.isTunnelActive(.reasserting))
+        XCTAssertFalse(AppState.isTunnelActive(.disconnected))
+        XCTAssertFalse(AppState.isTunnelActive(.disconnecting))
+        XCTAssertFalse(AppState.isTunnelActive(.invalid))
+    }
+
+    func testAdoptRunningTunnelMatchesSystemStatus() async {
+        // 测试宿主读的是这台机器的真实 VPN 配置（开发机上轻舟可能正在跑）——
+        // 不能断言固定值，断言「采认结果与系统实际状态一致」。
+        let state = makeState()
+        XCTAssertFalse(state.isVPNRunning)
+        await state.adoptRunningTunnelState()
+        XCTAssertEqual(
+            state.isVPNRunning,
+            AppState.isTunnelActive(state.tunnelManager.status),
+            "开关必须与系统 NEVPNStatus 对齐（这正是被修的 bug）"
+        )
+    }
+
+    func testAdoptRunningTunnelRespectsInProgressState() async {
+        // 本进程已经认为在跑 / 正在切换：采认不得干扰（幂等 guard）
+        let state = makeState()
+        state.isVPNRunning = true
+        await state.adoptRunningTunnelState()
+        XCTAssertTrue(state.isVPNRunning)
+    }
 }
