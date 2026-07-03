@@ -1,9 +1,12 @@
 # Apple Developer Organization 账号 — 从 Individual 升级 / 注册指南
 
-> 这一步是 [App Store 上架](APP_STORE.md#01-个人开发者账号-vs-apple-guideline-54)的硬阻塞。
-> 个人(Individual) Apple Developer 账号无法提交 VPN 类 App,必须用 Organization 账号。
+> ✅ **已完成（2026-07-03）**：组织账号注册完成,[App Store 上架](APP_STORE.md) 的硬阻塞解除,
+> 后续在新 org team 下重建签名资产的步骤见 [APP_STORE.md §10](APP_STORE.md)。
+> 以下保留注册过程指南备查。
 >
-> 本指南整理 D-U-N-S 编号申请、Apple Org Enrollment、过渡期 TestFlight 方案。
+> 背景：个人(Individual) Apple Developer 账号无法提交 VPN 类 App,必须用 Organization 账号
+> （见 [APP_STORE.md §0.1](APP_STORE.md)）。本指南整理 D-U-N-S 编号申请、Apple Org Enrollment、
+> 过渡期 TestFlight 方案。
 
 ---
 

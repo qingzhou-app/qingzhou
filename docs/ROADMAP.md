@@ -13,7 +13,7 @@
 | 桥接代码 | **自写最小 PlatformInterface** | 不 vendor sing-box-for-apple（避免 GPL 污染） |
 | MVP 平台 | **iOS only** | App Store 主战场；macOS S6 跟上 |
 | 订阅 / 节点 / UI | **复用 phase 1.5+** | 已经做好，不重写 |
-| 上架主体 | **个人开发者账号** | 一人独立开发 |
+| 上架主体 | ~~个人开发者账号~~ → **组织版 Apple Developer 账号**（2026-07-03 注册完成） | Guideline 5.4 强制 VPN 类必须 Org；一人独立开发不变 |
 
 ## 12 Sprint 路线图（每 sprint 2 周）
 
@@ -28,7 +28,7 @@
 | **S6** | 大部分已就位 | macOS port | macOS 版本（共用 Tunnel 桥接代码）已基本可用；macOS 系统扩展 / 内容过滤相关收尾中 |
 | **S7** | 已完成 | 体验差异化 | ✅ 自动测速 + 自动择优（择优后 toast 提示）+ region prefer/exclude + 切模式自动重启隧道 |
 | **S8** | W15–16 | hysteria2 | ✅ 已提前完成：打包的 xray-core 自带 hysteria 传输，hy2 走原生 `Hysteria2Converter`（无需单独 lib） |
-| **S9** | 进行中 | Widget + Shortcuts | Shortcuts / App-Intents 引擎已写好（`TunnelIntents.swift` + `AppLaunchWatcher.swift`）；**剩下：新建 Widget app-extension target + macOS 自动连 UI 接线** |
+| **S9** | 进行中 | Widget + Shortcuts | Shortcuts / App-Intents 引擎已写好（`TunnelIntents.swift` + `AppLaunchWatcher.swift`）；**Widget 全家桶 + AppShortcutsProvider + GetVPNStatusIntent + macOS 自动连接线：并行实现中**（详见「当前状态」） |
 | **S10** | 进行中 | Clash YAML | `ClashConfigParser` 已存在（trojan/vmess/vless/ss/hy2）；**剩下：vmess-snell/ssr/http/socks5 暂跳过** |
 | **S11** | W21–22 | i18n + Polish | 简繁英日 + 暗色模式 + Onboarding |
 | **S12** | W23–24 | v1.0 正式版 | 反馈修一遍，1.0 release |
@@ -108,9 +108,13 @@
 | Privacy Policy 起草 | 低 | 低 | 用模板（VPN apps 标准 Privacy Policy 框架） |
 | 真机 Bug 调试慢（没 macOS 同步 build） | 中 | 中 | S2 之后保持每周至少 1 次真机回归 |
 
-## 当前状态 (2026-07-01)
+## 当前状态 (2026-07-03)
 
-**Sprint 进度**：S1 ✅ · S2 代码完成（剩真机测一次）· S3 ✅ · S6 大部分已就位 · S7 ✅ · S8 ✅（提前）· S9 引擎完成（Widget target 未建）· S10 部分（ClashConfigParser 已存在）。剩下主线：S4/S5（App Store 上架）、S9 Widget target、S11 i18n/暗色/onboarding、S12 v1.0。
+**Sprint 进度**：S1 ✅ · S2 代码完成（真机翻墙日常在用，正式勾掉走 [ACCEPTANCE.md](ACCEPTANCE.md) §3）· S3 ✅ · S6 大部分已就位 · S7 ✅ · S8 ✅（提前）· S9 实现中（Widget 全家桶 + Shortcuts 全套并行开发）· S10 部分（ClashConfigParser 已存在）· **S11 英文 i18n 提前立项**（上国际区 App Store 需要，先做英文，简繁日照原计划）。剩下主线：S4/S5（App Store 上架，**组织账号已就位**）、S9 收尾、S11、S12 v1.0。
+
+**⚠️ 待验收（统一清单见 [ACCEPTANCE.md](ACCEPTANCE.md)）**：2026-07-03 决策——组织账号已注册完成，
+原「#11B 等 App Store 正式版再验收」策略**取消**，所有待验收项**现在就验收**（TestFlight / 开发版真机）。
+涵盖：#11B 四项、流量波形 a1、S2 正式勾掉、iCloud 弹窗降噪、隧道状态采认，以及 Widget/Shortcuts 占位项。
 
 **已完成并验证（206 单测全过）**：
 - 协议转换器 trojan/vmess/vless/ss + hysteria2（原生 `Hysteria2Converter`）+ VLESS+REALITY
@@ -123,32 +127,54 @@
 - FakeDNS 反查：把 fake IP（198.18.x.x IPv4 + fc00::/18 IPv6）映射回域名
 - 域名分析（聚合 + 每日摘要 + 规则建议）已在真实数据上工作
 
-**⚠️ 待补验收（#11B libXray 能力接入，2026-07-03）**：用户决定暂按通过、**已合 main**
+**#11B libXray 能力接入（2026-07-03）**：当时用户决定暂按通过、**已合 main**
 （merge 1106005；合并后 526 单测全绿 + iOS/macOS 双平台编译通过，但四项功能都没在真机上人工验收过）。
-计划：先上架 App Store，等有空后**用正式版（App Store 版）**按下面清单逐项补验收（均需真机 + 真节点）：
-1. **经代理延迟**：开 VPN → 节点页长按「测经代理延迟」出第二个延迟 chip；工具栏「⋯」批量测带进度；
-   关 VPN 时入口禁用、原直连测速不变。重点盯扩展内存（测速时设置页诊断区 footprint 别逼近 40MB）
-2. **配置预检**：VPN 开着切到坏配置节点 → 提示「已保持当前节点连接不变…」且**不断网**；
-   冷启动坏节点 → alert 显示 xray 可读错误（fetchLastDisconnectError 链路）
-3. **代理/直连拆分**：规则模式下首页流量卡出现「代理 / 直连」行 + 占比；关 VPN 几秒后消失；
-   顺带确认 metrics inbound 没影响 VPN 启动（拿不到端口时应静默不开统计）
-4. **节点导出**：「复制分享链接」「导出全部节点链接」→ 粘回添加节点应全量解析一致；
-   与其他客户端（v2rayN 等）互导一次更好
+四项 = **经代理延迟 / 配置预检 / 代理直连拆分 / 节点导出**。
+验收策略已更新（2026-07-03）：不再等正式版，**立即用 TestFlight / 开发版真机验收**，
+逐项步骤与验收要点（含扩展内存 footprint 别逼近 40MB 等）见 [ACCEPTANCE.md](ACCEPTANCE.md) §1。
+
+**本轮新完成（已修复、待验收，见 [ACCEPTANCE.md](ACCEPTANCE.md) §4–§5）**：
+- **iCloud 恢复弹窗降噪**（54aae48）：内容哈希一致时静默采认不弹窗；「暂不恢复」按云端 revision
+  持久化；只有云端真有用户内容变化才再弹
+- **启动时采认在跑的隧道**（e1f9df6）：主 App 被杀重开 / Xcode 替换安装后，开关与系统
+  `NEVPNStatus` 对齐（显示开 + 时长正确），不再假显示「关闭」
+
+**geo 数据闭环 ✅ 已全部完成（2026-07-03，从待办移入）**：
+- **规则模式启动提速**：内置改为 v2fly `geoip-only-cn-private.dat`（224KB，
+  `scripts/update-geoip.sh` 更新），非 cn/private 的用户 GEOIP 规则转换层跳过 + RulesView 提示
+- **完整版 geo 下载已实现**（之前记的「待做」过时了）：`GeoDataManager.downloadFullGeoIP`——
+  双源（主源 qingzhou-app/geo-data releases + 备源 v2fly 官方）+ sha256 校验不过**绝不落盘**；
+  RulesView 已接一键下载 UI + GEOIP 三态提示（完整版就位 / 需下载 / 精简版说明）
 
 **仍待办（真机 / target 层面）**：
-- ~~**规则模式启动提速**：把 22MB 全球 `geoip.dat` 换成精简版~~ ✅ 已完成（2026-07-03）：
-  内置改为 v2fly `geoip-only-cn-private.dat`（224KB，`scripts/update-geoip.sh` 更新），
-  非 cn/private 的用户 GEOIP 规则转换层跳过 + RulesView 提示；完整版 geo 下载待做
 - **热切换改回原地重配**：现在热切换走 stop → 等扩展进程完全退出 → start 全新进程
   （修 xray 同进程 stop→run 卡死时的刻意取舍，见 `AppState.performReapply` 注释），
   每次切换都冷启动、重建 geo 匹配器。待真机拿到 xray 卡死的具体报错后，
   评估恢复 `reconfigureInPlace`（扩展侧 handleAppMessage 代码保留着）实现无感切换（2026-07-02）
-- 流量波形（a1）真机验证一次
-- 新建 Widget app-extension target + macOS 自动连 UI 接线（Shortcuts/App-Intents 引擎已写好）
-- S2 真机测试通过（见 [S2-TESTING.md](S2-TESTING.md)）
-- App Store 上架清单（见 [APP_STORE.md](APP_STORE.md)）——**硬阻塞：需要组织版 Apple Developer 账号（Guideline 5.4）**，外加 1024 图标导出、`PRIVACY.md` 生效日期填写 + GitHub Pages 部署、截图、TestFlight
+- 流量波形（a1）真机验证一次 → 走 [ACCEPTANCE.md](ACCEPTANCE.md) §2
+- S2 真机测试正式勾掉 → 走 [ACCEPTANCE.md](ACCEPTANCE.md) §3（日常已在用，确认即关闭）
+- **S9 并行实现中**（实现完成后按 [ACCEPTANCE.md](ACCEPTANCE.md) §6 验收）：
+  - Widget 全家桶：主屏 systemSmall 开关、iOS 锁屏 accessory、iOS 18 控制中心 ControlWidget、
+    macOS 通知中心
+  - AppShortcutsProvider（快捷指令拿来即用 + Siri 短语）
+  - GetVPNStatusIntent（自动化条件分支）
+  - macOS「打开指定 App 自动开 VPN / 全部退出自动关」（`AppLaunchWatcher` 接线 + 设置 UI）
+- App Store 上架（见 [APP_STORE.md](APP_STORE.md) §10 step-by-step）——~~硬阻塞：组织账号~~
+  ✅ **组织账号已注册完成（2026-07-03）**；剩：identifier 在新 org team 下重建、1024 图标导出、
+  `PRIVACY.md` 生效日期填写 + GitHub Pages 部署、截图、TestFlight、审核测试节点准备
 
-**已搁置**：macOS 来源 App 标注（内容过滤 + XPC）现由 `FeatureFlags.sourceAppLabeling=false` 关闭。
+**排队立项（按优先级）**：
+1. **英文 i18n 提前**（S11 提前，上国际区 App Store 需要；简繁日按原计划）
+2. **Clash 导入扩展**：现支持 trojan/ss/vmess/vless/hysteria2，补 http/socks5/ssr/snell 等；
+   顺带做其他客户端迁移导入
+3. **Live Activity**（灵动岛 / 锁屏实时活动显示连接状态与流量）
+4. **Focus 联动**（专注模式切换联动 VPN 开关）
+5. **App 内自动化玩法引导页**（把 Widget / 快捷指令 / 自动开关的玩法教给普通用户）
+
+**来源 App 标注（macOS 内容过滤 + XPC）**：**已启用**——代码里 `FeatureFlags.sourceAppLabeling = true`
+（此前文档写「已由 flag=false 搁置」有误，实际是 **opt-in**：设置 → macOS 集成一键启用 +
+批准引导，不启用不打扰）。遗留 TODO 保留：关联键升级为**端口 + 时间窗**，进一步消除端口复用误标
+（见 `FeatureFlags.swift` 注释）。
 
 ---
 
