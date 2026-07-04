@@ -531,10 +531,12 @@ private struct NodeRow: View {
     }
 
     private func proxiedColor(for ms: Int) -> Color {
-        // 经代理延迟 = 直连 RTT + 协议/TLS 握手 + HTTP + 出口跳数，几百毫秒到 1 秒本就正常。
-        // 旧阈值（600/1500）太严，好节点也判黄/红看着吓人 —— 放宽：<1200 绿、<2500 橙、其余红。
-        if ms < 1200 { return .green }
-        if ms < 2500 { return .orange }
+        // 经代理延迟 = 直连 RTT + 协议/TLS 握手 + HTTP + 出口跳数，是**冷测**（每次新起临时
+        // xray + 全新 TLS），会放大真实浏览体感的 2–3 倍。阈值取「体感确实跟手」的口径：
+        // <900 绿（稳态 ~300–500ms，跟手）、<2200 橙（稍沉但可用）、其余红。
+        // 注意：这只反映**响应速度**，不反映带宽 —— 延迟低但带宽小的节点看视频照样卡。
+        if ms < 900 { return .green }
+        if ms < 2200 { return .orange }
         return .red
     }
 }
