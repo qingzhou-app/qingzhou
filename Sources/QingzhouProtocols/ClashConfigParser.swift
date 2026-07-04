@@ -144,15 +144,33 @@ public enum ClashConfigParser {
             if (raw["tls"] as? Bool) == true { node.parameters["security"] = "tls" }
             if let sni = raw["servername"] as? String { node.parameters["sni"] = sni }
             if let flow = raw["flow"] as? String, !flow.isEmpty { node.parameters["flow"] = flow }
+            applyRealityOpts(raw, into: &node)   // 放最后：reality 覆盖上面的 security=tls
         }
 
+        // trojan 也可能走 reality（Clash.Meta 支持）
+        if proto == .trojan { applyRealityOpts(raw, into: &node) }
+
         return node
+    }
+
+    /// 把 Clash 的 `reality-opts`（public-key / short-id）+ client-fingerprint 映射到
+    /// converter 认的参数键（pbk / sid / fp / security=reality）。
+    /// **不映射 reality 参数 = vless+reality 节点走 Clash 订阅时 xray 起不来、连不上**
+    /// （分享链接路径全 query 透传所以没这问题；机场兼容审计 P1）。reality 现在极普遍。
+    static func applyRealityOpts(_ raw: [String: Any], into node: inout Node) {
+        guard let reality = raw["reality-opts"] as? [String: Any] else { return }
+        node.parameters["security"] = "reality"
+        if let pbk = reality["public-key"] as? String { node.parameters["pbk"] = pbk }
+        if let sid = reality["short-id"] as? String { node.parameters["sid"] = sid }
     }
 
     /// 提取 transport 层（network=ws/grpc/h2/tcp/...）参数。
     static func extractTransportParameters(_ raw: [String: Any]) -> [String: String] {
         var params: [String: String] = [:]
         if let net = raw["network"] as? String { params["net"] = net }
+        // alpn（数组）+ client-fingerprint —— 各协议通用，reality/tls 都要用（审计 P1）
+        if let alpn = raw["alpn"] as? [String], !alpn.isEmpty { params["alpn"] = alpn.joined(separator: ",") }
+        if let fp = raw["client-fingerprint"] as? String, !fp.isEmpty { params["fp"] = fp }
 
         if let ws = raw["ws-opts"] as? [String: Any] {
             if let path = ws["path"] as? String { params["path"] = path }

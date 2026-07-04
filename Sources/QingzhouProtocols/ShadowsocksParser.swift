@@ -32,12 +32,20 @@ enum ShadowsocksParser {
         let userInfoB64 = String(rest[..<atIdx])
         let remainder = String(rest[rest.index(after: atIdx)...])
 
-        guard let decoded = String.fromPermissiveBase64(userInfoB64),
-              let colon = decoded.firstIndex(of: ":") else {
-            throw ProxyURLParseError.invalidBase64
+        // userinfo 优先按 base64(method:password) 解；解不出再按**明文** method:password 兜底。
+        // ss-2022（`2022-blake3-*:password`）与部分面板导出的 SIP002 是明文 userinfo，
+        // 含 `:`/`-` 不是合法 base64 —— 旧实现只认 base64 会把整批 ss 节点丢掉（机场兼容审计 P0）。
+        let method: String
+        let password: String
+        if let decoded = String.fromPermissiveBase64(userInfoB64), let colon = decoded.firstIndex(of: ":") {
+            method = String(decoded[..<colon])
+            password = String(decoded[decoded.index(after: colon)...])
+        } else {
+            let plain = userInfoB64.removingPercentEncoding ?? userInfoB64
+            guard let colon = plain.firstIndex(of: ":") else { throw ProxyURLParseError.invalidBase64 }
+            method = String(plain[..<colon])
+            password = String(plain[plain.index(after: colon)...])
         }
-        let method = String(decoded[..<colon])
-        let password = String(decoded[decoded.index(after: colon)...])
 
         // 把 remainder 重组成可以让 URLComponents 解析的形式
         guard let comps = URLComponents(string: "ss://placeholder@\(remainder)") else {

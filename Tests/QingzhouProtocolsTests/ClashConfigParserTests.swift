@@ -13,6 +13,38 @@ final class ClashConfigParserTests: XCTestCase {
         XCTAssertTrue(ClashConfigParser.isClashConfig(yaml))
     }
 
+    func testParseVLESSRealityFromClash() throws {
+        // Clash.Meta vless+reality —— 旧实现漏抽 reality-opts，节点走 Clash 订阅连不上（审计 P1）
+        let yaml = """
+        proxies:
+          - name: 🇭🇰 香港 reality
+            type: vless
+            server: hk.example.com
+            port: 443
+            uuid: 11111111-2222-3333-4444-555555555555
+            network: tcp
+            tls: true
+            servername: www.microsoft.com
+            flow: xtls-rprx-vision
+            client-fingerprint: chrome
+            alpn: [h2, http/1.1]
+            reality-opts:
+              public-key: abcdefPUBKEYxyz
+              short-id: 0123abcd
+        """
+        let (nodes, errs) = try ClashConfigParser.parse(yaml)
+        XCTAssertTrue(errs.isEmpty)
+        let node = try XCTUnwrap(nodes.first)
+        XCTAssertEqual(node.protocolType, .vless)
+        XCTAssertEqual(node.parameters["security"], "reality", "reality-opts 存在时 security 应是 reality（覆盖 tls）")
+        XCTAssertEqual(node.parameters["pbk"], "abcdefPUBKEYxyz")
+        XCTAssertEqual(node.parameters["sid"], "0123abcd")
+        XCTAssertEqual(node.parameters["fp"], "chrome")
+        XCTAssertEqual(node.parameters["sni"], "www.microsoft.com")
+        XCTAssertEqual(node.parameters["flow"], "xtls-rprx-vision")
+        XCTAssertEqual(node.parameters["alpn"], "h2,http/1.1")
+    }
+
     func testDetectClashProviders() {
         let yaml = """
         proxy-providers:

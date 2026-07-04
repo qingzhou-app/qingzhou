@@ -46,6 +46,25 @@ final class QingzhouProtocolsTests: XCTestCase {
         XCTAssertEqual(node.name, "SS-Node")
     }
 
+    func testParseShadowsocks2022PlaintextUserInfo() throws {
+        // ss-2022 / 部分面板：userinfo 是明文 method:password（非 base64，含 `:`/`-`）。
+        // 旧实现只认 base64 会抛错丢节点（机场兼容审计 P0）。
+        let url = "ss://2022-blake3-aes-256-gcm:mypasswd123@1.2.3.4:8388#SS2022"
+        let node = try ProxyURLParser.parse(url)
+        XCTAssertEqual(node.cipher, "2022-blake3-aes-256-gcm")
+        XCTAssertEqual(node.password, "mypasswd123")
+        XCTAssertEqual(node.host, "1.2.3.4")
+        XCTAssertEqual(node.port, 8388)
+    }
+
+    func testParseShadowsocksPlaintextPercentEncodedPassword() throws {
+        // 明文 userinfo 里密码含特殊字符 percent-encode
+        let url = "ss://aes-256-gcm:p%40ss%3Aword@host.example:443#n"
+        let node = try ProxyURLParser.parse(url)
+        XCTAssertEqual(node.cipher, "aes-256-gcm")
+        XCTAssertEqual(node.password, "p@ss:word", "第一个 : 后全是密码，含解码后的特殊字符")
+    }
+
     func testParseShadowsocksLegacy() throws {
         // base64("aes-128-gcm:password@1.2.3.4:8388") =
         // "YWVzLTEyOC1nY206cGFzc3dvcmRAMS4yLjMuNDo4Mzg4"

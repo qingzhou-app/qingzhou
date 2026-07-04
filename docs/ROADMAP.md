@@ -163,6 +163,14 @@
   ✅ **组织账号已注册完成（2026-07-03）**；剩：identifier 在新 org team 下重建、1024 图标导出、
   `PRIVACY.md` 生效日期填写 + GitHub Pages 部署、截图、TestFlight、审核测试节点准备
 
+**机场兼容性审计（2026-07-05）剩余 TODO**（P0/P1 已修：ss-2022 明文 userinfo、
+Clash vless+reality 参数、一枝红杏 `:倍率` 格式）：
+- **零节点可见错误**：SIP008/SSD/空订阅解析出 0 节点时给醒目提示，区分「空」vs「格式不识别」
+- **SIP008 (JSON) 订阅格式**：Outline/部分 SS 机场用，现在静默空导入
+- **hysteria2 salamander obfs**：带 obfs 的 hy2 节点握手失败（改 Hysteria2Converter）
+- **裸 UTF-8 fragment 兜底**：URLComponents 对未编码 emoji/中文名可能返回 nil → 整条丢
+- **SSR / TUIC 协议**：尾部机场，成本大，排后
+
 **排队立项（按优先级）**：
 1. ✅ **英文 i18n**（2026-07-03 完成：Localizable/AppShortcuts/InfoPlist/Widget 全量目录，
    en 100%；语言选项只放简中/English，繁日暂缓）

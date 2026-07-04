@@ -15,6 +15,11 @@ final class NodeRateParserTests: XCTestCase {
             ("HKG 2.0x", 2.0),
             ("狮城 倍率：0.8", 0.8),
             ("台湾 x2 Netflix", 2.0),
+            // 一枝红杏格式：结尾「-:倍率」
+            ("日本-OS-1-:0.6", 0.6),
+            ("澳大利亚-AU-1-:1.6", 1.6),
+            ("美国-US-1-:1.0", 1.0),
+            ("香港-HK-3-：2.5", 2.5),   // 全角冒号
         ]
         for (name, expected) in cases {
             XCTAssertEqual(NodeRateParser.fromName(name), expected, "「\(name)」应识别为 \(String(describing: expected))")
