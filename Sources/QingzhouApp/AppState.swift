@@ -65,6 +65,9 @@ public final class AppState {
     /// 上次已在主 App 日志里记过的扩展内存告警数 —— 只对新增告警写日志，不重复刷。
     private var loggedMemoryWarningCount = 0
     public var settings: Settings = Settings()
+    /// App 内「发现新版本」提示的数据源（非 nil 时 RootView 弹更新 alert）。
+    /// App Store 版启动时静默查一次 iTunes Lookup API；未上架 / 失败 → 保持 nil，不打扰。
+    public internal(set) var availableUpdate: AvailableUpdate?
     public var lastSpeedTestReport: SpeedTestReport?
     /// 正在测速的节点 id 集合 —— UI 据此在对应行显示旋转 loading。
     public var measuringNodeIds: Set<UUID> = []
@@ -148,6 +151,8 @@ public final class AppState {
     public let tunnelManager: VPNTunnelManager
     /// 完整版 geo 数据的下载/版本管理（主备源 + sha256 校验）。测试可注入假下载器。
     public let geoData: GeoDataManager
+    /// App Store 版本查询器（App 内更新提醒用）。测试可注入假实现跳过真实出网。
+    let updateFetcher: any AppStoreVersionLookup
     /// iCloud Drive vault 的读写层。测试可注入指向临时目录的假容器。
     let cloudVault: CloudVaultStore
     /// 镜像到 iCloud 的防抖任务（连续 persist 只留最后一次）。internal 供测试 await。
@@ -156,6 +161,7 @@ public final class AppState {
     private var cloudStartupRetryTask: Task<Void, Never>?
 
     private var schedulerTask: Task<Void, Never>?
+    private var updateCheckTask: Task<Void, Never>?
     private var trafficPollingTask: Task<Void, Never>?
     private var accessLogPollingTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -202,7 +208,8 @@ public final class AppState {
         speedTestRunner: SpeedTestRunner? = nil,
         tunnelManager: VPNTunnelManager? = nil,
         cloudVault: CloudVaultStore? = nil,
-        geoDataManager: GeoDataManager? = nil
+        geoDataManager: GeoDataManager? = nil,
+        updateFetcher: (any AppStoreVersionLookup)? = nil
     ) {
         self.logger = logger
         self.persistence = persistence
@@ -212,6 +219,7 @@ public final class AppState {
         self.tunnelManager = tunnelManager ?? VPNTunnelManager(logger: logger)
         self.cloudVault = cloudVault ?? CloudVaultStore()
         self.geoData = geoDataManager ?? GeoDataManager()
+        self.updateFetcher = updateFetcher ?? AppStoreUpdateFetcher(logger: logger)
 
         let snapshot = persistence.loadSnapshot()
         self.subscriptions = snapshot.subscriptions
@@ -1357,11 +1365,20 @@ public final class AppState {
         accessLogPollingTask = Task { @MainActor [weak self] in
             await self?.accessLogPollingLoop()
         }
+        // App 内更新提醒：延后到首屏稳定后再静默查一次 App Store（未上架 / 失败都不打扰）。
+        // 延迟是为了别和冷启动的其它网络请求（远程规则 / 公网 IP）抢带宽。
+        updateCheckTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            await self?.checkForAppUpdate()
+        }
     }
 
     public func stopSchedulers() {
         schedulerTask?.cancel()
         schedulerTask = nil
+        updateCheckTask?.cancel()
+        updateCheckTask = nil
         trafficPollingTask?.cancel()
         trafficPollingTask = nil
         accessLogPollingTask?.cancel()
