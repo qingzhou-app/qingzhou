@@ -1172,7 +1172,17 @@ public final class AppState {
                 subscriptions.append(updated)
             }
             merge(newNodes: payload.nodes, fromSubscription: updated.id)
-            subscriptionErrors[subscription.id] = nil
+            // 0 节点且原文格式无法识别（既不是 Clash / SIP008、也不是链接列表）：
+            // 多半是链接填错 / 返回了 HTML 登录页，给醒目提示，别让用户对着空列表懵。
+            // 订阅确实为空（Clash proxies:[] / SIP008 servers:[]）不算错误，走正常清空路径。
+            if payload.nodes.isEmpty, !payload.formatRecognized {
+                let msg = "订阅格式无法识别，请确认链接正确（能否在浏览器里直接打开）"
+                subscriptionErrors[subscription.id] = msg
+                showToast(msg)
+                logger.error("Subscription \(subscription.name): 格式无法识别（0 节点）", category: "subscription")
+            } else {
+                subscriptionErrors[subscription.id] = nil
+            }
             persist()
         } catch {
             subscriptionErrors[subscription.id] = "\(error)"

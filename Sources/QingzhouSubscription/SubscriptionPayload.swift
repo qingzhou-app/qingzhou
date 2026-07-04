@@ -7,15 +7,24 @@ public struct SubscriptionPayload: Sendable {
     public var nodes: [Node]
     public var failedLines: [(line: String, error: Error)]
     public var userInfo: SubscriptionUserInfo?
+    /// 订阅原文是否被识别为**某种已知格式**（Clash YAML / SIP008 JSON / base64 或明文分享链接列表）。
+    ///
+    /// 用来区分两种「0 节点」：
+    /// - `formatRecognized == true` 且 `nodes` 为空 → 订阅**确实为空**（如 Clash `proxies: []`、SIP008 `servers: []`）；
+    /// - `formatRecognized == false` 且 `nodes` 为空 → 原文**格式无法识别**（既不是上述任一格式、也不含 `://`），
+    ///   多半是链接填错 / 返回了 HTML 登录页等，消费侧应给醒目提示而非静默空列表。
+    public var formatRecognized: Bool
 
     public init(
         nodes: [Node],
         failedLines: [(line: String, error: Error)] = [],
-        userInfo: SubscriptionUserInfo? = nil
+        userInfo: SubscriptionUserInfo? = nil,
+        formatRecognized: Bool = true
     ) {
         self.nodes = nodes
         self.failedLines = failedLines
         self.userInfo = userInfo
+        self.formatRecognized = formatRecognized
     }
 }
 
