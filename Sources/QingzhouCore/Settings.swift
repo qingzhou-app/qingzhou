@@ -33,6 +33,8 @@ public struct Settings: Codable, Sendable {
     /// 经代理测速 + 连通性哨兵的探测目标 URL。空 = 用内置默认（Cloudflare，见 ConnectivityProbe）。
     /// 有些节点出口对 Google 会 reset，可在此改成其他站点或自己的可靠域名。
     public var proxiedTestTarget: String
+    /// 自动择优时「延迟接近就优先低倍率节点」（省流量）。倍率见 NodeRateParser。
+    public var preferLowerRate: Bool
     /// 后台周期性"只测速、不换节点"间隔，秒。0 = 关闭。
     /// 这跟 autoSelect 是两回事：autoSelect 会偷偷把 currentNodeId 改成最快的那个；
     /// 这个只刷新延迟列，currentNodeId 不动，让 UI 的延迟数据保持新鲜。
@@ -68,6 +70,7 @@ public struct Settings: Codable, Sendable {
         autoSelectIntervalSeconds: TimeInterval = 30 * 60,
         autoSelectUsesProxiedLatency: Bool = true,
         proxiedTestTarget: String = "",
+        preferLowerRate: Bool = true,
         autoMeasureIntervalSeconds: TimeInterval = 30 * 60,
         subscriptionRefreshIntervalSeconds: TimeInterval = 3600,
         nodeSortOrder: NodeSortOrder = .latency,
@@ -88,6 +91,7 @@ public struct Settings: Codable, Sendable {
         self.autoSelectIntervalSeconds = autoSelectIntervalSeconds
         self.autoSelectUsesProxiedLatency = autoSelectUsesProxiedLatency
         self.proxiedTestTarget = proxiedTestTarget
+        self.preferLowerRate = preferLowerRate
         self.autoMeasureIntervalSeconds = autoMeasureIntervalSeconds
         self.subscriptionRefreshIntervalSeconds = subscriptionRefreshIntervalSeconds
         self.nodeSortOrder = nodeSortOrder
@@ -109,6 +113,7 @@ public struct Settings: Codable, Sendable {
         case proxyMode, autoSelectTrigger, autoSelectIntervalSeconds
         case autoSelectUsesProxiedLatency
         case proxiedTestTarget
+        case preferLowerRate
         case autoMeasureIntervalSeconds
         case subscriptionRefreshIntervalSeconds
         case nodeSortOrder, excludedRegions, preferredRegion
@@ -126,6 +131,7 @@ public struct Settings: Codable, Sendable {
         self.autoSelectIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoSelectIntervalSeconds) ?? 30 * 60
         self.autoSelectUsesProxiedLatency = try c.decodeIfPresent(Bool.self, forKey: .autoSelectUsesProxiedLatency) ?? true
         self.proxiedTestTarget = try c.decodeIfPresent(String.self, forKey: .proxiedTestTarget) ?? ""
+        self.preferLowerRate = try c.decodeIfPresent(Bool.self, forKey: .preferLowerRate) ?? true
         self.autoMeasureIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoMeasureIntervalSeconds) ?? 30 * 60
         self.subscriptionRefreshIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .subscriptionRefreshIntervalSeconds) ?? 3600
         self.nodeSortOrder = try c.decodeIfPresent(NodeSortOrder.self, forKey: .nodeSortOrder) ?? .latency

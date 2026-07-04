@@ -76,6 +76,19 @@ extension Node {
     public var region: String {
         RegionDetector.regionOrOther(for: name)
     }
+
+    /// 节点倍率：**元数据**（`parameters["rate"]`，导入时由 Clash 解析器等写入）优先，
+    /// 无则从**节点名**正则识别。识别不出为 nil。用于「延迟接近时优先低倍率」的择优 tiebreaker
+    /// 和列表展示。（倍率含义见 `NodeRateParser`）
+    public var effectiveRate: Double? {
+        NodeRateParser.parse(parameters["rate"]) ?? NodeRateParser.fromName(name)
+    }
+
+    /// 比较用倍率：识别不出的按 1.0（绝大多数节点是 1 倍）—— 这样有明确低倍率标注的节点
+    /// 在延迟接近时能胜过「未知倍率」的节点。
+    public var rateForComparison: Double {
+        effectiveRate ?? 1.0
+    }
 }
 
 public enum NodeSortOrder: String, Codable, Sendable {

@@ -99,6 +99,23 @@ selections get cleaned up. Configure once, forget forever.*
 regions they block. Auto-selection then picks the fastest node **within** your allowed
 pool. Essential in the AI era, where access is gated by exit region.*
 
+### ④½ 低倍率优先 —— 延迟接近就帮你省流量
+
+**痛点**：机场的高倍率节点（走 IEPL/IPLC 专线）扣流量翻倍——2x 节点用 1GB 扣 2GB。
+只挑「最快」的自动择优，常常把你切到又快又贵的高倍率节点，流量哗哗地掉。
+
+**轻舟**：自动识别每个节点的倍率（优先订阅元数据，无则从节点名智能解析，兼容各机场
+命名），**延迟接近时优先选低倍率节点**——省流量的 0.5x 和费流量的 2x 延迟差不多时，
+自动帮你选省钱的那个。节点上直接标出倍率（0.5x 绿、2x 橙），一眼看清哪些贵。
+和「延迟双维度」「地区优先」凑成省流量组合拳。
+
+*EN: Rate-aware selection. Airport nodes on premium lines (IEPL/IPLC) burn data at a
+multiplier — a 2× node spends 2GB for 1GB of use. Qingzhou detects each node's rate
+(from subscription metadata, falling back to smart name parsing across airport
+conventions) and, when latencies are close, **prefers the lower-rate node** — so a
+data-saving 0.5× wins over an expensive 2× when they're similarly fast. Rates are tagged
+right on each node (0.5x green, 2x orange).*
+
 ### ⑤ 域名分析 · 汇总 · 优化建议 —— 越用越智能
 
 **痛点**：分流规则是死的，你的访问习惯是活的。哪些域名走了代理、哪些其实可以直连、

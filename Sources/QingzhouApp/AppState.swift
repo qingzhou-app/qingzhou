@@ -1297,46 +1297,65 @@ public final class AppState {
                 .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
                 .prefix(Self.proxiedRefineFallbackCount))
         }
-        var bestNode: Node?
-        var bestMs = Int.max
+        var measured: [(node: Node, ms: Int)] = []
         var failedCount = 0
         for candidate in candidates {
             guard isVPNRunning, !isSwitchingTunnel else { break }   // 中途关了 VPN 就停
             if let ms = await measureProxiedLatency(candidate, showToastOnError: false) {
-                if ms < bestMs {
-                    bestMs = ms
-                    bestNode = candidate
-                }
+                measured.append((candidate, ms))
             } else {
                 failedCount += 1
             }
         }
-        if let bestNode {
-            logger.info("Proxied refine picked \(bestNode.name) (\(bestMs)ms) from \(candidates.count) green candidates (\(failedCount) failed)", category: "app")
+        // 经代理延迟接近时同样优先低倍率（冷测数字大且抖动大，接近带宽给 200ms）。
+        if let best = bestPreferringLowRate(measured.map(\.node),
+                                            latency: { node in measured.first { $0.node.id == node.id }?.ms ?? .max },
+                                            tieBandMs: 200) {
+            let bestMs = measured.first { $0.node.id == best.id }?.ms ?? -1
+            logger.info("Proxied refine picked \(best.name) (\(bestMs)ms, rate \(best.rateForComparison)) from \(candidates.count) green candidates (\(failedCount) failed)", category: "app")
             if failedCount > 0 {
                 showToast(L("经代理精选完成：实测 \(candidates.count) 个候选，避开 \(failedCount) 个不可用节点"))
             }
-            return bestNode
+            return best
         }
         logger.warn("Proxied refine: all \(candidates.count) candidates failed — falling back to direct best", category: "app")
         showToast(L("经代理精选：\(candidates.count) 个候选实测均失败，本次按直连结果选择"))
         return fallback
     }
 
-    /// 在测速结果里挑最佳节点，应用「地区排除」+「地区优先」：
+    /// 直连延迟「接近」的判定带宽（毫秒）：差在此内视为延迟相当，交给倍率决胜。
+    private static let directTieBandMs = 30
+
+    /// 从候选里选最优：延迟最低者胜；但**延迟接近（差 ≤ tieBandMs）时优先低倍率**节点
+    /// （省流量）。倍率相同则回到延迟更低者。`preferLowerRate` 关闭时退化为纯延迟最低。
+    private func bestPreferringLowRate(_ candidates: [Node], latency: (Node) -> Int, tieBandMs: Int) -> Node? {
+        guard let fastest = candidates.map(latency).min() else { return nil }
+        guard settings.preferLowerRate else {
+            return candidates.min { latency($0) < latency($1) }
+        }
+        // 最快节点 ±tieBand 内的都算「延迟相当」，其中选倍率最低的；倍率相同再比延迟。
+        let band = candidates.filter { latency($0) <= fastest + tieBandMs }
+        return band.min { a, b in
+            if a.rateForComparison != b.rateForComparison { return a.rateForComparison < b.rateForComparison }
+            return latency(a) < latency(b)
+        }
+    }
+
+    /// 在测速结果里挑最佳节点，应用「地区排除」+「地区优先」+「延迟接近优先低倍率」：
     /// 1. 先剔除有效排除（手动排除 / 地区排除）和测速失败的节点
-    /// 2. 若设了优先地区且该地区有可用节点，从中选延迟最低的
-    /// 3. 否则全局选延迟最低的
+    /// 2. 若设了优先地区且该地区有可用节点，从中选（延迟最低 / 接近时低倍率）
+    /// 3. 否则全局选
     func pickBestRespectingRegions(from measured: [Node]) -> Node? {
         let viable = measured.filter { !isEffectivelyExcluded($0) && $0.lastLatencyMs != nil }
         guard !viable.isEmpty else { return nil }
+        let latency: (Node) -> Int = { $0.lastLatencyMs ?? .max }
         if let pref = settings.preferredRegion {
             let inPref = viable.filter { $0.region == pref }
-            if let best = inPref.min(by: { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }) {
+            if let best = bestPreferringLowRate(inPref, latency: latency, tieBandMs: Self.directTieBandMs) {
                 return best
             }
         }
-        return viable.min(by: { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) })
+        return bestPreferringLowRate(viable, latency: latency, tieBandMs: Self.directTieBandMs)
     }
 
     public func measureAllNodes() async {

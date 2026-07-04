@@ -382,6 +382,11 @@ private struct NodeRow: View {
                     if node.subscriptionId != nil {
                         tag("订阅", color: .blue)
                     }
+                    // 倍率标签：只在非 1 倍时显示（1 倍是绝大多数，标了反而是噪音）。
+                    // <1 省流量→绿；>1 费流量→橙。
+                    if let rate = node.effectiveRate, rate != 1.0 {
+                        rateTag(rate)
+                    }
                 }
                 Text("\(node.protocolType.rawValue.uppercased()) · \(node.host):\(node.port)")
                     .font(.caption.monospaced()).foregroundStyle(.secondary)
@@ -479,6 +484,17 @@ private struct NodeRow: View {
         } else if let pms = node.lastProxiedLatencyMs {
             proxiedLatencyChip(pms)
         }
+    }
+
+    /// 倍率标签：`0.5x` / `2x`（整数不带小数），<1 省流量绿、>1 费流量橙。
+    private func rateTag(_ rate: Double) -> some View {
+        let text = rate == rate.rounded() ? String(format: "%.0fx", rate) : String(format: "%gx", rate)
+        return Text(text)
+            .font(.caption2.monospaced())
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background((rate < 1 ? Color.green : .orange).opacity(0.18))
+            .foregroundStyle(rate < 1 ? Color.green : .orange)
+            .clipShape(Capsule())
     }
 
     // LocalizedStringKey：让 tag("已排除") 这类字面量走字符串目录

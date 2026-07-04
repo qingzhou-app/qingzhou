@@ -113,6 +113,14 @@ public enum ClashConfigParser {
 
         var node = Node(name: name, protocolType: proto, host: server, port: port)
         node.parameters = extractTransportParameters(raw)
+        // 倍率元数据：部分机场在 Clash 节点里带非标字段（rate / 倍率 / multiplier）。
+        // 有就存进 parameters["rate"]（Node.effectiveRate 优先读它，无则从节点名识别）。
+        for key in ["rate", "倍率", "multiplier", "ratio"] {
+            if let v = raw[key], let d = NodeRateParser.parse(String(describing: v)) {
+                node.parameters["rate"] = String(d)
+                break
+            }
+        }
 
         switch proto {
         case .trojan, .hysteria2:

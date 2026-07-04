@@ -245,6 +245,39 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(best?.region, "香港")
     }
 
+    func testPrefersLowerRateWhenLatencyClose() {
+        let state = makeState()
+        // 两个延迟接近（差 20ms < 30ms 带宽）：50ms 的 2x 与 70ms 的 0.5x → 选低倍率的 0.5x
+        state.nodes = [
+            Node(name: "香港-快-2x", protocolType: .trojan, host: "a.com", port: 443, lastLatencyMs: 50),
+            Node(name: "香港-省-0.5x", protocolType: .trojan, host: "b.com", port: 443, lastLatencyMs: 70),
+        ]
+        let best = state.pickBestRespectingRegions(from: state.nodes)
+        XCTAssertEqual(best?.name, "香港-省-0.5x", "延迟接近时应优先低倍率")
+    }
+
+    func testLatencyStillWinsWhenGapLarge() {
+        let state = makeState()
+        // 差距大（150ms > 30ms 带宽）：不算「接近」，低倍率不该逆袭
+        state.nodes = [
+            Node(name: "香港-快-2x", protocolType: .trojan, host: "a.com", port: 443, lastLatencyMs: 50),
+            Node(name: "美国-省-0.5x", protocolType: .trojan, host: "b.com", port: 443, lastLatencyMs: 200),
+        ]
+        let best = state.pickBestRespectingRegions(from: state.nodes)
+        XCTAssertEqual(best?.name, "香港-快-2x", "差距大时仍按延迟选最快")
+    }
+
+    func testPreferLowerRateToggleOff() {
+        let state = makeState()
+        state.settings.preferLowerRate = false
+        state.nodes = [
+            Node(name: "香港-快-2x", protocolType: .trojan, host: "a.com", port: 443, lastLatencyMs: 50),
+            Node(name: "香港-省-0.5x", protocolType: .trojan, host: "b.com", port: 443, lastLatencyMs: 70),
+        ]
+        let best = state.pickBestRespectingRegions(from: state.nodes)
+        XCTAssertEqual(best?.name, "香港-快-2x", "关掉开关退化为纯延迟最低")
+    }
+
     func testRegionCounts() {
         let state = makeState()
         state.nodes = makeMeasuredNodes() + [

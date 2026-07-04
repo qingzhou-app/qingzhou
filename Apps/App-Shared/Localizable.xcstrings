@@ -2834,6 +2834,16 @@
         }
       }
     },
+    "延迟接近时优先低倍率": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prefer Lower Rate When Latency Is Close"
+          }
+        }
+      }
+    },
     "建议 %lld": {
       "extractionState": "manual",
       "localizations": {
@@ -5070,6 +5080,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "During auto-select, if the preferred region has usable nodes, the fastest one there is chosen; otherwise the fastest overall wins."
+          }
+        }
+      }
+    },
+    "自动择优时，若几个节点延迟差不多，优先选倍率低的（更省流量）。倍率从节点名 / 订阅元数据识别，非 1 倍会在节点上标出（0.5x 绿、2x 橙）。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When auto-selecting, if several nodes have similar latency, prefer the one with a lower rate multiplier (saves data). The rate is detected from the node name / subscription metadata; non-1× nodes are tagged (0.5x green, 2x orange)."
           }
         }
       }
