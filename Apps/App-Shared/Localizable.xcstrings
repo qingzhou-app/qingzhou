@@ -5374,6 +5374,16 @@
         }
       }
     },
+    "订阅格式无法识别，请确认链接正确（能否在浏览器里直接打开）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscription format not recognized. Check that the link is correct (does it open in a browser?)."
+          }
+        }
+      }
+    },
     "订阅自动刷新": {
       "extractionState": "manual",
       "localizations": {

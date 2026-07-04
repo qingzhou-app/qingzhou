@@ -78,7 +78,8 @@ public actor SubscriptionFetcher {
         let taggedPayload = SubscriptionPayload(
             nodes: taggedNodes,
             failedLines: payload.failedLines,
-            userInfo: payload.userInfo
+            userInfo: payload.userInfo,
+            formatRecognized: payload.formatRecognized
         )
         return (updated, taggedPayload)
     }

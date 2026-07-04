@@ -75,6 +75,134 @@ final class QingzhouSubscriptionTests: XCTestCase {
         XCTAssertEqual(payload.failedLines.count, 1)
     }
 
+    // MARK: - SIP008 JSON 订阅
+
+    func testParseSIP008Standard() {
+        let body = """
+        {
+          "version": 1,
+          "servers": [
+            {"id":"a","remarks":"香港01","server":"1.2.3.4","server_port":8388,"method":"aes-256-gcm","password":"pw1"},
+            {"id":"b","remarks":"日本02","server":"5.6.7.8","server_port":443,"method":"chacha20-ietf-poly1305","password":"pw2"}
+          ]
+        }
+        """
+        let payload = SubscriptionParser.parse(body: body)
+        XCTAssertEqual(payload.nodes.count, 2)
+        XCTAssertTrue(payload.formatRecognized)
+        XCTAssertTrue(payload.failedLines.isEmpty)
+
+        let n0 = payload.nodes[0]
+        XCTAssertEqual(n0.protocolType, .shadowsocks)
+        XCTAssertEqual(n0.name, "香港01")
+        XCTAssertEqual(n0.host, "1.2.3.4")
+        XCTAssertEqual(n0.port, 8388)
+        XCTAssertEqual(n0.cipher, "aes-256-gcm")
+        XCTAssertEqual(n0.password, "pw1")
+
+        XCTAssertEqual(payload.nodes[1].name, "日本02")
+        XCTAssertEqual(payload.nodes[1].port, 443)
+    }
+
+    func testParseSIP008MissingFieldsAreToleratedPerServer() {
+        // 第二个 server 缺 method、第三个缺 server → 都进 failedLines，好的照收
+        let body = """
+        {
+          "servers": [
+            {"remarks":"好节点","server":"1.2.3.4","server_port":8388,"method":"aes-256-gcm","password":"pw"},
+            {"remarks":"缺method","server":"5.6.7.8","server_port":8388,"password":"pw"},
+            {"remarks":"缺server","server_port":8388,"method":"aes-256-gcm","password":"pw"}
+          ]
+        }
+        """
+        let payload = SubscriptionParser.parse(body: body)
+        XCTAssertEqual(payload.nodes.count, 1)
+        XCTAssertEqual(payload.nodes[0].name, "好节点")
+        XCTAssertEqual(payload.failedLines.count, 2)
+        XCTAssertTrue(payload.formatRecognized)
+    }
+
+    func testParseSIP008EmptyServersIsRecognizedButEmpty() {
+        let body = #"{"version":1,"servers":[]}"#
+        let payload = SubscriptionParser.parse(body: body)
+        XCTAssertTrue(payload.nodes.isEmpty)
+        XCTAssertTrue(payload.formatRecognized, "空 servers 是已识别但为空，不该判成格式无法识别")
+    }
+
+    func testParseSIP008WithPluginPassthrough() {
+        let body = """
+        {
+          "servers": [
+            {"remarks":"带插件","server":"1.2.3.4","server_port":8388,"method":"aes-256-gcm","password":"pw",
+             "plugin":"obfs-local","plugin_opts":"obfs=http;obfs-host=www.bing.com"}
+          ]
+        }
+        """
+        let payload = SubscriptionParser.parse(body: body)
+        XCTAssertEqual(payload.nodes.count, 1)
+        XCTAssertEqual(payload.nodes[0].parameters["plugin"], "obfs-local")
+        XCTAssertEqual(payload.nodes[0].parameters["plugin-opts"], "obfs=http;obfs-host=www.bing.com")
+    }
+
+    func testParseSIP008RemarksFallbackAndTagAlias() {
+        // 无 remarks 退化成 host:port；tag 作为 remarks 的别名
+        let body = """
+        {
+          "servers": [
+            {"server":"1.2.3.4","server_port":8388,"method":"aes-256-gcm","password":"pw"},
+            {"tag":"用tag命名","server":"5.6.7.8","server_port":9999,"method":"aes-256-gcm","password":"pw"}
+          ]
+        }
+        """
+        let payload = SubscriptionParser.parse(body: body)
+        XCTAssertEqual(payload.nodes.count, 2)
+        XCTAssertEqual(payload.nodes[0].name, "1.2.3.4:8388")
+        XCTAssertEqual(payload.nodes[1].name, "用tag命名")
+    }
+
+    func testParseSIP008PortAsStringAccepted() {
+        // 个别机场把 server_port 给成字符串
+        let body = #"{"servers":[{"remarks":"x","server":"1.2.3.4","server_port":"8388","method":"aes-256-gcm","password":"pw"}]}"#
+        let payload = SubscriptionParser.parse(body: body)
+        XCTAssertEqual(payload.nodes.count, 1)
+        XCTAssertEqual(payload.nodes[0].port, 8388)
+    }
+
+    // MARK: - 零节点：格式已识别 vs 无法识别
+
+    func testFormatRecognizedForPlainLinks() {
+        let payload = SubscriptionParser.parse(body: "trojan://pw@a.com:443#A")
+        XCTAssertTrue(payload.formatRecognized)
+    }
+
+    func testFormatRecognizedForBase64() {
+        let b64 = Data("trojan://pw@a.com:443#A".utf8).base64EncodedString()
+        let payload = SubscriptionParser.parse(body: b64)
+        XCTAssertTrue(payload.formatRecognized)
+    }
+
+    func testUnrecognizedGarbageBody() {
+        // 乱码、没有任何已知格式特征、不含 ://
+        let payload = SubscriptionParser.parse(body: "这是一段随便乱写的东西 not a subscription at all")
+        XCTAssertTrue(payload.nodes.isEmpty)
+        XCTAssertFalse(payload.formatRecognized, "无法识别的格式应标记 formatRecognized=false")
+    }
+
+    func testUnrecognizedHTMLLoginPage() {
+        // 订阅链接填错/过期常返回 HTML 页面
+        let payload = SubscriptionParser.parse(body: "<html><body>Please login</body></html>")
+        XCTAssertTrue(payload.nodes.isEmpty)
+        XCTAssertFalse(payload.formatRecognized)
+    }
+
+    func testLinkListWithOnlyBadLinksStillRecognized() {
+        // 含 :// 就算是链接列表（只是链接坏了），算已识别，不该报「格式无法识别」
+        let payload = SubscriptionParser.parse(body: "ssd://somethingunsupported")
+        XCTAssertTrue(payload.nodes.isEmpty)
+        XCTAssertTrue(payload.formatRecognized)
+        XCTAssertFalse(payload.failedLines.isEmpty)
+    }
+
     // MARK: - SubscriptionFetcher with mock HTTPClient
 
     struct MockHTTPClient: HTTPClient {
