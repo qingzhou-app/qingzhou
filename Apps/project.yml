@@ -48,6 +48,9 @@ targets:
         CFBundleDisplayName: 轻舟
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # 加密合规：只用系统标准 TLS + xray-core 内置标准算法，走 Mass Market 豁免。
+        # 声明为 false 后 ASC 不再每个 build 追问「Uses Non-Exempt Encryption」。
+        ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: 扫描二维码以快速添加节点或订阅
         UILaunchStoryboardName: LaunchScreen
         UIRequiredDeviceCapabilities:
