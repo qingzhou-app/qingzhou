@@ -134,7 +134,22 @@ final class XrayConfigComposerTests: XCTestCase {
         let servers = dns["servers"] as! [Any]
         XCTAssertEqual(servers.first as? String, "fakedns", "fakedns 拦在最前，才能给域名分配假 IP")
         XCTAssertTrue(servers.contains { $0 as? String == "8.8.8.8" }, "真实 DNS 仍在，用于实际连接解析")
-        XCTAssertEqual(dns["queryStrategy"] as? String, "UseIP")
+        // UseIPv4：不解析 AAAA，避免 fakedns 给无真实 IPv6 的域名发假 IPv6 → 浏览器 IPv6 死路
+        XCTAssertEqual(dns["queryStrategy"] as? String, "UseIPv4")
+    }
+
+    /// fakedns 只配 IPv4 池：配 IPv6 池会对无真实 AAAA 的域名也发假 IPv6，浏览器 IPv6 优先
+    /// 走死路（cbs-u.sports.cctv.com 案）。三个模式都不应出现 fc00:: 池。
+    func testFakeDNSIPv4Only() throws {
+        for mode in [ProxyMode.global, .rule, .direct] {
+            let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: mode))
+            let pools = json["fakedns"] as! [[String: Any]]
+            XCTAssertEqual(pools.count, 1, "\(mode) fakedns 只应有 IPv4 一个池")
+            XCTAssertEqual(pools.first?["ipPool"] as? String, "198.18.0.0/15")
+            XCTAssertFalse(pools.contains { ($0["ipPool"] as? String)?.contains("fc00") ?? false },
+                           "\(mode) fakedns 不应有 IPv6 池")
+            XCTAssertEqual((json["dns"] as! [String: Any])["queryStrategy"] as? String, "UseIPv4")
+        }
     }
 
     /// FakeDNS：让 access log/路由拿到真域名而不是 IP（SNI 常被 ECH 加密，纯 sniffing 只见 IP）。

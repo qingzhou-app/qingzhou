@@ -158,10 +158,15 @@ public enum XrayConfigComposer {
             // FakeDNS：给每个域名分配一个 198.18.x.x 假 IP。App 连这个假 IP → TUN → xray 靠
             // sniffing 的 fakedns 反查回真域名，于是 access log / 路由都拿到域名，**不依赖 TLS SNI**
             //（SNI 越来越多被 ECH 加密，纯 sniffing 只能看到 IP，这就是"连接页全是 IP"的根因）。
+            //
+            // ⚠️ 只配 IPv4 假 IP 池、不配 IPv6：配了 IPv6 池（fc00::/18）会对**任何**域名的
+            // AAAA 查询都返回假 IPv6，浏览器（IPv6 优先 / Happy Eyeballs）随即优先用假 IPv6
+            // 发起连接。但很多国内域名**只有 A、没有真实 AAAA**（实测 cbs-u.sports.cctv.com），
+            // 出站解析真实 AAAA 落空 → 整个域名在浏览器里连不上、页面内容缺失（cctv 世界杯案）。
+            // 配合下面 DNS 的 queryStrategy=UseIPv4（不解析 AAAA），全链路只走 IPv4 —— 双栈
+            // 站点 IPv4 都可用，无感；纯 IPv6 站点极少。
             "fakedns": [
-                ["ipPool": "198.18.0.0/15", "poolSize": 65535] as [String: Any],
-                // IPv6 假 IP 池：让 AAAA 查询也拿假 IP，App 走 IPv6 时连接页也能反查回域名
-                ["ipPool": "fc00::/18", "poolSize": 65535] as [String: Any]
+                ["ipPool": "198.18.0.0/15", "poolSize": 65535] as [String: Any]
             ]
         ]
 
@@ -271,7 +276,7 @@ public enum XrayConfigComposer {
         case .global, .direct:
             return [
                 "servers": ["fakedns", "8.8.8.8", "1.1.1.1"],
-                "queryStrategy": "UseIP"
+                "queryStrategy": "UseIPv4"
             ]
         case .rule:
             // 中国域名（geosite:cn）走阿里 DNS，从国内直连查、拿国内边缘 IP；其余用
@@ -296,7 +301,7 @@ public enum XrayConfigComposer {
                     "8.8.8.8",
                     "1.1.1.1"
                 ],
-                "queryStrategy": "UseIP"
+                "queryStrategy": "UseIPv4"
             ]
         }
     }
