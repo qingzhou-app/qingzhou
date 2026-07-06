@@ -88,7 +88,16 @@ public enum XrayConfigComposer {
         // libXray 给的第一个 outbound 就是用户那条链接对应的协议。打 "proxy" tag。
         outbounds[0]["tag"] = "proxy"
         // 之后所有规则 / 全局走 "proxy"，直连走 "direct"，拒绝走 "reject"。
-        outbounds.append(["tag": "direct", "protocol": "freedom", "settings": [:] as [String: Any]])
+        // direct 出站强制 `domainStrategy: UseIPv4`：fakedns 对每个域名（含 AAAA 查询）都
+        // 分配假 IP，浏览器（IPv6 优先 / Happy Eyeballs）会优先用 IPv6 假 IP 发起连接。
+        // 但很多国内域名**只有 A、没有真实 AAAA**（实测 cbs-u.sports.cctv.com）——
+        // 此时 freedom 默认 AsIs 会尝试 IPv6 出站、解析真实 AAAA 失败 → 连接失败，
+        // 表现为「浏览器整个域名连不上（no-cors 也失败）、curl 用 IPv4 却正常、页面部分内容缺失」
+        // （真机 cctv 世界杯赛程 API 定位）。UseIPv4 让直连出站一律用域名的 IPv4 地址，
+        // 无论浏览器用 v4/v6 连接都能落地。代价：有真实 IPv6 的域名直连时也走 IPv4
+        //（双栈站点 IPv4 都可用，无感）。proxy 出站是节点协议、解析在服务端，不受影响。
+        outbounds.append(["tag": "direct", "protocol": "freedom",
+                          "settings": ["domainStrategy": "UseIPv4"] as [String: Any]])
         outbounds.append(["tag": "reject", "protocol": "blackhole", "settings": [:] as [String: Any]])
         // dns outbound：DNS 查询被路由到这里，交给 xray 的 dns 段（含 fakedns）处理，
         // 而不是当普通流量转发到真实 DNS。**没有它 fakedns 永远不会触发**。

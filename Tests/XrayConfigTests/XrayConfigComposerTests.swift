@@ -64,6 +64,13 @@ final class XrayConfigComposerTests: XCTestCase {
 
         let proxy = outs.first(where: { $0["tag"] as? String == "proxy" })!
         XCTAssertEqual(proxy["protocol"] as? String, "trojan")
+
+        // direct 出站必须 UseIPv4：fakedns 给无真实 AAAA 的域名也发假 IPv6，浏览器 IPv6
+        // 优先会走 IPv6 死路（cbs-u.sports.cctv.com 案）。UseIPv4 让直连出站一律用 IPv4。
+        let direct = outs.first(where: { $0["tag"] as? String == "direct" })!
+        let settings = direct["settings"] as? [String: Any]
+        XCTAssertEqual(settings?["domainStrategy"] as? String, "UseIPv4",
+                       "direct 出站必须 domainStrategy=UseIPv4，避免无 AAAA 域名的 IPv6 死路")
     }
 
     func testRoutingRulesGlobalSendsAllToProxy() throws {
