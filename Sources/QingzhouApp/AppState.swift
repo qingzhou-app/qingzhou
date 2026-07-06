@@ -65,6 +65,8 @@ public final class AppState {
     }
     /// 上次已在主 App 日志里记过的扩展内存告警数 —— 只对新增告警写日志，不重复刷。
     private var loggedMemoryWarningCount = 0
+    /// 「隧道计划外断开」日志的去重闸：断一次只记一条，重新连上后复位。
+    private var loggedUnexpectedTunnelDeath = false
     public var settings: Settings = Settings()
     /// App 内「发现新版本」提示的数据源（非 nil 时 RootView 弹更新 alert）。
     /// App Store 版启动时静默查一次 iTunes Lookup API；未上架 / 失败 → 保持 nil，不打扰。
@@ -1204,6 +1206,11 @@ public final class AppState {
                 autoStopSeconds: settings.autoStopSeconds,
                 description: L("轻舟 · \(node.name)")
             )
+            // 切换窗口先关 On-Demand 再 stop：connect 规则匹配所有流量，stop 后系统
+            // 会被任意流量触发抢跑重连 —— 复用半死的旧扩展进程（正是下面轮询要避免的
+            // xray 卡死场景），还可能多出一次肉眼可见的假启停。成功 start 后再按
+            // configure 的同一规则恢复（定时会话不开）。失败不拦：尽力而为继续切。
+            try? await tunnelManager.setOnDemandEnabled(false)
             tunnelManager.stop()
             markAllConnectionsClosed()   // 热切换 = 旧隧道进程整个换掉，旧连接全部已死
             // 等扩展进程**完全断开**再重启 —— 只 sleep 300ms 常常旧进程还没退，start() 复用了
@@ -1222,6 +1229,11 @@ public final class AppState {
             for _ in 0..<150 {
                 if tunnelManager.status == .connected { break }
                 try? await Task.sleep(for: .milliseconds(100))
+            }
+            // 恢复 On-Demand（与 configure 同一规则：定时会话不开）—— 切换窗口结束，
+            // 扩展再被系统回收时仍能自动重连。
+            if settings.autoStopSeconds <= 0 {
+                try? await tunnelManager.setOnDemandEnabled(true)
             }
             verifyTunnelConnectivity()   // 热切换后同样要哨兵：配置合法 ≠ 节点真的可用
             logger.info("Clean-restart switched tunnel to \(node.name) / \(settings.proxyMode.rawValue)", category: "tunnel")
@@ -1256,6 +1268,17 @@ public final class AppState {
         nodes = measured
         let previousId = currentNodeId
         if var best = pickBestRespectingRegions(from: measured) {
+            // 黏性滞后：VPN 在跑且当前节点本轮仍可用时，新最优要显著更好才值得为它
+            // 整条隧道重启。不够好就整轮收工 —— 连经代理精选也省了（少起临时 xray
+            // 实例，扩展内存压力更小）。测速结果照常落盘，延迟列仍然是新的。
+            if isVPNRunning, !isSwitchingTunnel, best.id != currentNodeId,
+               let current = currentNode, !isEffectivelyExcluded(current),
+               !Self.autoSwitchWorthRestart(currentMs: current.lastLatencyMs,
+                                            bestMs: best.lastLatencyMs ?? .max) {
+                logger.info("Auto-select keeps \(current.name) (\(current.lastLatencyMs ?? -1)ms): candidate \(best.name) (\(best.lastLatencyMs ?? -1)ms) not better enough to restart tunnel", category: "app")
+                persist()
+                return
+            }
             // 经代理精选（VPN 在跑且开关开着）：直连绿色候选逐个真实走节点测，
             // 避开「直连快但出口绕路 / 已失效」的假好节点。VPN 没开时测不了，直接用直连结果。
             if settings.autoSelectUsesProxiedLatency, isVPNRunning, !isSwitchingTunnel {
@@ -1316,10 +1339,19 @@ public final class AppState {
             }
         }
         // 经代理延迟接近时同样优先低倍率（冷测数字大且抖动大，接近带宽给 200ms）。
-        if let best = bestPreferringLowRate(measured.map(\.node),
+        if var best = bestPreferringLowRate(measured.map(\.node),
                                             latency: { node in measured.first { $0.node.id == node.id }?.ms ?? .max },
                                             tieBandMs: 200) {
-            let bestMs = measured.first { $0.node.id == best.id }?.ms ?? -1
+            var bestMs = measured.first { $0.node.id == best.id }?.ms ?? -1
+            // 黏性滞后（经代理维度）：精选想换掉当前节点、而当前节点本轮也实测过且
+            // 没坏时，同样要求显著更好 —— 不为经代理延迟的抖动重启隧道。
+            if best.id != currentNodeId,
+               let current = measured.first(where: { $0.node.id == currentNodeId }),
+               !Self.autoSwitchWorthRestart(currentMs: current.ms, bestMs: bestMs) {
+                logger.info("Proxied refine keeps \(current.node.name) (\(current.ms)ms): \(best.name) (\(bestMs)ms) not better enough to restart tunnel", category: "app")
+                best = current.node
+                bestMs = current.ms
+            }
             logger.info("Proxied refine picked \(best.name) (\(bestMs)ms, rate \(best.rateForComparison)) from \(candidates.count) green candidates (\(failedCount) failed)", category: "app")
             if failedCount > 0 {
                 showToast(L("经代理精选完成：实测 \(candidates.count) 个候选，避开 \(failedCount) 个不可用节点"))
@@ -1333,6 +1365,21 @@ public final class AppState {
 
     /// 直连延迟「接近」的判定带宽（毫秒）：差在此内视为延迟相当，交给倍率决胜。
     private static let directTieBandMs = 30
+
+    /// 自动择优的黏性滞后：VPN 运行中切换节点 = 全量隧道重启 = 图标闪烁 + 数秒断流，
+    /// 所以当前节点仍健康时，新最优必须**显著**更快才值得切 —— 绝对值至少快
+    /// `autoSwitchMinImprovementMs`，且相对当前延迟的降幅不低于 `autoSwitchImprovementRatio`
+    /// （两条取较严者）。延迟抖动导致的「最优每轮易主」不再触发重启（用户反馈：启停频繁）。
+    static let autoSwitchMinImprovementMs = 50
+    static let autoSwitchImprovementRatio = 0.3
+
+    /// 「为这个新最优重启隧道值不值」。当前节点本轮测速失败（nil）= 已坏，无条件放行。
+    /// 只约束 VPN 运行中的切换 —— 没跑时改 currentNodeId 不花钱，调用方不该走这里。
+    static func autoSwitchWorthRestart(currentMs: Int?, bestMs: Int) -> Bool {
+        guard let currentMs else { return true }
+        let floor = max(autoSwitchMinImprovementMs, Int(Double(currentMs) * autoSwitchImprovementRatio))
+        return currentMs - bestMs >= floor
+    }
 
     /// 从候选里选最优：延迟最低者胜；但**延迟接近（差 ≤ tieBandMs）时优先低倍率**节点
     /// （省流量）。倍率相同则回到延迟更低者。`preferLowerRate` 关闭时退化为纯延迟最低。
@@ -2078,6 +2125,28 @@ public final class AppState {
             scheduleIPRefresh()
             showToast(L("已按定时自动断开 VPN"))
             logger.info("Auto-stop observed from extension (stoppedAt=\(s.stoppedAt!))", category: "tunnel")
+        }
+
+        // 计划外断开侦测（诊断用）：VPN 应在跑、也确实连上过（connectedSince 非 nil），
+        // 却发现隧道断了、且不是定时到点（无 stoppedAt）—— 说明扩展进程死了（内存超限
+        // 被 jetsam / xray 崩溃 / 系统回收）。On-Demand 开着时系统随后会自动拉起，用户
+        // 看到的就是一次「计划外启停」。落一条带系统断开原因的日志，让日志页能把这类
+        // 重启和择优切换（"Clean-restart switched…"）分开数 —— 用户报「启停频繁」时有据可查。
+        if isVPNRunning, connectedSince != nil,
+           tunnelManager.status == .disconnected || tunnelManager.status == .invalid,
+           session?.stoppedAt == nil,
+           !loggedUnexpectedTunnelDeath {
+            loggedUnexpectedTunnelDeath = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let reason = await self.tunnelManager.lastDisconnectError()
+                self.logger.error(
+                    "隧道计划外断开（App 未发起）：\(reason ?? "系统未报告原因")。"
+                    + "疑似扩展进程被回收（内存超限 / 崩溃）；On-Demand 开启时系统会自动重连",
+                    category: "tunnel")
+            }
+        } else if tunnelManager.status == .connected {
+            loggedUnexpectedTunnelDeath = false
         }
     }
 }

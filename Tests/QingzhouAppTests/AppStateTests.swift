@@ -54,6 +54,44 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.nodes.count, 2)
     }
 
+    // MARK: - 自动择优黏性滞后（VPN 运行中，新最优要显著更好才值得重启隧道）
+
+    func testAutoSwitchWorthRestartHysteresis() {
+        // 当前节点本轮测速失败（nil）= 已坏，无条件放行
+        XCTAssertTrue(AppState.autoSwitchWorthRestart(currentMs: nil, bestMs: 500))
+        // 显著更好（300→100：提升 200 ≥ max(50, 300×0.3=90)）→ 切
+        XCTAssertTrue(AppState.autoSwitchWorthRestart(currentMs: 300, bestMs: 100))
+        // 小抖动（100→80：提升 20 < 50）→ 不值得为 20ms 断流重启
+        XCTAssertFalse(AppState.autoSwitchWorthRestart(currentMs: 100, bestMs: 80))
+        // 绝对值够但比例不够（500→400：提升 100 < 500×0.3=150）→ 不切
+        XCTAssertFalse(AppState.autoSwitchWorthRestart(currentMs: 500, bestMs: 400))
+        // 比例够且绝对值达标（60→5：提升 55 ≥ max(50, 18)）→ 切
+        XCTAssertTrue(AppState.autoSwitchWorthRestart(currentMs: 60, bestMs: 5))
+        // 边界：提升恰好等于门槛（150→100：提升 50 = max(50, 45)）→ 切
+        XCTAssertTrue(AppState.autoSwitchWorthRestart(currentMs: 150, bestMs: 100))
+        // 新最优反而更差 / 相同 → 不切
+        XCTAssertFalse(AppState.autoSwitchWorthRestart(currentMs: 100, bestMs: 100))
+        XCTAssertFalse(AppState.autoSwitchWorthRestart(currentMs: 100, bestMs: 180))
+    }
+
+    func testAutoSelectKeepsCurrentNodeOnSmallImprovementWhileVPNRunning() throws {
+        let state = makeState()
+        try state.addNode(fromURL: "trojan://pw@a.com:443#慢一点的当前节点")
+        try state.addNode(fromURL: "trojan://pw@b.com:443#快一点的候选")
+        // 手动构造测速结果：当前 100ms、候选 80ms —— 差 20ms，不值得重启
+        state.nodes[0].lastLatencyMs = 100
+        state.nodes[1].lastLatencyMs = 80
+        state.select(state.nodes[0])
+        state.isVPNRunning = true
+
+        // 直接检验门槛判定（autoSelectBestNode 会真发 TCP 探测，单测里不跑全流程）：
+        // pickBestRespectingRegions 会选 80ms 的候选，但门槛应拦下切换
+        let best = state.pickBestRespectingRegions(from: state.nodes)
+        XCTAssertEqual(best?.name, "快一点的候选")
+        XCTAssertFalse(AppState.autoSwitchWorthRestart(
+            currentMs: state.nodes[0].lastLatencyMs, bestMs: best?.lastLatencyMs ?? .max))
+    }
+
     func testToggleExclusionClearsCurrentIfExcluded() throws {
         let state = makeState()
         try state.addNode(fromURL: "trojan://pw@a.com:443#X")
