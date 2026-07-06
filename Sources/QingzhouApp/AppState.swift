@@ -67,6 +67,14 @@ public final class AppState {
     private var loggedMemoryWarningCount = 0
     /// 「隧道计划外断开」日志的去重闸：断一次只记一条，重新连上后复位。
     private var loggedUnexpectedTunnelDeath = false
+
+    /// 已判定为「仅 IPv6」的域名（只有 AAAA、没有 A）。连接页据此打「仅 IPv6」徽标 ——
+    /// 轻舟全链路 IPv4（保护 fakedns 分流，见 docs/IPV6.md），这类站点直连不可达，
+    /// 标注出来让用户遇到时不迷惑。
+    public private(set) var ipv6OnlyHosts: Set<String> = []
+    private let ipv6Prober = IPv6OnlyProber()
+    /// 已排队探测过的域名（成败都算），防重复调度；上限同 prober 的会话上限。
+    private var ipv6ProbeScheduled: Set<String> = []
     public var settings: Settings = Settings()
     /// App 内「发现新版本」提示的数据源（非 nil 时 RootView 弹更新 alert）。
     /// App Store 版启动时静默查一次 iTunes Lookup API；未上架 / 失败 → 保持 nil，不打扰。
@@ -1846,6 +1854,10 @@ public final class AppState {
             // 回翻：连接常在 map 落盘（appex 每秒才写一次）之前就被 ingest，只在解析那刻
             // 查一次会让这批连接永远顶着裸 IP（按域名搜不到、开「忽略 IP」时整行被藏）。
             backfillDomainNames()
+            // 「仅 IPv6」标注：对新出现的域名后台查一次真实 A/AAAA（DoH 绕开 fakedns
+            // 假 IP）。只有 AAAA 的站点在全 IPv4 链路下直连不可达 —— 打标 + 记日志，
+            // 用户遇到时连接页能看懂原因（docs/IPV6.md）。
+            probeIPv6OnlyCandidates()
             #if os(macOS)
             // 来源 App 标注开启时才走 XPC + 回填（FilterControlClient 带 2 秒超时兜底）。
             if FeatureFlags.sourceAppLabeling {
@@ -2098,6 +2110,33 @@ public final class AppState {
             } else if outboundStats != nil {
                 outboundStats = nil
             }
+        }
+    }
+
+    /// 「仅 IPv6」探测调度：从连接列表挑还没查过的域名（裸 IP 跳过），交给 IPv6OnlyProber
+    /// 后台查真实 A/AAAA。每轮最多 3 个 —— access log 2 秒一轮，自然限速；判定为仅 IPv6
+    /// 的进 `ipv6OnlyHosts`（UI 徽标）并记一条日志。
+    private func probeIPv6OnlyCandidates() {
+        var picked = 0
+        for c in connectionTracker.connections {
+            let host = c.targetHost
+            guard !HostClassifier.isBareIP(host),
+                  ipv6ProbeScheduled.count < IPv6OnlyProber.sessionLimit,
+                  !ipv6ProbeScheduled.contains(host) else { continue }
+            ipv6ProbeScheduled.insert(host)
+            picked += 1
+            Task(priority: .utility) { [weak self] in
+                guard let self, let verdict = await self.ipv6Prober.classifyIfNew(host: host) else { return }
+                if verdict == .ipv6Only {
+                    self.ipv6OnlyHosts.insert(host)
+                    self.logger.warn(
+                        "检测到仅 IPv6 站点 \(host)：该域名没有 IPv4 地址（只有 AAAA）。"
+                        + "轻舟当前全 IPv4 链路（保护按域名分流）直连不可达；走代理时由节点解析、或可正常。"
+                        + "设计取舍见 docs/IPV6.md",
+                        category: "app")
+                }
+            }
+            if picked >= 3 { break }
         }
     }
 

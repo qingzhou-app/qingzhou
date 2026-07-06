@@ -194,6 +194,17 @@ public struct ConnectionsView: View {
                     .frame(width: 8, height: 8)
                 Text(c.targetHost).font(.headline)
                 Spacer()
+                // 「仅 IPv6」标注：该域名没有 IPv4 地址，全 IPv4 链路直连不可达 ——
+                // 用户遇到时一眼看懂是站点地址族问题，不是轻舟坏了（docs/IPV6.md）
+                if state.ipv6OnlyHosts.contains(c.targetHost) {
+                    Text("仅 IPv6")
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.18))
+                        .foregroundStyle(.orange)
+                        .clipShape(Capsule())
+                        .help("该站点只有 IPv6 地址（无 A 记录）。轻舟为保护按域名分流走全 IPv4 链路，这类站点直连不可达；走代理时由节点解析、或可正常。详见 docs/IPV6.md")
+                }
                 // DNS 查询标注：一眼区分「隧道解析查询」和「用户主动访问」
                 if c.isDNSQuery {
                     Text("DNS")

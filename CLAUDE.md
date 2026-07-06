@@ -90,4 +90,5 @@ dyld 在 main() 前加载完，主 App 启动黑屏 1–3 秒。因此 share lin
 ## 文档索引
 
 架构细节 `docs/ARCHITECTURE.md`（含逐模块设计取舍表）、编译 / 签名 / 真机调试 `docs/BUILD.md`、
-真机日志抓取 `docs/IOS-LOGS.md`、路线图 `docs/ROADMAP.md`。
+真机日志抓取 `docs/IOS-LOGS.md`、路线图 `docs/ROADMAP.md`、IPv6 设计边界（全链路 IPv4 的
+取舍 / 调研 / 备用双栈方案，改 DNS/fakedns 前必读）`docs/IPV6.md`。
