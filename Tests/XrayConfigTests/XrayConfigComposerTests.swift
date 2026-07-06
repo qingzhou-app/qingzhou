@@ -162,6 +162,12 @@ final class XrayConfigComposerTests: XCTestCase {
             (entry as? [String: Any])?["address"] as? String == "223.5.5.5"
         }
         XCTAssertNotNil(alidns)
+        // expectIPs 会误伤 CN CDN（阿里给的港澳/国际边缘 IP 被丢弃 → 回退 8.8.8.8 走代理
+        // 查 → 拿海外边缘 → 直连失败），必须不存在。见 buildDNS 注释（cctv 案）。
+        XCTAssertNil((alidns as? [String: Any])?["expectIPs"],
+                     "阿里 DNS 不应带 expectIPs：会误伤解析出非 CN 段边缘 IP 的国内 CDN")
+        // domains 限定仍在（只让国内域名走阿里）
+        XCTAssertEqual((alidns as? [String: Any])?["domains"] as? [String], ["geosite:cn"])
     }
 
     // MARK: - 用户规则注入（自定义 + 远程规则真正生效的关键）

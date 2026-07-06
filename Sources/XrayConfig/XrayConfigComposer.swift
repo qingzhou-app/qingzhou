@@ -265,15 +265,24 @@ public enum XrayConfigComposer {
                 "queryStrategy": "UseIP"
             ]
         case .rule:
-            // 中国域名用阿里 DNS（IPv4），结果落 geoip:cn 才被接受；其他用 Google + Cloudflare。
+            // 中国域名（geosite:cn）走阿里 DNS，从国内直连查、拿国内边缘 IP；其余用
+            // Google + Cloudflare。
+            //
+            // ⚠️ 不加 `expectIPs: ["geoip:cn"]`：它要求阿里的答案必须落在中国 IP 段
+            // 才被接受，本意是防污染，但国内域名走直连查阿里本就不会被污染，这层过滤的
+            // 实际效果只剩**误伤 CN CDN** —— 央视统计 / 视频 CDN（p.data.cctv.com、
+            // cbs-u.sports.cctv.com）解析出的边缘 IP 常在非 CN 注册段（港澳 / 国际 CDN /
+            // IPv6），合法答案被 expectIPs 丢弃后回退到 8.8.8.8，而 8.8.8.8 的查询按路由走
+            // 代理、从海外出口查 → 拿到服务海外用户的边缘 IP → freedom 从国内直连这个海外
+            // 边缘 → 被风控 / 超时。表现为「连接页全 DIRECT、加直连规则和完整版 geo 都无效、
+            // 一切直连正常」的跨域错误（真机 cctv 案定位）。去掉过滤，阿里给什么用什么。
             return [
                 "servers": [
                     "fakedns",
                     [
                         "address": "223.5.5.5",
                         "port": 53,
-                        "domains": ["geosite:cn"],
-                        "expectIPs": ["geoip:cn"]
+                        "domains": ["geosite:cn"]
                     ] as [String: Any],
                     "8.8.8.8",
                     "1.1.1.1"
