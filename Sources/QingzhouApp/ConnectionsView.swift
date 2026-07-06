@@ -125,16 +125,12 @@ public struct ConnectionsView: View {
                 DoHNoticeBanner(state: state)
             }
             // 「仅 IPv6」站点提示：这类站点连不上、没有连接行，per-row 徽标挂不上，
-            // 在这里独立列出。轻舟全 IPv4 链路的已知边界（docs/IPV6.md）。
+            // 在这里独立列出。复用 filterHint（与「忽略 IP」等提示同款布局，窄窗口稳妥；
+            // 别用 fixedSize + 自定义 frame，macOS 窄窗口 VStack 里会布局塌缩）。
+            // 详细域名 + 说明在日志页（docs/IPV6.md）。
             if !state.ipv6OnlyHosts.isEmpty {
-                HStack(alignment: .top, spacing: 4) {
-                    Image(systemName: "6.circle").imageScale(.small)
-                    Text("检测到仅 IPv6 站点（无 IPv4 地址，当前直连不可达）：\(state.ipv6OnlyHosts.sorted().joined(separator: "、"))")
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .font(.caption2)
-                .foregroundStyle(.orange)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                filterHint(icon: "6.circle",
+                           text: L("仅 IPv6 站点（无 IPv4 地址、直连不可达）：\(state.ipv6OnlyHosts.sorted().joined(separator: "、"))"))
             }
             // 过滤生效时的轻提示：避免用户忘了开着过滤，以为数据丢了
             if hiddenIPCount > 0 {
