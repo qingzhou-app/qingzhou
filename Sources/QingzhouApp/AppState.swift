@@ -2113,13 +2113,19 @@ public final class AppState {
         }
     }
 
-    /// 「仅 IPv6」探测调度：从连接列表挑还没查过的域名（裸 IP 跳过），交给 IPv6OnlyProber
-    /// 后台查真实 A/AAAA。每轮最多 3 个 —— access log 2 秒一轮，自然限速；判定为仅 IPv6
-    /// 的进 `ipv6OnlyHosts`（UI 徽标）并记一条日志。
+    /// 「仅 IPv6」探测调度：交给 IPv6OnlyProber 后台经 DoH 查真实 A/AAAA，仅 IPv6 的
+    /// 进 `ipv6OnlyHosts`（UI 提示 + 日志）。
+    ///
+    /// ⚠️ 数据源必须是 **fakedns-map**（浏览器解析过的所有域名），不能只用连接列表：
+    /// 仅 IPv6 站点在全 IPv4 链路下**连不上、进不了连接列表**（access log 无它的连接），
+    /// 但 fakedns 仍给它分过假 IP、落进 map —— 从连接列表取会永远漏掉最该标注的它们
+    /// （真机 thiswebsiteisipv6only.com 案）。连接列表并进来只为兜底 map 尚未落盘的新域名。
+    /// 每轮上限 8：新访问域名要够快被探到（access log 2 秒一轮），首次浏览的爆发量由
+    /// `ipv6ProbeScheduled` 去重 + 会话上限跨轮摊平。
     private func probeIPv6OnlyCandidates() {
+        let candidates = Set(fakeDNSMap.values).union(connectionTracker.connections.map(\.targetHost))
         var picked = 0
-        for c in connectionTracker.connections {
-            let host = c.targetHost
+        for host in candidates {
             guard !HostClassifier.isBareIP(host),
                   ipv6ProbeScheduled.count < IPv6OnlyProber.sessionLimit,
                   !ipv6ProbeScheduled.contains(host) else { continue }
@@ -2136,7 +2142,7 @@ public final class AppState {
                         category: "app")
                 }
             }
-            if picked >= 3 { break }
+            if picked >= 8 { break }
         }
     }
 
