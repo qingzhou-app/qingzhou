@@ -978,6 +978,43 @@ final class AppStateCloudVaultTests: XCTestCase {
         XCTAssertEqual(state.currentNodeId, localCurrentId, "本机当前节点选择不应被恢复清掉")
     }
 
+    /// 恢复确认弹窗要带「与本机配置的差异摘要」：启动检查发现云端更新时，
+    /// offer 里应算好 diff —— 用户在确认前就知道恢复会加 / 删 / 改什么。
+    func testStartupOfferCarriesDiffSummary() async throws {
+        let store = makeStore()
+        var snapshot = Persistence.Snapshot()
+        snapshot.nodes = [try ProxyURLParser.parse("trojan://pw@cloud.example.com:443#cloud-node")]
+        snapshot.customRules = [Rule(type: .domainSuffix, value: "example.com", target: .proxy)]
+        try await store.save(VaultDocument(revision: 5, modifiedAt: Date(), deviceName: "other", snapshot: snapshot))
+
+        // 本机已有一个不同的节点：恢复会 +1（云端节点）−1（本机节点），规则 +1
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@local.example.com:443#local-node")
+        await state.runCloudVaultStartupCheck()
+        XCTAssertNotNil(state.cloudRestoreOffer)
+        XCTAssertEqual(state.cloudRestoreOffer?.diffSummary, "与本机相比：节点 +1 −1 · 规则 +1")
+    }
+
+    /// 手动「立即恢复」路径：版本列表里的候选也要带差异摘要（选中后经 pending →
+    /// presentPendingCloudRestoreOffer 原样进确认弹窗，与启动路径汇流到同一 alert）。
+    func testManualRestoreCandidatesCarryDiffSummary() async throws {
+        let store = makeStore()
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@a.com:443#n1")
+        await state.cloudMirrorTask?.value   // 云端主文档 = 本机内容
+
+        await state.requestManualCloudRestore()
+        let options = try XCTUnwrap(state.cloudVersionOptions)
+        // 云端主文档与本机一致 → 摘要明说「一致」，用户不会被吓到
+        XCTAssertEqual(options.first?.diffSummary, "与本机配置一致")
+
+        // 选中 → sheet 收起 → onDismiss 呈现确认弹窗：摘要原样跟着候选走
+        let chosen = try XCTUnwrap(options.first)
+        state.chooseCloudRestoreCandidate(chosen)
+        state.presentPendingCloudRestoreOffer()
+        XCTAssertEqual(state.cloudRestoreOffer?.diffSummary, "与本机配置一致")
+    }
+
     func testStartupWithEmptyLocalAndEmptyCloudDoesNotCreateEmptyVault() async throws {
         // 新装机、云端也没有文档：没什么值得镜像的 —— 不要抢着写一份空 vault
         //（iCloud 元数据可能还没同步完，写空文档有覆盖真数据的风险）

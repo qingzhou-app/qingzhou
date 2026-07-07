@@ -30,9 +30,14 @@ public struct RootView: View {
                 Button("恢复") { Task { await state.restoreFromCloud(candidate: offer) } }
                 Button("暂不恢复", role: .cancel) { state.declineCloudRestore() }
             } message: { offer in
-                // 内容计数放最前 —— 「0 个订阅 · 0 个节点」一眼可见，防止误恢复空数据
+                // 内容计数放最前 —— 「0 个订阅 · 0 个节点」一眼可见，防止误恢复空数据；
+                // 第二行是与本机配置的差异摘要（生成 offer 时算好），读不到云端全文时降级省略。
                 // 单条长字面量（不用 + 拼接）以命中本地化 —— Text("a"+"b") 会落到 Text(String) 重载不翻译。
-                Text("内容：\(offer.header.contentSummary)\n来自 \(offer.header.deviceName)，\(offer.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))。\n恢复会用它覆盖本机配置；本机当前配置会先自动备份。")
+                if let diff = offer.diffSummary {
+                    Text("内容：\(offer.header.contentSummary)\n\(diff)\n来自 \(offer.header.deviceName)，\(offer.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))。\n恢复会用它覆盖本机配置；本机当前配置会先自动备份。")
+                } else {
+                    Text("内容：\(offer.header.contentSummary)\n来自 \(offer.header.deviceName)，\(offer.header.modifiedAt.formatted(date: .abbreviated, time: .shortened))。\n恢复会用它覆盖本机配置；本机当前配置会先自动备份。")
+                }
             }
             // App 内更新提醒：启动时静默查到 App Store 有新版本才弹。系统更新照常，这里只提示。
             .alert(

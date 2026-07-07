@@ -1000,6 +1000,28 @@
         }
       }
     },
+    "与本机相比：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compared with this device: %@"
+          }
+        }
+      }
+    },
+    "与本机配置一致": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same as this device's configuration"
+          }
+        }
+      }
+    },
     "为 %@ 添加 DOMAIN-SUFFIX 规则（覆盖全部子域名），VPN 运行中立即生效。": {
       "extractionState": "manual",
       "localizations": {
@@ -1430,6 +1452,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Content count unknown (older document version)"
+          }
+        }
+      }
+    },
+    "内容：%@\n%@\n来自 %@，%@。\n恢复会用它覆盖本机配置；本机当前配置会先自动备份。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content: %@\n%@\nFrom %@, %@.\nRestoring overwrites this device's config; the current config is backed up first."
           }
         }
       }
@@ -5218,6 +5251,17 @@
         }
       }
     },
+    "节点 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nodes %@"
+          }
+        }
+      }
+    },
     "节点 %lld": {
       "extractionState": "manual",
       "localizations": {
@@ -5326,6 +5370,17 @@
         }
       }
     },
+    "规则 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "rules %@"
+          }
+        }
+      }
+    },
     "规则代理": {
       "extractionState": "manual",
       "localizations": {
@@ -5413,6 +5468,17 @@
         }
       }
     },
+    "订阅 %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "subscriptions %@"
+          }
+        }
+      }
+    },
     "订阅 (%lld)": {
       "extractionState": "manual",
       "localizations": {
@@ -5452,6 +5518,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Settings"
+          }
+        }
+      }
+    },
+    "设置 %lld 项变更": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld setting(s) changed"
           }
         }
       }

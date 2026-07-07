@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import QingzhouCore
 
 /// iCloud vault —— 像 Obsidian 的 vault 一样，把配置（订阅 / 节点 / 规则 / 设置）镜像到
 /// iCloud Drive 的文档容器里：**App 卸载不影响 iCloud 中的数据**，重装 / 换设备时提示恢复。
@@ -120,12 +121,17 @@ public struct VaultRestoreCandidate: Equatable, Sendable, Identifiable {
     public var header: VaultHeader
     /// nil = 云端主文档；非 nil = `Documents/backups/` 下的历史版本文件名。
     public var backupFileName: String?
+    /// 与本机当前配置的差异摘要（`VaultDiff.summaryText`）。生成候选时算好 —— alert 的
+    /// message 在呈现瞬间就定格，事后补算刷不进去。读不到云端全文（下载中 / 解码失败）
+    /// 时为 nil，确认弹窗降级为只显示云端计数。
+    public var diffSummary: String?
 
     public var id: String { backupFileName ?? "main" }
 
-    public init(header: VaultHeader, backupFileName: String? = nil) {
+    public init(header: VaultHeader, backupFileName: String? = nil, diffSummary: String? = nil) {
         self.header = header
         self.backupFileName = backupFileName
+        self.diffSummary = diffSummary
     }
 }
 
@@ -212,6 +218,183 @@ public enum VaultSnapshotNormalizer {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(snapshot)
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+// MARK: - 恢复差异摘要（可单测）
+
+/// 云端快照与本机快照的配置差异 —— 恢复确认弹窗用。只有云端计数（「N 订阅 · M 节点」）
+/// 用户判断不了「恢复到底会改掉什么」；这里按身份键配对算出增 / 删 / 改，摘要成一行。
+///
+/// 方向约定：以「恢复云端会对本机做什么」为准 —— added = 云端有本机没有（恢复会加进来），
+/// removed = 本机有云端没有（恢复会删掉）。
+public struct VaultDiff: Equatable, Sendable {
+    public var nodesAdded: Int
+    public var nodesRemoved: Int
+    public var nodesModified: Int
+    public var subscriptionsAdded: Int
+    public var subscriptionsRemoved: Int
+    public var rulesAdded: Int
+    public var rulesRemoved: Int
+    public var rulesModified: Int
+    /// 设置里值不同的字段数（按 JSON 顶层 key 比较 —— 新增字段自动纳入，不用维护清单）。
+    public var settingsChanged: Int
+
+    public init(
+        nodesAdded: Int, nodesRemoved: Int, nodesModified: Int,
+        subscriptionsAdded: Int, subscriptionsRemoved: Int,
+        rulesAdded: Int, rulesRemoved: Int, rulesModified: Int,
+        settingsChanged: Int
+    ) {
+        self.nodesAdded = nodesAdded
+        self.nodesRemoved = nodesRemoved
+        self.nodesModified = nodesModified
+        self.subscriptionsAdded = subscriptionsAdded
+        self.subscriptionsRemoved = subscriptionsRemoved
+        self.rulesAdded = rulesAdded
+        self.rulesRemoved = rulesRemoved
+        self.rulesModified = rulesModified
+        self.settingsChanged = settingsChanged
+    }
+
+    public var isEmpty: Bool {
+        nodesAdded == 0 && nodesRemoved == 0 && nodesModified == 0
+            && subscriptionsAdded == 0 && subscriptionsRemoved == 0
+            && rulesAdded == 0 && rulesRemoved == 0 && rulesModified == 0
+            && settingsChanged == 0
+    }
+
+    /// 计算两份快照的差异。**内部先各自过 VaultSnapshotNormalizer** —— 延迟 / 当前节点 /
+    /// 订阅用量等瞬态字段是设备本地量，调用方忘了规范化就会满屏假「修改」，所以不交给调用方。
+    public static func between(
+        local: Persistence.Snapshot, cloud: Persistence.Snapshot
+    ) -> VaultDiff {
+        let l = VaultSnapshotNormalizer.normalized(local)
+        let c = VaultSnapshotNormalizer.normalized(cloud)
+
+        // 节点按身份指纹配对（与 restoreFromCloud 的瞬态回填同一配对方式）；
+        // 指纹撞车（同协议同地址同凭据的重复节点）取第一个 —— 计数按唯一指纹算，够用。
+        let localNodes = Dictionary(
+            l.nodes.map { ($0.identityFingerprint, $0) }, uniquingKeysWith: { first, _ in first })
+        let cloudNodes = Dictionary(
+            c.nodes.map { ($0.identityFingerprint, $0) }, uniquingKeysWith: { first, _ in first })
+        var nodesAdded = 0, nodesModified = 0
+        for (fingerprint, cloudNode) in cloudNodes {
+            guard let localNode = localNodes[fingerprint] else {
+                nodesAdded += 1
+                continue
+            }
+            if comparableNode(cloudNode) != comparableNode(localNode) { nodesModified += 1 }
+        }
+        let nodesRemoved = localNodes.keys.filter { cloudNodes[$0] == nil }.count
+
+        // 订阅按 url 配对（url 即身份；名字 / 计数变化不算 —— 恢复不会丢订阅本身）
+        let localSubURLs = Set(l.subscriptions.map(\.url))
+        let cloudSubURLs = Set(c.subscriptions.map(\.url))
+
+        // 规则先按 id 配对（同 id 内容变 = 修改）；两侧配不上 id 的再按 lineForm 兜底 ——
+        // 删了重建 / 重新导入会换 id 但内容一字不差，那只是重建，不能吓用户「−1 +1」。
+        let localRulesById = Dictionary(
+            l.customRules.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let cloudRulesById = Dictionary(
+            c.customRules.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var rulesModified = 0
+        var cloudLeftover: [Rule] = []
+        for rule in c.customRules {
+            guard let paired = localRulesById[rule.id] else {
+                cloudLeftover.append(rule)
+                continue
+            }
+            if paired != rule { rulesModified += 1 }
+        }
+        // 多重集配对：本机剩余规则按 lineForm 计数，云端剩余逐条抵扣，抵不上的才是真新增
+        var localLeftoverLineForms: [String: Int] = [:]
+        for rule in l.customRules where cloudRulesById[rule.id] == nil {
+            localLeftoverLineForms[rule.lineForm, default: 0] += 1
+        }
+        var rulesAdded = 0
+        for rule in cloudLeftover {
+            if let count = localLeftoverLineForms[rule.lineForm], count > 0 {
+                localLeftoverLineForms[rule.lineForm] = count - 1   // lineForm 相同：重建，不算
+            } else {
+                rulesAdded += 1
+            }
+        }
+        let rulesRemoved = localLeftoverLineForms.values.reduce(0, +)
+
+        return VaultDiff(
+            nodesAdded: nodesAdded, nodesRemoved: nodesRemoved, nodesModified: nodesModified,
+            subscriptionsAdded: cloudSubURLs.subtracting(localSubURLs).count,
+            subscriptionsRemoved: localSubURLs.subtracting(cloudSubURLs).count,
+            rulesAdded: rulesAdded, rulesRemoved: rulesRemoved, rulesModified: rulesModified,
+            settingsChanged: settingsChangedFieldCount(l.settings, c.settings)
+        )
+    }
+
+    /// 一行摘要（alert message 空间有限，绝不换行）：
+    /// 「与本机相比：节点 +3 −1 ~2 · 订阅 +1 · 规则 +2 · 设置 1 项变更」；
+    /// 完全一致时「与本机配置一致」—— 明说没差异，用户不会被恢复弹窗吓到。
+    public var summaryText: String {
+        if isEmpty { return L("与本机配置一致") }
+        var segments: [String] = []
+        if let delta = Self.deltaToken(added: nodesAdded, removed: nodesRemoved, modified: nodesModified) {
+            segments.append(L("节点 \(delta)"))
+        }
+        if let delta = Self.deltaToken(added: subscriptionsAdded, removed: subscriptionsRemoved, modified: 0) {
+            segments.append(L("订阅 \(delta)"))
+        }
+        if let delta = Self.deltaToken(added: rulesAdded, removed: rulesRemoved, modified: rulesModified) {
+            segments.append(L("规则 \(delta)"))
+        }
+        if settingsChanged > 0 {
+            segments.append(L("设置 \(settingsChanged) 项变更"))
+        }
+        return L("与本机相比：\(segments.joined(separator: " · "))")
+    }
+
+    /// 「+3 −1 ~2」token：全为 0 → nil（该类别不出现在摘要里）。符号是数学记号，无需翻译。
+    private static func deltaToken(added: Int, removed: Int, modified: Int) -> String? {
+        var parts: [String] = []
+        if added > 0 { parts.append("+\(added)") }
+        if removed > 0 { parts.append("−\(removed)") }
+        if modified > 0 { parts.append("~\(modified)") }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    /// 「修改」判定用的可比形态：抹平设备本地生成的 id / subscriptionId（两台设备各自导入
+    /// 同一订阅时它们必然不同，但不代表配置差异）；瞬态字段已在规范化时剥离。
+    private static func comparableNode(_ node: Node) -> Node {
+        var n = node
+        n.id = UUID(uuid: UUID_NULL)
+        n.subscriptionId = nil
+        return n
+    }
+
+    /// 设置变更字段数：两份 Settings 各编码成 JSON 对象，比较顶层 key 的值。
+    /// 不逐字段手写比较 —— Settings 加新字段时这里自动覆盖，不会漏。
+    /// （同进程内相等的 Set 编码出的数组顺序一致，不会产生假差异。）
+    private static func settingsChangedFieldCount(_ a: Settings, _ b: Settings) -> Int {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard
+            let dataA = try? encoder.encode(a), let dataB = try? encoder.encode(b),
+            let objectA = (try? JSONSerialization.jsonObject(with: dataA)) as? [String: Any],
+            let objectB = (try? JSONSerialization.jsonObject(with: dataB)) as? [String: Any]
+        else { return 0 }
+        var changed = 0
+        for key in Set(objectA.keys).union(objectB.keys) {
+            switch (objectA[key], objectB[key]) {
+            case (nil, nil):
+                continue
+            case let (valueA?, valueB?):
+                // JSONSerialization 产物都是 NSNumber/NSString/NSArray/... —— isEqual 可比
+                if !(valueA as AnyObject).isEqual(valueB as AnyObject) { changed += 1 }
+            default:
+                changed += 1
+            }
+        }
+        return changed
     }
 }
 

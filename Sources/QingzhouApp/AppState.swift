@@ -495,7 +495,10 @@ public final class AppState {
                 cloudSyncStatus = .idle
             }
         case .offerRestore(let cloud):
-            cloudRestoreOffer = VaultRestoreCandidate(header: cloud)
+            // 差异摘要在生成 offer 时就算好 —— alert 的 message 在呈现瞬间定格，事后补不进去
+            var candidate = VaultRestoreCandidate(header: cloud)
+            candidate.diffSummary = await cloudRestoreDiffSummary(for: candidate)
+            cloudRestoreOffer = candidate
             cloudSyncStatus = Self.syncedStatus(from: lastSynced) ?? .unknown
             logger.info("iCloud vault newer (rev \(cloud.revision) from \(cloud.deviceName)) — offering restore", category: "cloud")
         case .adoptCloudRevision(let cloud):
@@ -776,9 +779,30 @@ public final class AppState {
                 ? L("iCloud 数据来自更新版本的轻舟，请先升级 App")
                 : L("iCloud 上没有找到备份"))
         }
+        // 差异摘要在这里（sheet 的异步加载）就算好：候选经 pending → onDismiss 原样进
+        // 确认弹窗，与启动路径汇流到同一 alert；alert 呈现后 message 定格，事后补不进去。
+        // 最多主文档 + maxBackups 份全文读取，都是本地已下载的小 JSON，可接受。
+        for i in options.indices {
+            options[i].diffSummary = await cloudRestoreDiffSummary(for: options[i])
+        }
         // 只有一份也在列表里展示（点一下即进确认弹窗）——sheet 已经在屏了，
         // 自动收起再弹 alert 反而突兀。
         return .loaded(options)
+    }
+
+    /// 读取候选对应的云端全文，算「与本机配置的差异」一行摘要（确认弹窗展示）。
+    /// 读不到 / schema 过新 → nil，弹窗降级为只显示云端计数 —— 摘要是锦上添花，不挡恢复。
+    private func cloudRestoreDiffSummary(for candidate: VaultRestoreCandidate) async -> String? {
+        let document: VaultDocument?
+        if let fileName = candidate.backupFileName {
+            document = try? await cloudVault.loadBackupDocument(fileName: fileName)
+        } else {
+            document = try? await cloudVault.loadDocument()
+        }
+        guard let document, document.schemaVersion <= VaultDocument.currentSchemaVersion else {
+            return nil
+        }
+        return VaultDiff.between(local: currentSnapshot(), cloud: document.snapshot).summaryText
     }
 
     /// 用户在版本列表里选了一份 → 先收起 sheet，候选暂存；等 sheet 的 onDismiss
