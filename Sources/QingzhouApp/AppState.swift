@@ -1422,6 +1422,10 @@ public final class AppState {
     /// 没有绿色候选时的退化候选数（取直连最快的前几个，别让精选完全没得跑）。
     private static let proxiedRefineFallbackCount = 3
 
+    /// 经代理精选轮次计数（进程内，不持久化）—— 域名画像探测目标的 round-robin 推进用：
+    /// 每次启用 Top-3 域名轮换的精选轮 +1，跨 3 轮覆盖 Top-3。重启归零无妨（只需推进）。
+    private var proxiedProbeRound = 0
+
     /// 用「经代理延迟」在**直连为绿色**的候选池里精选最优（用户口径：不限前 5，
     /// 绿色列表全员参赛 —— 绿色说明到节点的线路健康，值得花时间实测出口质量；
     /// 黄/红直连本身已说明线路差，不浪费实测名额）。
@@ -1446,11 +1450,22 @@ public final class AppState {
                 .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
                 .prefix(Self.proxiedRefineFallbackCount))
         }
+        // 本轮经代理探测目标：用户未指定固定目标时，改用「Top-3 代理域名」轮换
+        //（每轮换一个，成本与固定目标一致 —— 见 ProxiedProbePlanner），让经代理延迟反映
+        // 真实访问的站点而非 generate_204；数据不足或用户指定了固定目标 → 回退固定目标。
+        let roundTarget: String? = settings.proxiedTestTarget.isEmpty
+            ? ProxiedProbePlanner.probeTarget(from: domainHistory, roundIndex: proxiedProbeRound)
+            : nil
+        if let roundTarget {
+            proxiedProbeRound &+= 1
+            logger.info("Proxied refine probing against user top domain: \(roundTarget)", category: "app")
+        }
         var measured: [(node: Node, ms: Int)] = []
         var failedCount = 0
         for candidate in candidates {
             guard isVPNRunning, !isSwitchingTunnel else { break }   // 中途关了 VPN 就停
-            if let ms = await measureProxiedLatency(candidate, showToastOnError: false) {
+            if let ms = await measureProxiedLatency(candidate, showToastOnError: false,
+                                                    targetOverride: roundTarget) {
                 measured.append((candidate, ms))
             } else {
                 failedCount += 1
@@ -1657,7 +1672,12 @@ public final class AppState {
     /// VPN 关闭时 UI 应引导用户用普通测速（直连维度）。
     /// - Returns: 成功时的毫秒数；失败返回 nil（并在 `showToastOnError` 时 toast 错误）。
     @discardableResult
-    public func measureProxiedLatency(_ node: Node, showToastOnError: Bool = true) async -> Int? {
+    /// `targetOverride`：本轮经代理探测目标的显式覆盖（自动择优的域名画像轮换用，见
+    /// `refineWithProxiedLatency`）。nil = 沿用 `settings.proxiedTestTarget`（手动单测走这条，
+    /// 保持稳定可比的 Cloudflare 目标）。
+    public func measureProxiedLatency(
+        _ node: Node, showToastOnError: Bool = true, targetOverride: String? = nil
+    ) async -> Int? {
         guard isVPNRunning else {
             if showToastOnError { showToast(L("经代理测速需要 VPN 运行中（直连延迟请用普通测速）")) }
             return nil
@@ -1665,7 +1685,8 @@ public final class AppState {
         proxiedMeasuringNodeIds.insert(node.id)
         defer { proxiedMeasuringNodeIds.remove(node.id) }
         do {
-            let ms = try await tunnelManager.pingNode(node: node, targetURL: settings.proxiedTestTarget)
+            let target = targetOverride ?? settings.proxiedTestTarget
+            let ms = try await tunnelManager.pingNode(node: node, targetURL: target)
             if let i = nodes.firstIndex(where: { $0.id == node.id }) {
                 nodes[i].lastProxiedLatencyMs = ms
                 nodes[i].lastProxiedTestedAt = Date()
