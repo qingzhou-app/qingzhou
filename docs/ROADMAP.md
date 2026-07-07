@@ -108,6 +108,23 @@
 | Privacy Policy 起草 | 低 | 低 | 用模板（VPN apps 标准 Privacy Policy 框架） |
 | 真机 Bug 调试慢（没 macOS 同步 build） | 中 | 中 | S2 之后保持每周至少 1 次真机回归 |
 
+## 内核升级 (2026-07-07)
+
+**xray-core v1.260327.0 → v26.6.27**（build 5，全量重测基线）。动因与逐条评估见
+`xray-upgrade-eval.md`（会话产出）。关键：
+- 收益：#6275 TUN 启动时序根因修复（我们崩溃循环的正修）、#5924/#5975 DomainMatcher/Geodata
+  iOS 内存优化（直指 50MB 红线）、#6365 TUN nil panic 修复。
+- libXray 同步升到 73bb811，遭遇上游 #132 Invoke API 大重构（逐函数导出 → 单一
+  `Invoke(JSON)`，纯 JSON 信封，TunFd/geo 走 env，mph 缓存与 QueryStats 导出移除）。
+  `XrayCore.swift` 整体迁移（对外 API 不变）；QueryStats 改 Foundation 原生 GET；
+  mph 相关死代码已清。
+- 本地补丁：fakedns nil 防护按新版重铺为瘦身版（根因上游已修，此为防御纵深，护 TUN
+  之外的早查询路径）；SwitchOutbound wrapper 重写为新信封。构建脚本三处改造见脚本注释。
+- **升级 xray-core/libXray 前必读**上面这段 + `xray-upgrade-eval.md`。
+
+**节点择优算法**升到第 5 代多维打分（延迟/稳定性/带宽/成本四维锚点打分 + 分数黏性 +
+burst 丢包率 + 经代理并入总分）。五代沿革见 `docs/NODE-SELECTION.md`，设计见 `docs/NODE-SCORING.md`。
+
 ## 当前状态 (2026-07-03)
 
 **Sprint 进度**：S1 ✅ · S2 代码完成（真机翻墙日常在用，正式勾掉走 [ACCEPTANCE.md](ACCEPTANCE.md) §3）· S3 ✅ · S6 大部分已就位 · S7 ✅ · S8 ✅（提前）· S9 实现中（Widget 全家桶 + Shortcuts 全套并行开发）· S10 部分（ClashConfigParser 已存在）· **S11 英文 i18n 提前立项**（上国际区 App Store 需要，先做英文，简繁日照原计划）。剩下主线：S4/S5（App Store 上架，**组织账号已就位**）、S9 收尾、S11、S12 v1.0。

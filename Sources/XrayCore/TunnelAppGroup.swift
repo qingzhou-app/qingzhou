@@ -55,10 +55,7 @@ public enum TunnelAppGroup {
         return dir
     }
 
-    /// Mph cache 文件路径（xray-core 用于规则匹配加速）。
-    public static func mphCachePath() -> String? {
-        ensureWorkingDirectory()?.appendingPathComponent("mph.cache").path
-    }
+    // （mphCachePath 已删：新版 libXray 移除了 mph 缓存机制，我们本来也没启用。）
 
     // MARK: - 流量统计上报（Extension 写、主 App 轮询读）
 
