@@ -1633,6 +1633,9 @@ public final class AppState {
             if let i = self.nodes.firstIndex(where: { $0.id == nodeID }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
                 self.nodes[i].lastTestedAt = testedAt
+                // 定时/手动测速轮同样落测量历史 —— 稳定性维度的免费样本源，
+                // 不然只有择优轮攒数据，历史积累慢一半（自动测速与择优默认同为 30 分钟档）。
+                self.recordNodeDirectMeasurement(self.nodes[i], latencyMs: result.latencyMs, at: testedAt)
             }
         }
         persist()
