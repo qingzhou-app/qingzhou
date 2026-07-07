@@ -180,6 +180,56 @@ final class QingzhouProtocolsTests: XCTestCase {
         XCTAssertEqual(node.protocolType, .hysteria2)
     }
 
+    /// hysteria2 官方 URI 支持端口跳跃：authority 里直接写 `host:40000-50000`。
+    /// URLComponents 解析不了非数字端口 —— parser 预处理：node.port 取首端口，
+    /// 完整端口串挪到 parameters["mport"]（converter 再转成 finalmask.quicParams.udpHop）。
+    func testParseHysteria2PortHoppingRange() throws {
+        let url = "hysteria2://pwd@hy.example.com:40000-50000?sni=hy.example.com#hop"
+        let node = try ProxyURLParser.parse(url)
+        XCTAssertEqual(node.host, "hy.example.com")
+        XCTAssertEqual(node.port, 40000)
+        XCTAssertEqual(node.parameters["mport"], "40000-50000")
+        XCTAssertEqual(node.password, "pwd")
+        XCTAssertEqual(node.name, "hop")
+    }
+
+    /// 逗号 + 区间混写（`443,8443-8500`）也认；其余 query 照常解析。
+    func testParseHysteria2PortHoppingCommaList() throws {
+        let url = "hy2://pwd@hy.example.com:443,8443-8500/?obfs=salamander&obfs-password=op#hop"
+        let node = try ProxyURLParser.parse(url)
+        XCTAssertEqual(node.port, 443)
+        XCTAssertEqual(node.parameters["mport"], "443,8443-8500")
+        XCTAssertEqual(node.parameters["obfs"], "salamander")
+        XCTAssertEqual(node.parameters["obfs-password"], "op")
+    }
+
+    /// 跳跃端口段里混了越界端口 → 整条链接拒收（别让垃圾进 xray 再炸）。
+    func testParseHysteria2PortHoppingOutOfRangeRejected() {
+        XCTAssertThrowsError(try ProxyURLParser.parse("hysteria2://p@h.example:70000-70010#bad"))
+    }
+
+    /// `mport=` 查询参数写法（v2rayN / Shadowrocket 惯用）原样保留。
+    func testParseHysteria2MportQueryParam() throws {
+        let url = "hysteria2://pwd@hy.example.com:443?mport=443,5000-6000#m"
+        let node = try ProxyURLParser.parse(url)
+        XCTAssertEqual(node.port, 443)
+        XCTAssertEqual(node.parameters["mport"], "443,5000-6000")
+    }
+
+    /// 官方 URI 全参数（apernet/hysteria discussions/716）：sni / insecure / obfs /
+    /// obfs-password / pinSHA256 全部落进 parameters（pinSHA256 冒号原样保留）。
+    func testParseHysteria2OfficialFullParams() throws {
+        let url = "hysteria2://auth-token@hy.example.com:443?sni=real.example&insecure=1"
+            + "&obfs=salamander&obfs-password=ob-pass&pinSHA256=AB:CD:EF:01#full"
+        let node = try ProxyURLParser.parse(url)
+        XCTAssertEqual(node.password, "auth-token")
+        XCTAssertEqual(node.parameters["sni"], "real.example")
+        XCTAssertEqual(node.parameters["insecure"], "1")
+        XCTAssertEqual(node.parameters["obfs"], "salamander")
+        XCTAssertEqual(node.parameters["obfs-password"], "ob-pass")
+        XCTAssertEqual(node.parameters["pinSHA256"], "AB:CD:EF:01")
+    }
+
     // MARK: - Dispatcher
 
     func testParseUnknownScheme() {

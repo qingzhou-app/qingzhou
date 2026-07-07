@@ -27,7 +27,7 @@
 | **S5** | W9–10 | 🚀 **MVP 上架** | App Store 提交 → 通过审核 → 公开上架 |
 | **S6** | 大部分已就位 | macOS port | macOS 版本（共用 Tunnel 桥接代码）已基本可用；macOS 系统扩展 / 内容过滤相关收尾中 |
 | **S7** | 已完成 | 体验差异化 | ✅ 自动测速 + 自动择优（择优后 toast 提示）+ region prefer/exclude + 切模式自动重启隧道 |
-| **S8** | W15–16 | hysteria2 | ✅ 已提前完成：打包的 xray-core 自带 hysteria 传输，hy2 走原生 `Hysteria2Converter`（无需单独 lib） |
+| **S8** | 已完成 | hysteria2 | ✅ 原生 `Hysteria2Converter`（打包 xray-core 自带 hysteria 传输，无需单独 lib）。**v26.6.27 schema 完成**：端口跳跃 + salamander obfs + brutal 带宽/拥塞控制迁入 `finalmask.quicParams`；含 `XrayCore.testConfig` 真实配置预检集成测试 |
 | **S9** | 进行中 | Widget + Shortcuts | Shortcuts / App-Intents 引擎已写好（`TunnelIntents.swift` + `AppLaunchWatcher.swift`）；**Widget 全家桶 + AppShortcutsProvider + GetVPNStatusIntent + macOS 自动连接线：并行实现中**（详见「当前状态」） |
 | **S10** | 进行中 | Clash YAML | `ClashConfigParser` 已存在（trojan/vmess/vless/ss/hy2）；**剩下：vmess-snell/ssr/http/socks5 暂跳过** |
 | **S11** | W21–22 | i18n + Polish | 简繁英日 + 暗色模式 + Onboarding |
@@ -190,7 +190,7 @@ burst 丢包率 + 经代理并入总分）。五代沿革见 `docs/NODE-SELECTIO
 Clash vless+reality 参数、一枝红杏 `:倍率` 格式）：
 - **零节点可见错误**：SIP008/SSD/空订阅解析出 0 节点时给醒目提示，区分「空」vs「格式不识别」
 - **SIP008 (JSON) 订阅格式**：Outline/部分 SS 机场用，现在静默空导入
-- **hysteria2 salamander obfs**：带 obfs 的 hy2 节点握手失败（改 Hysteria2Converter）
+- ✅ **hysteria2 salamander obfs**：已修（v26.6.27 schema，obfs 走 `finalmask.udp` salamander mask）
 - **裸 UTF-8 fragment 兜底**：URLComponents 对未编码 emoji/中文名可能返回 nil → 整条丢
 - **SSR / TUIC 协议**：尾部机场，成本大，排后
 

@@ -83,6 +83,11 @@ let package = Package(
                 .linkedLibrary("resolv")
             ]
         ),
-        .testTarget(name: "XrayCoreTests", dependencies: ["XrayCore"])
+        // QingzhouProtocols / XrayConfig：hysteria2 等协议的「share link → Node → xray 配置
+        // → XrayCore.testConfig 真实预检」集成测试需要（无网络，只验配置合法性）。
+        .testTarget(
+            name: "XrayCoreTests",
+            dependencies: ["XrayCore", "XrayConfig", "QingzhouProtocols", "QingzhouCore"]
+        )
     ]
 )

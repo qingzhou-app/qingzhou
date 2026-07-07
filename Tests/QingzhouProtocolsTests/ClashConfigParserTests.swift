@@ -183,6 +183,33 @@ final class ClashConfigParserTests: XCTestCase {
         XCTAssertEqual(nodes[0].parameters["sni"], "hy.example.com")
     }
 
+    /// Clash.Meta hysteria2 扩展字段：obfs / obfs-password / ports(端口跳跃) / up / down
+    /// 都要映射进 parameters —— 不映射 obfs = 带混淆的 hy2 节点转出来握手必失败
+    ///（机场兼容审计遗留，对应 share link 路径的同名参数）。
+    func testParseHysteria2ObfsAndPortHopping() throws {
+        let yaml = """
+        proxies:
+          - name: HY2-OBFS
+            type: hysteria2
+            server: hy.example.com
+            port: 443
+            ports: 443,5000-6000
+            password: hypw
+            obfs: salamander
+            obfs-password: obpw
+            up: 100
+            down: 500 Mbps
+        """
+        let (nodes, errs) = try ClashConfigParser.parse(yaml)
+        XCTAssertTrue(errs.isEmpty)
+        let n = try XCTUnwrap(nodes.first)
+        XCTAssertEqual(n.parameters["obfs"], "salamander")
+        XCTAssertEqual(n.parameters["obfs-password"], "obpw")
+        XCTAssertEqual(n.parameters["mport"], "443,5000-6000", "Clash 的 ports 统一映射到 mport 键")
+        XCTAssertEqual(n.parameters["up"], "100")
+        XCTAssertEqual(n.parameters["down"], "500 Mbps")
+    }
+
     func testParseUnsupportedTypeSkippedSilently() throws {
         let yaml = """
         proxies:

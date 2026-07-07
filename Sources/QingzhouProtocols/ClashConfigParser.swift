@@ -123,10 +123,29 @@ public enum ClashConfigParser {
         }
 
         switch proto {
-        case .trojan, .hysteria2:
+        case .trojan:
             node.password = raw["password"] as? String
             if let sni = raw["sni"] as? String { node.parameters["sni"] = sni }
             if (raw["skip-cert-verify"] as? Bool) == true { node.parameters["allowInsecure"] = "1" }
+
+        case .hysteria2:
+            node.password = raw["password"] as? String
+            if let sni = raw["sni"] as? String { node.parameters["sni"] = sni }
+            if (raw["skip-cert-verify"] as? Bool) == true { node.parameters["allowInsecure"] = "1" }
+            // Clash.Meta hysteria2 扩展字段 → converter 认的 parameters 键。
+            // 不映射 obfs = 带混淆的 hy2 节点走 Clash 订阅时握手必失败（机场兼容审计）。
+            if let obfs = raw["obfs"] as? String, !obfs.isEmpty { node.parameters["obfs"] = obfs }
+            if let obfsPwd = raw["obfs-password"] as? String, !obfsPwd.isEmpty {
+                node.parameters["obfs-password"] = obfsPwd
+            }
+            // 端口跳跃：Clash 的 ports（"443,5000-6000"）统一到 mport 键（对齐 share link）。
+            if let ports = stringValue(raw["ports"]), !ports.isEmpty { node.parameters["mport"] = ports }
+            // brutal 带宽：up/down 可能是数字或带单位字符串，都转成字符串透传给 converter 归一化。
+            if let up = stringValue(raw["up"]), !up.isEmpty { node.parameters["up"] = up }
+            if let down = stringValue(raw["down"]), !down.isEmpty { node.parameters["down"] = down }
+            if let cong = raw["congestion-controller"] as? String, !cong.isEmpty {
+                node.parameters["congestion"] = cong
+            }
 
         case .shadowsocks:
             node.cipher = raw["cipher"] as? String
@@ -193,6 +212,21 @@ public enum ClashConfigParser {
         if let n = any as? NSNumber { return n.intValue }
         if let i = any as? Int { return i }
         if let s = any as? String { return Int(s) }
+        return nil
+    }
+
+    /// 数字/字符串统一取字符串（YAML 里 `up: 100` 是数字、`down: 500 Mbps` 是字符串）。
+    /// 整数不带小数点（`100`，不是 `100.0`），避免 converter 归一化时误判。
+    private static func stringValue(_ any: Any?) -> String? {
+        if let s = any as? String { return s }
+        if let n = any as? NSNumber {
+            // 判断是不是整型：整数就不带小数点
+            if CFNumberIsFloatType(n) {
+                return "\(n.doubleValue)"
+            }
+            return "\(n.intValue)"
+        }
+        if let i = any as? Int { return "\(i)" }
         return nil
     }
 }
