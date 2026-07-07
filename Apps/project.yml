@@ -60,6 +60,11 @@ targets:
         # 声明为 false 后 ASC 不再每个 build 追问「Uses Non-Exempt Encryption」。
         ITSAppUsesNonExemptEncryption: false
         NSCameraUsageDescription: 扫描二维码以快速添加节点或订阅
+        # Live Activity（灵动岛/锁屏实时活动，E.19）：主 App 用 ActivityKit 起活动、
+        # widget 扩展渲染，缺这个键 Activity.request 会失败（areActivitiesEnabled 恒 false）。
+        NSSupportsLiveActivities: true
+        # 允许高频更新（主 App 前台时每秒推进速率/phase）—— 不加系统会更激进地节流更新。
+        NSSupportsLiveActivitiesFrequentUpdates: true
         UILaunchStoryboardName: LaunchScreen
         UIRequiredDeviceCapabilities:
           - arm64

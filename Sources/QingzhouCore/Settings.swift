@@ -80,6 +80,9 @@ public struct Settings: Codable, Sendable {
     /// 用户「忽略此版本」选中的 App Store 版本号（App 内更新提醒用）。
     /// 同一版本不再提示；出了更新的版本（语义化比较更大）才会再提示。"" = 没忽略过任何版本。
     public var ignoredUpdateVersion: String
+    /// 显示灵动岛 / 锁屏实时活动（Live Activity）。默认开（仅 iOS 有效，macOS 忽略）。
+    /// 关掉后连接期间不再起 Live Activity，已在显示的会立即结束。
+    public var showLiveActivity: Bool
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -103,7 +106,8 @@ public struct Settings: Codable, Sendable {
         autoConnectApps: Set<String> = [],
         iCloudSyncEnabled: Bool = true,
         autoStopSeconds: TimeInterval = 0,
-        ignoredUpdateVersion: String = ""
+        ignoredUpdateVersion: String = "",
+        showLiveActivity: Bool = true
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -127,6 +131,7 @@ public struct Settings: Codable, Sendable {
         self.iCloudSyncEnabled = iCloudSyncEnabled
         self.autoStopSeconds = autoStopSeconds
         self.ignoredUpdateVersion = ignoredUpdateVersion
+        self.showLiveActivity = showLiveActivity
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -145,6 +150,7 @@ public struct Settings: Codable, Sendable {
         case iCloudSyncEnabled
         case autoStopSeconds
         case ignoredUpdateVersion
+        case showLiveActivity
     }
 
     public init(from decoder: Decoder) throws {
@@ -176,5 +182,6 @@ public struct Settings: Codable, Sendable {
         self.iCloudSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? true
         self.autoStopSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoStopSeconds) ?? 0
         self.ignoredUpdateVersion = try c.decodeIfPresent(String.self, forKey: .ignoredUpdateVersion) ?? ""
+        self.showLiveActivity = try c.decodeIfPresent(Bool.self, forKey: .showLiveActivity) ?? true
     }
 }

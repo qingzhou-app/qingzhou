@@ -119,6 +119,9 @@ public final class AppState {
     /// 标记文件：start 提交后到扩展写新标记之间有 1–3 秒窗口，旧文件的 startedAt 会让
     /// 「已连接时长」瞬间显示成几小时。只采纳不早于本次启动的 startedAt。
     private var lastTunnelStartAt: Date?
+    /// 灵动岛 / 锁屏实时活动管家（E.19）。跨平台门面，macOS 上所有方法 no-op。
+    /// 由 startTunnel 起、trafficPollingLoop 每秒推进、stopTunnel 结束。
+    private let liveActivity = LiveActivityController()
     #if os(macOS)
     /// 「打开指定 App 自动连」的监听器（见 AppLaunchWatcher.swift）。settings 驱动启停。
     private var appLaunchWatcher: AppLaunchWatcher?
@@ -408,6 +411,8 @@ public final class AppState {
         }
         // 语言切换即时生效：动态字符串（toast / 错误）改查对应语种的 lproj 子 bundle
         L10n.setLanguage(settings.language)
+        // 「显示实时活动」开关变更即时生效：关掉立即结束在显示的活动，打开且在连则起。
+        syncLiveActivity()
         #if os(macOS)
         syncAppLaunchWatcher()
         #endif
@@ -1127,6 +1132,7 @@ public final class AppState {
             if settings.autoStopSeconds > 0 {
                 showToast(L("已开启定时：\(AutoStopPresets.label(for: settings.autoStopSeconds))后自动断开"))
             }
+            syncLiveActivity()    // 起灵动岛/锁屏实时活动（设置开 + iOS 才实际生效）
             scheduleIPRefresh()   // 隧道生效后刷新公网 IP → 落到「节点出口」那栏
             watchTunnelStartFailure()   // 扩展启动失败（配置错误等）→ 把可读原因端给用户
             // 冲突防呆：系统代理（Clash 等）开着会在轻舟之前劫走流量 → 部分 App 联不上。
@@ -1252,6 +1258,7 @@ public final class AppState {
         #endif
         autoStopDeadline = nil       // 手动关了，倒计时立即消失（不等下一秒轮询）
         connectedSince = nil         // 已连接时长同理，立即清零
+        liveActivity.endAll()        // 结束灵动岛/锁屏实时活动
         markAllConnectionsClosed()   // 隧道停了，活跃连接全部立即归入「已关闭」
         scheduleIPRefresh()   // 隧道断开后刷新公网 IP → 落回「直连」那栏
     }
@@ -2330,6 +2337,29 @@ public final class AppState {
     /// 否则挂着不用时的零星小流量会把峰值定得毫无意义。100 KB/s ≈ 有真实下载在进行。
     private static let bandwidthObserveFloorBps: Int64 = 100 * 1024
 
+    /// Live Activity（灵动岛/锁屏）单一同步入口（E.19）。幂等：
+    /// - 设置关 / VPN 没在跑 / 无当前节点 → 结束任何在显示的活动；
+    /// - 否则按当前状态起或刷新（`LiveActivityController.start` 内部决定 request/update/换节点）。
+    ///
+    /// 由 startTunnel 起点、trafficPollingLoop 每秒、设置开关变更三处驱动。速率取波形窗口
+    /// 最新样本（无样本按 0），phase 取系统真实 VPN 状态，计时起点复用 `connectedSince`
+    /// （与首页倒计时同一口径，扩展写的会话标记）。macOS 上 controller 全 no-op。
+    private func syncLiveActivity() {
+        guard settings.showLiveActivity, isVPNRunning, let node = currentNode else {
+            liveActivity.endAll()
+            return
+        }
+        let phase: QingzhouActivityContentState.Phase
+        switch tunnelManager.status {
+        case .connected:     phase = .connected
+        case .disconnecting: phase = .disconnecting
+        default:             phase = .connecting   // connecting / reasserting / 其它过渡态
+        }
+        let traffic = trafficHistory.latest ?? TrafficStats()
+        let state = QingzhouActivityContentState(phase: phase, connectedSince: connectedSince, traffic: traffic)
+        liveActivity.start(nodeName: node.name, protocolName: node.protocolType.rawValue, state: state)
+    }
+
     /// appex 经 App Group 上报的真实 `TrafficStats` 喂进波形窗口。UI 观察 `trafficHistory` 自动重绘。
     /// 顺手做**被动带宽观测**：把当前节点跑出的下行速率峰值记到该节点上（零额外流量）。
     public func ingestTrafficStats(_ stats: TrafficStats) {
@@ -2373,6 +2403,7 @@ public final class AppState {
             }
             syncAutoStopState()   // 定时关闭：刷新倒计时 + 识别「扩展已按定时自停」
             syncTunnelMemory()    // 扩展内存观测：读快照 + 新增告警转写进主 App 日志
+            syncLiveActivity()    // 灵动岛/锁屏实时活动：每秒推进速率 + phase（主 App 前台时）
             // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）
             if let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats"),
                abs(stats.sampledAt.timeIntervalSinceNow) <= 3 {   // 只接受新鲜样本，避免旧文件

@@ -14,6 +14,8 @@ struct QingzhouWidgetBundle: WidgetBundle {
     var body: some Widget {
         QingzhouStatusWidget()
         #if os(iOS)
+        // Live Activity（灵动岛/锁屏实时活动）—— 部署目标 iOS 17 ≥ 16.1，无需 if #available。
+        QingzhouLiveActivity()
         if #available(iOSApplicationExtension 18.0, *) {
             QingzhouControlBundle().body
         }

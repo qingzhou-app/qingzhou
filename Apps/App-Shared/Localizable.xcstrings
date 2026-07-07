@@ -13590,6 +13590,98 @@
           }
         }
       }
+    },
+    "显示灵动岛实时活动": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Live Activity"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブアクティビティを表示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顯示靈動島即時動態"
+          }
+        }
+      }
+    },
+    "连接期间在灵动岛 / 锁屏显示实时活动：连接状态、已连时长、实时上下行速率。关掉后不再显示。若系统「设置 → 面容 ID 与密码 / 实时活动」里全局关了实时活动，这里开也不会出现。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While connected, show a Live Activity on the Dynamic Island / Lock Screen: connection status, elapsed time, and live up/down speeds. Turn off to hide it. If Live Activities are disabled system-wide (Settings → Face ID & Passcode / Live Activities), it won't appear even when this is on."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続中、ダイナミックアイランド／ロック画面にライブアクティビティを表示します：接続状態、接続時間、リアルタイムの上り/下り速度。オフにすると非表示になります。システム全体でライブアクティビティが無効（設定 → Face ID とパスコード／ライブアクティビティ）の場合は、ここをオンにしても表示されません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線期間在靈動島／鎖定畫面顯示即時動態：連線狀態、已連線時長、即時上下行速率。關閉後不再顯示。若系統「設定 → 面容 ID 與密碼／即時動態」中全域關閉了即時動態，這裡開啟也不會出現。"
+          }
+        }
+      }
+    },
+    "专注模式联动": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus Integration"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "集中モード連携"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "專注模式聯動"
+          }
+        }
+      }
+    },
+    "在系统「设置 → 专注模式 → 选一个专注 → 添加过滤器 → 轻舟」里，可让该专注开启时自动「连接 / 断开」VPN（例：工作专注自动连、睡眠专注自动断）。专注切换时在后台生效，无需打开轻舟。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Settings → Focus → pick a Focus → Add Filter → Qingzhou, you can have that Focus automatically connect or disconnect the VPN (e.g. auto-connect for Work, auto-disconnect for Sleep). It takes effect in the background when the Focus switches — no need to open Qingzhou."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「設定 → 集中モード → いずれかの集中モードを選択 → フィルタを追加 → Qingzhou」で、その集中モードがオンになったときに VPN を自動的に「接続／切断」できます（例：仕事の集中モードで自動接続、睡眠の集中モードで自動切断）。集中モードの切り替え時にバックグラウンドで有効になり、Qingzhou を開く必要はありません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在系統「設定 → 專注模式 → 選一個專注 → 加入過濾器 → 輕舟」中，可讓該專注開啟時自動「連線／中斷」VPN（例：工作專注自動連線、睡眠專注自動中斷）。專注切換時於背景生效，無需開啟輕舟。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

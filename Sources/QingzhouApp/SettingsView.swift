@@ -244,6 +244,19 @@ public struct SettingsView: View {
             Text("到点自动断开 VPN，只对本次连接生效 —— 断开后不会自动重连，手动重开会重新计时。VPN 运行中修改会立即从现在起重新计时。注意：启用定时的连接不开启系统自动重连（On-Demand），若扩展异常退出需手动重开。")
                 .font(.caption2).foregroundStyle(.secondary)
 
+            #if os(iOS)
+            Toggle("显示灵动岛实时活动", isOn: state.setting(\.showLiveActivity))
+            Text("连接期间在灵动岛 / 锁屏显示实时活动：连接状态、已连时长、实时上下行速率。关掉后不再显示。若系统「设置 → 面容 ID 与密码 / 实时活动」里全局关了实时活动，这里开也不会出现。")
+                .font(.caption2).foregroundStyle(.secondary)
+            #endif
+
+            // 专注模式（Focus）联动：过滤器在系统「设置 → 专注模式」里配置，App 内无法代配
+            // （Apple 安全设计，同「打开某 App 自动连」）—— 这里只给一句说明引导。
+            Label("专注模式联动", systemImage: "moon.fill")
+                .font(.subheadline.weight(.semibold))
+            Text("在系统「设置 → 专注模式 → 选一个专注 → 添加过滤器 → 轻舟」里，可让该专注开启时自动「连接 / 断开」VPN（例：工作专注自动连、睡眠专注自动断）。专注切换时在后台生效，无需打开轻舟。")
+                .font(.caption2).foregroundStyle(.secondary)
+
             Text("当前节点：\(state.currentNode?.name ?? L("未选"))")
                 .font(.caption).foregroundStyle(.secondary)
         }
