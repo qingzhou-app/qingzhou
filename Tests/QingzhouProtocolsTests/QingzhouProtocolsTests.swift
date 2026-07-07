@@ -312,4 +312,50 @@ final class QingzhouProtocolsTests: XCTestCase {
         XCTAssertEqual(node.protocolType, .hysteria2)
         XCTAssertEqual(node.name, "🇯🇵急速")
     }
+
+    // MARK: - SSR / TUIC：xray-core v26.6.27 不原生支持，给清晰提示而非静默丢（审计 item 4）
+    //
+    // 决策：SSR（auth_chain / obfs 插件）与 TUIC（QUIC，sing-box 专属）xray-core 均无出站实现，
+    // 加 converter 只会是跑不通的死代码。因此不加协议，改成识别出来给可读的「暂不支持」错误，
+    // 区别于完全未知的 scheme（unsupportedScheme）。
+
+    func testParseSSRGivesClearUnsupportedProtocol() {
+        // ssr://base64(host:port:proto:method:obfs:base64pass/?params)
+        XCTAssertThrowsError(try ProxyURLParser.parse("ssr://c29tZS1iYXNlNjQtYmxvYg")) { err in
+            XCTAssertEqual(err as? ProxyURLParseError, .unsupportedProtocol(name: "SSR"))
+        }
+    }
+
+    func testParseShadowsocksRAliasAlsoSSR() {
+        XCTAssertThrowsError(try ProxyURLParser.parse("shadowsocksr://c29tZS1ibG9i")) { err in
+            XCTAssertEqual(err as? ProxyURLParseError, .unsupportedProtocol(name: "SSR"))
+        }
+    }
+
+    func testParseTUICGivesClearUnsupportedProtocol() {
+        XCTAssertThrowsError(try ProxyURLParser.parse("tuic://uuid:password@h.example:443?alpn=h3#TUIC节点")) { err in
+            XCTAssertEqual(err as? ProxyURLParseError, .unsupportedProtocol(name: "TUIC"))
+        }
+    }
+
+    func testUnsupportedProtocolMessageIsHumanReadable() {
+        let msg = String(describing: ProxyURLParseError.unsupportedProtocol(name: "TUIC"))
+        XCTAssertTrue(msg.contains("暂不支持"), "错误信息应含「暂不支持」，实际：\(msg)")
+        XCTAssertTrue(msg.contains("TUIC"), "错误信息应含协议名，实际：\(msg)")
+    }
+
+    func testParseBatchSurfacesUnsupportedProtocolNotSilent() {
+        // 一条好 trojan + 一条 ssr + 一条 tuic：好节点收下，坏的进 errors（非静默丢弃）
+        let text = """
+        trojan://pw@example.com:443#ok
+        ssr://c29tZS1ibG9i
+        tuic://uuid:pw@h.example:443#t
+        """
+        let (nodes, errors) = ProxyURLParser.parseBatch(text)
+        XCTAssertEqual(nodes.count, 1)
+        XCTAssertEqual(errors.count, 2)
+        let reasons = errors.map { $0.1 as? ProxyURLParseError }
+        XCTAssertTrue(reasons.contains(.unsupportedProtocol(name: "SSR")))
+        XCTAssertTrue(reasons.contains(.unsupportedProtocol(name: "TUIC")))
+    }
 }
