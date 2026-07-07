@@ -28,7 +28,9 @@ settings:
     #           不 bump 版本号 macOS 不会替换运行中的旧扩展（见该 target 注释的激活坑）。
     # build 5 = xray-core 升级 v26.6.27 + libXray Invoke API 迁移 + 多维打分 P1 +
     #           iCloud 差异摘要 + 端口时间窗最近邻。全量重测的基线版本。
-    CURRENT_PROJECT_VERSION: "5"
+    # build 6 = 打分 P2（三档预设 + 「为什么选它」详情页 + Top-3 域名探测目标 + 留存 100）
+    #           + hysteria2 原生 converter 补齐 v26.6.27 schema（端口跳跃/salamander/brutal）。
+    CURRENT_PROJECT_VERSION: "6"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 
