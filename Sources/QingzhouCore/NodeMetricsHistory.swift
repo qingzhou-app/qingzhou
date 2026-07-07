@@ -9,11 +9,16 @@ public struct NodeMetricSample: Codable, Sendable, Equatable {
     public var at: Date
     public var latencyMs: Int?
     public var proxiedMs: Int?
+    /// 本轮 burst 探测的丢包率（失败次数/探测次数，0–1）。nil = 单次探测时代的老样本
+    /// （或非 burst 来源）—— 打分时按「成功 = 0 / 整轮失败 = 1」折算，老文件 JSON
+    /// 无此字段照常解码（Codable 可选）。
+    public var lossFraction: Double?
 
-    public init(at: Date, latencyMs: Int? = nil, proxiedMs: Int? = nil) {
+    public init(at: Date, latencyMs: Int? = nil, proxiedMs: Int? = nil, lossFraction: Double? = nil) {
         self.at = at
         self.latencyMs = latencyMs
         self.proxiedMs = proxiedMs
+        self.lossFraction = lossFraction
     }
 }
 
@@ -52,8 +57,11 @@ public struct NodeMetricsHistory: Codable, Sendable, Equatable {
     }
 
     /// 记一条直连测量（成功失败都记，见 `NodeMetricSample.latencyMs` 注释）。
-    public mutating func recordDirect(fingerprint: String, latencyMs: Int?, at: Date = Date()) {
-        append(NodeMetricSample(at: at, latencyMs: latencyMs), for: fingerprint)
+    /// `lossFraction` 是本轮 burst 的丢包率（失败/总次数），非 burst 来源传 nil。
+    public mutating func recordDirect(
+        fingerprint: String, latencyMs: Int?, lossFraction: Double? = nil, at: Date = Date()
+    ) {
+        append(NodeMetricSample(at: at, latencyMs: latencyMs, lossFraction: lossFraction), for: fingerprint)
     }
 
     /// 记一次经代理实测：同轮窗口内并入最近一条样本，否则作为独立样本追加。

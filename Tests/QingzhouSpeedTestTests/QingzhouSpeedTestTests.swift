@@ -120,6 +120,81 @@ final class QingzhouSpeedTestTests: XCTestCase {
         XCTAssertFalse(ids.contains(nodes[1].id), "被排除节点不应回调")
     }
 
+    // MARK: - burst 探测（每节点 3 次握手：延迟取中位数、丢包率 = 失败/3）
+
+    /// 按调用顺序依次吐结果的假探针 —— burst 语义（同一节点连测 3 次）只能用它验证。
+    /// 同一节点的 burst 是串行的，跨节点各用各的 key，NSLock 足够。
+    final class SequenceProber: LatencyProber, @unchecked Sendable {
+        private let lock = NSLock()
+        private var queues: [String: [Int?]]
+        private var counts: [String: Int] = [:]
+        init(_ queues: [String: [Int?]]) { self.queues = queues }
+
+        func probe(_ url: URL, timeout: TimeInterval) async -> LatencyResult {
+            let key = "\(url.host ?? ""):\(url.port ?? 0)"
+            return lock.withLock {
+                counts[key, default: 0] += 1
+                guard var queue = queues[key], !queue.isEmpty else {
+                    return LatencyResult(url: url, latencyMs: nil, errorDescription: "queue exhausted")
+                }
+                let ms = queue.removeFirst()
+                queues[key] = queue
+                if let ms { return LatencyResult(url: url, latencyMs: ms) }
+                return LatencyResult(url: url, latencyMs: nil, errorDescription: "stub fail")
+            }
+        }
+
+        func callCount(_ key: String) -> Int {
+            lock.withLock { counts[key] ?? 0 }
+        }
+    }
+
+    /// 收 onResult 回调的聚合结果。measure 内部对回调是 await 的，返回时已全部送达，
+    /// 事后读取无竞争。
+    final class ResultBox: @unchecked Sendable {
+        var results: [LatencyResult] = []
+    }
+
+    private func measureOne(_ queues: [Int?]) async -> (node: Node, result: LatencyResult?, probes: Int) {
+        let nodes = [Node(name: "n", protocolType: .trojan, host: "n.example", port: 443)]
+        let prober = SequenceProber(["n.example:443": queues])
+        let selector = NodeSelector(prober: prober)
+        let box = ResultBox()
+        let measured = await selector.measure(nodes: nodes) { _, result in
+            box.results.append(result)
+        }
+        return (measured[0], box.results.first, prober.callCount("n.example:443"))
+    }
+
+    func testBurstProbesThreeTimesAndTakesMedian() async {
+        // 3 次全成 [30, 100, 50]：中位数 50（不是最小值 30 —— middle 才抗单次抖动）
+        let (node, result, probes) = await measureOne([30, 100, 50])
+        XCTAssertEqual(probes, NodeSelector.burstCount)
+        XCTAssertEqual(NodeSelector.burstCount, 3)
+        XCTAssertEqual(node.lastLatencyMs, 50)
+        XCTAssertEqual(result?.lossFraction ?? -1, 0, accuracy: 0.0001)
+    }
+
+    func testBurstEvenSuccessesTakeLowerMedian() async {
+        // 成 2 败 1：[40, 80] 偶数个成功样本取较小侧 → 40；丢包率 1/3
+        let (node, result, _) = await measureOne([40, nil, 80])
+        XCTAssertEqual(node.lastLatencyMs, 40)
+        XCTAssertEqual(result?.lossFraction ?? -1, 1.0 / 3, accuracy: 0.0001)
+    }
+
+    func testBurstSingleSuccessUsesThatValue() async {
+        let (node, result, _) = await measureOne([nil, nil, 70])
+        XCTAssertEqual(node.lastLatencyMs, 70)
+        XCTAssertEqual(result?.lossFraction ?? -1, 2.0 / 3, accuracy: 0.0001)
+    }
+
+    func testBurstAllFailedYieldsNilLatencyAndFullLoss() async {
+        let (node, result, probes) = await measureOne([nil, nil, nil])
+        XCTAssertEqual(probes, 3)
+        XCTAssertNil(node.lastLatencyMs)
+        XCTAssertEqual(result?.lossFraction ?? -1, 1.0, accuracy: 0.0001)
+    }
+
     func testNodeSelectorReturnsNilWhenAllFailed() async {
         let nodes = [
             Node(name: "a", protocolType: .trojan, host: "a.example", port: 443),

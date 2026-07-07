@@ -5,11 +5,15 @@ public struct LatencyResult: Sendable, Equatable {
     public let url: URL
     public let latencyMs: Int?     // nil 表示失败
     public let errorDescription: String?
+    /// 丢包率（0–1）：仅节点 burst 探测的聚合结果携带（`NodeSelector.measure`，
+    /// 失败次数/burst 次数）；单次探测、网站测速为 nil。
+    public let lossFraction: Double?
 
-    public init(url: URL, latencyMs: Int?, errorDescription: String? = nil) {
+    public init(url: URL, latencyMs: Int?, errorDescription: String? = nil, lossFraction: Double? = nil) {
         self.url = url
         self.latencyMs = latencyMs
         self.errorDescription = errorDescription
+        self.lossFraction = lossFraction
     }
 }
 
