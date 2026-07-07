@@ -22,7 +22,22 @@ type Holder struct {
 	config *FakeDnsPool
 }
 
+// Qingzhou fix (start-side twin of upstream #6022): holders are constructed
+// config-only (ipRange/mu/domainToIP all nil, see NewFakeDNSHolderConfigOnly)
+// and registered as a queryable feature at core.New time, but only initialized
+// in Start(). Any dispatcher-sniffer / DNS query landing in that window derefs
+// a nil ipRange and aborts the whole process (recorded: NE extension crash
+// loop on both iOS and macOS whenever traffic is queued during tunnel start).
+// initialize() publishes ipRange last, so a non-nil ipRange implies mu and
+// domainToIP are usable. Uninitialized holders answer "not a fake IP".
+func (fkdns *Holder) initialized() bool {
+	return fkdns.ipRange != nil
+}
+
 func (fkdns *Holder) IsIPInIPPool(ip net.Address) bool {
+	if !fkdns.initialized() {
+		return false
+	}
 	if ip.Family().IsDomain() {
 		return false
 	}
@@ -30,6 +45,9 @@ func (fkdns *Holder) IsIPInIPPool(ip net.Address) bool {
 }
 
 func (fkdns *Holder) GetFakeIPForDomain3(domain string, ipv4, ipv6 bool) []net.Address {
+	if !fkdns.initialized() {
+		return []net.Address{}
+	}
 	isIPv6 := fkdns.ipRange.IP.To4() == nil
 	if (isIPv6 && ipv6) || (!isIPv6 && ipv4) {
 		return fkdns.GetFakeIPForDomain(domain)
@@ -90,14 +108,19 @@ func (fkdns *Holder) initialize(ipPoolCidr string, lruSize int) error {
 	if math.Log2(float64(lruSize)) >= float64(rooms) {
 		return errors.New("LRU size is bigger than subnet size").AtError()
 	}
+	// ipRange doubles as the "initialized" flag (see initialized()) — publish it
+	// last so readers that observe it non-nil also see mu / domainToIP set.
+	fkdns.mu = new(sync.Mutex)
 	fkdns.domainToIP = cache.NewLru(lruSize)
 	fkdns.ipRange = ipRange
-	fkdns.mu = new(sync.Mutex)
 	return nil
 }
 
 // GetFakeIPForDomain checks and generates a fake IP for a domain name
 func (fkdns *Holder) GetFakeIPForDomain(domain string) []net.Address {
+	if !fkdns.initialized() {
+		return []net.Address{}
+	}
 	fkdns.mu.Lock()
 	defer fkdns.mu.Unlock()
 	if v, ok := fkdns.domainToIP.Get(domain); ok {
@@ -131,6 +154,9 @@ func (fkdns *Holder) GetFakeIPForDomain(domain string) []net.Address {
 
 // GetDomainFromFakeDNS checks if an IP is a fake IP and have corresponding domain name
 func (fkdns *Holder) GetDomainFromFakeDNS(ip net.Address) string {
+	if !fkdns.initialized() {
+		return ""
+	}
 	if !ip.Family().IsIP() || !fkdns.ipRange.Contains(ip.IP()) {
 		return ""
 	}
