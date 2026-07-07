@@ -24,6 +24,10 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>扫描二维码以快速添加节点或订阅</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.com.sbraveyoung.qingzhou</key>

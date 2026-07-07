@@ -16,12 +16,22 @@ import ActivityKit
 ///
 /// **节点切换**：ActivityKit 的 attributes（节点名/协议）活动期内不可变，所以换节点必须结束
 /// 旧活动再起新的 —— `start(...)` 内部检测 nodeName 变化自动处理。
+///
+/// **并发**：`Activity` 未被 Apple 标 `Sendable`，其 `update`/`end` 又是 nonisolated async ——
+/// Swift 6 严格并发下不允许把 MainActor 隔离的 activity 直接送进这些方法。用 `ActivityBox`
+/// (`@unchecked Sendable`) 把「起 / 更新 / 结束」整段搬进 nonisolated 的 fire-and-forget Task
+/// 里执行（ActivityKit 内部自行串行化系统侧写入，这里的 @unchecked 只是补上缺失的标注）。
 @MainActor
 public final class LiveActivityController {
     public init() {}
 
     #if os(iOS)
     private var activity: Activity<QingzhouActivityAttributes>?
+
+    /// 把非 Sendable 的 `Activity` 裹进 Sendable 盒子，供 fire-and-forget Task 捕获。
+    private struct ActivityBox: @unchecked Sendable {
+        let activity: Activity<QingzhouActivityAttributes>
+    }
     #endif
 
     /// 系统是否允许起实时活动（用户可能在系统设置里全局关掉了「实时活动」）。
@@ -38,7 +48,7 @@ public final class LiveActivityController {
     /// - 已有同节点活动 → 转 `update`；
     /// - 已有但节点名变了 → 结束旧的再起新的（attributes 不可变）。
     ///
-    /// 系统未授权 / 起失败都静默降级（不影响 VPN 本体），由调用方决定要不要记 log。
+    /// 系统未授权 / 起失败都静默降级（不影响 VPN 本体）。
     public func start(nodeName: String, protocolName: String, state: QingzhouActivityContentState) {
         #if os(iOS)
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
@@ -48,11 +58,11 @@ public final class LiveActivityController {
         }
         if let current = activity {
             if current.attributes.nodeName == nodeName {
-                pushUpdate(current, state)
+                fireUpdate(current, state)
                 return
             }
             // 节点变了：结束旧活动，落到下面起新的。
-            endActivity(current)
+            fireEnd(current)
             activity = nil
         }
         let attributes = QingzhouActivityAttributes(nodeName: nodeName, protocolName: protocolName)
@@ -72,33 +82,36 @@ public final class LiveActivityController {
     public func update(_ state: QingzhouActivityContentState) {
         #if os(iOS)
         guard let activity else { return }
-        pushUpdate(activity, state)
+        fireUpdate(activity, state)
         #endif
     }
 
-    /// 结束当前活动（用户主动关 VPN / 会话结束）。顺带清掉任何遗留活动，避免残留。
+    /// 结束当前活动（用户主动关 VPN / 会话结束）。顺带结束任何遗留活动，避免残留。
     public func endAll() {
         #if os(iOS)
         let tracked = activity
         activity = nil
-        let orphans = Activity<QingzhouActivityAttributes>.activities
-        guard tracked != nil || !orphans.isEmpty else { return }
+        let all = Activity<QingzhouActivityAttributes>.activities
+        guard tracked != nil || !all.isEmpty else { return }
+        let boxes = all.map { ActivityBox(activity: $0) }
         Task {
-            if let tracked { await tracked.end(nil, dismissalPolicy: .immediate) }
-            for a in orphans where a.id != tracked?.id {
-                await a.end(nil, dismissalPolicy: .immediate)
+            for box in boxes {
+                await box.activity.end(nil, dismissalPolicy: .immediate)
             }
         }
         #endif
     }
 
     #if os(iOS)
-    private func pushUpdate(_ activity: Activity<QingzhouActivityAttributes>, _ state: QingzhouActivityContentState) {
-        Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
+    private func fireUpdate(_ activity: Activity<QingzhouActivityAttributes>, _ state: QingzhouActivityContentState) {
+        let box = ActivityBox(activity: activity)
+        let content = ActivityContent(state: state, staleDate: nil)
+        Task { await box.activity.update(content) }
     }
 
-    private func endActivity(_ activity: Activity<QingzhouActivityAttributes>) {
-        Task { await activity.end(nil, dismissalPolicy: .immediate) }
+    private func fireEnd(_ activity: Activity<QingzhouActivityAttributes>) {
+        let box = ActivityBox(activity: activity)
+        Task { await box.activity.end(nil, dismissalPolicy: .immediate) }
     }
     #endif
 }

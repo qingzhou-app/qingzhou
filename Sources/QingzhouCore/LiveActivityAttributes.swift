@@ -72,7 +72,7 @@ import ActivityKit
 /// Live Activity 的静态属性（活动生命周期内不变）：节点名 + 协议名。
 /// 节点变了要换 attributes → ActivityKit 语义上必须结束旧活动再起新的（见 LiveActivityController）。
 @available(iOS 16.1, *)
-public struct QingzhouActivityAttributes: ActivityAttributes {
+public struct QingzhouActivityAttributes: ActivityAttributes, Sendable {
     public typealias ContentState = QingzhouActivityContentState
 
     public var nodeName: String
