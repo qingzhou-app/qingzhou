@@ -51,6 +51,11 @@ public final class AppState {
     /// 自定义规则的命中计数（近 30 天，规则页「命中 N 次 / 可考虑删除」数据源）。
     /// ⚠️ 同 domainHistory：独立文件落本地，**不进 Snapshot**、不上 iCloud。
     public private(set) var ruleHitStats = RuleHitStats()
+    /// 每节点环形测量历史（20 条/节点）—— NodeScorer 稳定性维度的数据源。key 用
+    /// identityFingerprint（订阅刷新后 UUID 可能变、指纹稳定）。⚠️ 同 domainHistory：
+    /// 独立文件落本地（`Self.nodeMetricsFile`），**不进 Snapshot**、不上 iCloud
+    /// （测量值跨设备/网络不可比）。internal(set) 供单测直接灌历史。
+    public internal(set) var nodeMetricsHistory = NodeMetricsHistory()
     /// 实时流量波形数据（滑动窗口）。appex 经 App Group 上报 `TrafficStats` 喂进来；
     /// 没开 VPN / 没真实上报时为空，UI 显示「等待流量」。
     public var trafficHistory = TrafficHistory(capacity: 60)
@@ -215,6 +220,19 @@ public final class AppState {
     private var ruleHitStatsDirty = false
     /// internal 供测试注入 0 关掉节流做确定性断言。
     var ruleHitStatsSaveInterval: TimeInterval = 10
+    /// nodeMetricsHistory 的独立持久化（节流模式与 domainHistory 完全一致）。
+    static let nodeMetricsFile = "node-metrics"
+    private var nodeMetricsSavedAt = Date.distantPast
+    private var nodeMetricsDirty = false
+    /// internal 供测试注入 0 关掉节流做确定性断言。
+    var nodeMetricsSaveInterval: TimeInterval = 10
+    /// 分数黏性（自动择优）的连续轮次状态：挑战者要对**同一在位者**连续
+    /// `autoSwitchScoreStreakRounds` 轮总分领先 ≥ `autoSwitchScoreMargin` 才放行切换。
+    /// 内存态，重启清零（可接受：顶多多等一轮）。记录在位者指纹 —— 手动切换 / 恢复等
+    /// 改变当前节点后，配对对不上号自动作废，无需在各切换入口埋钩子。
+    private var scoreStreakChallenger: String?
+    private var scoreStreakIncumbent: String?
+    private var scoreStreakRounds = 0
     /// appex 写的「IP → 域名」映射，把 access log 的裸 IP 翻回域名。里面既有 fakedns
     /// 假 IP（198.18.x.x）也有真实 DNS 应答的 IP（rule 模式下 CN 域名走 AliDNS 拿真实 IP）。
     /// internal 供单测直接注入（backfillDomainNames 用例）。
@@ -263,6 +281,12 @@ public final class AppState {
             ?? RuleHitStats()
         hits.prune()
         self.ruleHitStats = hits
+        // 节点测量历史：同 domainHistory 的落盘约定。加载时清掉已不存在节点的指纹 ——
+        // 订阅换代留下的孤儿历史别在文件里越攒越多
+        var metrics = persistence.load(NodeMetricsHistory.self, name: Self.nodeMetricsFile)
+            ?? NodeMetricsHistory()
+        metrics.prune(keeping: Set(snapshot.nodes.map(\.identityFingerprint)))
+        self.nodeMetricsHistory = metrics
         logger.info(
             "AppState restored: \(subscriptions.count) subs, \(nodes.count) nodes, \(customRules.count) custom rules",
             category: "app"
@@ -1294,7 +1318,11 @@ public final class AppState {
         }
     }
 
-    public func autoSelectBestNode() async {
+    /// 自动择优的触发来源：分数黏性只约束定时路径（schedulerLoop）—— 手动点「择优」、
+    /// 添加订阅、云恢复都是用户主动动作，一轮就换（仍受 autoSwitchWorthRestart 幅度闸）。
+    public enum AutoSelectOrigin: Sendable { case manual, scheduled }
+
+    public func autoSelectBestNode(origin: AutoSelectOrigin = .manual) async {
         guard !nodes.isEmpty else { return }
         let testedAt = Date()
         // 跟手动测速一样：待测节点显示 loading，每测完一个摘掉。
@@ -1306,11 +1334,19 @@ public final class AppState {
             if let i = self.nodes.firstIndex(where: { $0.id == nodeID }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
                 self.nodes[i].lastTestedAt = testedAt
+                // 成功失败都落测量历史 —— 稳定性维度的成功率就靠失败样本算
+                self.recordNodeDirectMeasurement(self.nodes[i], latencyMs: result.latencyMs, at: testedAt)
             }
         }
         nodes = measured
         let previousId = currentNodeId
         if var best = pickBestRespectingRegions(from: measured) {
+            // 分数黏性（仅自动路径）：挑战者总分须领先 ≥8 且连续 2 轮 —— 单轮领先大概率
+            // 是测量抖动，为它整条隧道重启不值当（用户反馈过启停频繁）。测速结果照常落盘。
+            if shouldHoldForScoreStickiness(origin: origin, challenger: best, incumbent: currentNode) {
+                persist()
+                return
+            }
             // 黏性滞后：VPN 在跑且当前节点本轮仍可用时，新最优要显著更好才值得为它
             // 整条隧道重启。不够好就整轮收工 —— 连经代理精选也省了（少起临时 xray
             // 实例，扩展内存压力更小）。测速结果照常落盘，延迟列仍然是新的。
@@ -1338,6 +1374,7 @@ public final class AppState {
         persist()
         // 节点变了且 VPN 在跑 → 热切换，立即生效（只换节点 → 走原地换出口快路径）
         if currentNodeId != previousId {
+            resetScoreStreak()   // 换人了：旧的挑战者连续计数作废
             await reapplyRunningTunnel(scope: .nodeOnly)
         }
     }
@@ -1381,10 +1418,24 @@ public final class AppState {
                 failedCount += 1
             }
         }
-        // 经代理延迟接近时同样优先低倍率（冷测数字大且抖动大，接近带宽给 200ms）。
-        if var best = bestPreferringLowRate(measured.map(\.node),
-                                            latency: { node in measured.first { $0.node.id == node.id }?.ms ?? .max },
-                                            tieBandMs: 200) {
+        // 精选内核同样按总分选：延迟维用**当轮经代理实测值**（真实路径，不再 ×1.3 惩罚），
+        // 其余维度与直连轮同一口径。
+        if var best = bestByScore(
+            measured.map(\.node),
+            latency: { node in measured.first { $0.node.id == node.id }?.ms ?? .max },
+            score: { node in
+                NodeScorer.score(
+                    NodeScorer.Input(
+                        directLatencyMs: node.lastLatencyMs,
+                        proxiedLatencyMs: measured.first { $0.node.id == node.id }?.ms,
+                        history: nodeMetricsHistory.samples(for: node.identityFingerprint),
+                        peakDownBps: node.observedPeakDownBps,
+                        rate: node.rateForComparison
+                    ),
+                    preferLowerRate: settings.preferLowerRate
+                )
+            }
+        ) {
             var bestMs = measured.first { $0.node.id == best.id }?.ms ?? -1
             // 黏性滞后（经代理维度）：精选想换掉当前节点、而当前节点本轮也实测过且
             // 没坏时，同样要求显著更好 —— 不为经代理延迟的抖动重启隧道。
@@ -1406,9 +1457,6 @@ public final class AppState {
         return fallback
     }
 
-    /// 直连延迟「接近」的判定带宽（毫秒）：差在此内视为延迟相当，交给倍率决胜。
-    private static let directTieBandMs = 30
-
     /// 自动择优的黏性滞后：VPN 运行中切换节点 = 全量隧道重启 = 图标闪烁 + 数秒断流，
     /// 所以当前节点仍健康时，新最优必须**显著**更快才值得切 —— 绝对值至少快
     /// `autoSwitchMinImprovementMs`，且相对当前延迟的降幅不低于 `autoSwitchImprovementRatio`
@@ -1424,24 +1472,27 @@ public final class AppState {
         return currentMs - bestMs >= floor
     }
 
-    /// 从候选里选最优：延迟最低者胜；但**延迟接近（差 ≤ tieBandMs）时优先低倍率**节点
-    /// （省流量）。倍率相同则回到延迟更低者。`preferLowerRate` 关闭时退化为纯延迟最低。
-    private func bestPreferringLowRate(_ candidates: [Node], latency: (Node) -> Int, tieBandMs: Int) -> Node? {
-        guard let fastest = candidates.map(latency).min() else { return nil }
-        guard settings.preferLowerRate else {
-            return candidates.min { latency($0) < latency($1) }
-        }
-        // 最快节点 ±tieBand 内的都算「延迟相当」，其中选倍率最低的；倍率相同再比延迟。
-        let band = candidates.filter { latency($0) <= fastest + tieBandMs }
-        return band.min { a, b in
-            if a.rateForComparison != b.rateForComparison { return a.rateForComparison < b.rateForComparison }
-            return latency(a) < latency(b)
+    /// 从候选里选 `NodeScorer` 总分最高者 —— 自动择优的内核。旧「延迟最低 + 接近时
+    /// 优先低倍率（tieBand）」被打分吸收：成本维连续参与加权，不再需要档位判定；
+    /// 稳定性 / 带宽维度让「延迟低但抖动大」的节点不再稳赢。
+    /// 平分时延迟低者优先，再平比名字 —— 选择结果必须确定，测试和用户观感都依赖这一点。
+    private func bestByScore(
+        _ candidates: [Node],
+        latency: (Node) -> Int,
+        score: (Node) -> NodeScorer.Score
+    ) -> Node? {
+        candidates.min { a, b in
+            let sa = score(a).total
+            let sb = score(b).total
+            if sa != sb { return sa > sb }
+            if latency(a) != latency(b) { return latency(a) < latency(b) }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
         }
     }
 
-    /// 在测速结果里挑最佳节点，应用「地区排除」+「地区优先」+「延迟接近优先低倍率」：
+    /// 在测速结果里挑最佳节点，应用「地区排除」+「地区优先」+ NodeScorer 总分：
     /// 1. 先剔除有效排除（手动排除 / 地区排除）和测速失败的节点
-    /// 2. 若设了优先地区且该地区有可用节点，从中选（延迟最低 / 接近时低倍率）
+    /// 2. 若设了优先地区且该地区有可用节点，从中选总分最高者
     /// 3. 否则全局选
     func pickBestRespectingRegions(from measured: [Node]) -> Node? {
         let viable = measured.filter { !isEffectivelyExcluded($0) && $0.lastLatencyMs != nil }
@@ -1449,11 +1500,89 @@ public final class AppState {
         let latency: (Node) -> Int = { $0.lastLatencyMs ?? .max }
         if let pref = settings.preferredRegion {
             let inPref = viable.filter { $0.region == pref }
-            if let best = bestPreferringLowRate(inPref, latency: latency, tieBandMs: Self.directTieBandMs) {
+            if let best = bestByScore(inPref, latency: latency, score: scoreForAutoSelect) {
                 return best
             }
         }
-        return bestPreferringLowRate(viable, latency: latency, tieBandMs: Self.directTieBandMs)
+        return bestByScore(viable, latency: latency, score: scoreForAutoSelect)
+    }
+
+    /// 直连轮的节点总分。经代理延迟**不喂**进打分 —— 各节点 lastProxiedLatencyMs 的
+    /// 新鲜度参差（有的是几天前测的），混着比对经代理测过的节点不公平；经代理维度在
+    /// 精选阶段（refineWithProxiedLatency）用当轮实测值单独算。
+    func scoreForAutoSelect(_ node: Node) -> NodeScorer.Score {
+        NodeScorer.score(
+            NodeScorer.Input(
+                directLatencyMs: node.lastLatencyMs,
+                history: nodeMetricsHistory.samples(for: node.identityFingerprint),
+                peakDownBps: node.observedPeakDownBps,
+                rate: node.rateForComparison
+            ),
+            preferLowerRate: settings.preferLowerRate
+        )
+    }
+
+    /// 分数黏性的门槛：挑战者总分须领先在位者的分数（锚点归一保证跨轮可比）。
+    static let autoSwitchScoreMargin: Double = 8
+    /// 分数黏性的持续轮数：领先须**连续**成立的自动择优轮数。
+    static let autoSwitchScoreStreakRounds = 2
+
+    /// 「分数黏性」判定 + 连续轮次状态推进。返回 true = 本轮按兵不动（保持当前节点）。
+    ///
+    /// 挑战者总分须比在位者高 ≥ `autoSwitchScoreMargin`，且对**同一在位者**连续
+    /// `autoSwitchScoreStreakRounds` 轮成立才放行 —— 幅度 + 持续双滞后，抖动导致的
+    /// 「最优每轮易主」不再频繁触发重启。三类直接放行：手动路径（用户主动要换，一轮
+    /// 就换）、VPN 没跑（改 currentNodeId 不花钱）、在位者本轮测量失败或已被排除
+    /// （可用性 > 稳定，沿用 autoSwitchWorthRestart 的 nil 放行语义）。
+    /// 放行 ≠ 必切：下游还叠着 autoSwitchWorthRestart 的幅度闸。
+    func shouldHoldForScoreStickiness(
+        origin: AutoSelectOrigin,
+        challenger: Node,
+        incumbent: Node?
+    ) -> Bool {
+        guard origin == .scheduled, isVPNRunning, !isSwitchingTunnel,
+              let incumbent, challenger.id != incumbent.id else {
+            // 没有挑战局（手动 / VPN 没跑 / 最优就是在位者）：定时路径下连续性已中断
+            if origin == .scheduled { resetScoreStreak() }
+            return false
+        }
+        guard !isEffectivelyExcluded(incumbent), incumbent.lastLatencyMs != nil else {
+            resetScoreStreak()
+            return false
+        }
+        let challengerScore = scoreForAutoSelect(challenger).total
+        let incumbentScore = scoreForAutoSelect(incumbent).total
+        guard challengerScore - incumbentScore >= Self.autoSwitchScoreMargin else {
+            resetScoreStreak()
+            logger.info(
+                "Score stickiness keeps \(incumbent.name) (\(String(format: "%.1f", incumbentScore))): challenger \(challenger.name) (\(String(format: "%.1f", challengerScore))) not ahead by \(Int(Self.autoSwitchScoreMargin))",
+                category: "app"
+            )
+            return true
+        }
+        if scoreStreakChallenger == challenger.identityFingerprint,
+           scoreStreakIncumbent == incumbent.identityFingerprint {
+            scoreStreakRounds += 1
+        } else {
+            scoreStreakChallenger = challenger.identityFingerprint
+            scoreStreakIncumbent = incumbent.identityFingerprint
+            scoreStreakRounds = 1
+        }
+        if scoreStreakRounds >= Self.autoSwitchScoreStreakRounds {
+            resetScoreStreak()
+            return false
+        }
+        logger.info(
+            "Score stickiness keeps \(incumbent.name) (\(String(format: "%.1f", incumbentScore))): challenger \(challenger.name) (\(String(format: "%.1f", challengerScore))) ahead, round \(scoreStreakRounds)/\(Self.autoSwitchScoreStreakRounds)",
+            category: "app"
+        )
+        return true
+    }
+
+    private func resetScoreStreak() {
+        scoreStreakChallenger = nil
+        scoreStreakIncumbent = nil
+        scoreStreakRounds = 0
     }
 
     public func measureAllNodes() async {
@@ -1493,6 +1622,8 @@ public final class AppState {
             if let i = nodes.firstIndex(where: { $0.id == node.id }) {
                 nodes[i].lastProxiedLatencyMs = ms
                 nodes[i].lastProxiedTestedAt = Date()
+                // 经代理实测并入同轮直连样本（打分/稳定性的历史数据源）
+                recordNodeProxiedMeasurement(nodes[i], proxiedMs: ms)
             }
             persist()
             return ms
@@ -1796,7 +1927,7 @@ public final class AppState {
         if Task.isCancelled { return }
 
         if settings.autoSelectTrigger == .onAppLaunch || settings.autoSelectTrigger == .onAppLaunchAndInterval {
-            await autoSelectBestNode()
+            await autoSelectBestNode(origin: .scheduled)
         }
         var lastAutoSelect = Date()
         var lastMeasure = Date()
@@ -1821,7 +1952,7 @@ public final class AppState {
             let trigger = settings.autoSelectTrigger
             if (trigger == .interval || trigger == .onAppLaunchAndInterval)
                 && now.timeIntervalSince(lastAutoSelect) >= settings.autoSelectIntervalSeconds {
-                await autoSelectBestNode()
+                await autoSelectBestNode(origin: .scheduled)
                 lastAutoSelect = Date()
                 lastMeasure = Date()  // autoSelectBestNode 内部已经 measure 过，避免立刻再测
             }
@@ -1874,6 +2005,7 @@ public final class AppState {
             // 停止浏览后 ingest 不再产出批次，这里兜底把最后的脏数据补写掉
             flushDomainHistoryIfNeeded()
             flushRuleHitStatsIfNeeded()
+            flushNodeMetricsIfNeeded()
         }
     }
 
@@ -2023,6 +2155,33 @@ public final class AppState {
         ruleHitStatsSavedAt = now
         ruleHitStatsDirty = false
         persistence.saveAsync(ruleHitStats, name: Self.ruleHitStatsFile)
+    }
+
+    /// 记一条直连测量样本进节点历史（成功失败都记 —— 稳定性维度靠失败样本算成功率）。
+    /// 节流落盘同 domainHistory 模式。
+    func recordNodeDirectMeasurement(_ node: Node, latencyMs: Int?, at date: Date) {
+        nodeMetricsHistory.recordDirect(
+            fingerprint: node.identityFingerprint, latencyMs: latencyMs, at: date)
+        nodeMetricsDirty = true
+        flushNodeMetricsIfNeeded()
+    }
+
+    /// 记一次经代理实测（同轮窗口内并入直连样本，见 `NodeMetricsHistory.recordProxied`）。
+    func recordNodeProxiedMeasurement(_ node: Node, proxiedMs: Int) {
+        nodeMetricsHistory.recordProxied(fingerprint: node.identityFingerprint, proxiedMs: proxiedMs)
+        nodeMetricsDirty = true
+        flushNodeMetricsIfNeeded()
+    }
+
+    /// 有脏数据且距上次落盘 ≥ 节流间隔时写盘；轮询循环每轮兜底调用（同 domainHistory ——
+    /// 测量轮之间隔着几十分钟，不兜底的话最后一批脏数据会一直悬着）。
+    func flushNodeMetricsIfNeeded() {
+        guard nodeMetricsDirty else { return }
+        let now = Date()
+        guard now.timeIntervalSince(nodeMetricsSavedAt) >= nodeMetricsSaveInterval else { return }
+        nodeMetricsSavedAt = now
+        nodeMetricsDirty = false
+        persistence.saveAsync(nodeMetricsHistory, name: Self.nodeMetricsFile)
     }
 
     /// 取当前规则集 + 代理模式对应的 matchedRule 回填器；输入没变时复用同一实例
