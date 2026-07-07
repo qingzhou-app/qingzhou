@@ -28,7 +28,24 @@ public enum NodeScorer {
             self.cost = cost
         }
 
+        /// 均衡档（默认）：延迟主导、稳定性次之，成本只做轻微修正 —— P1 起沿用的口径。
         public static let balanced = Weights(latency: 0.45, stability: 0.30, bandwidth: 0.15, cost: 0.10)
+        /// 速度优先档：延迟提到 0.60（几乎只看快不快）、成本压到 0.05（近乎不管倍率）。
+        /// 稳定性/带宽相应让路 —— 追求「此刻最快」的用户接受多烧点流量。
+        public static let speed = Weights(latency: 0.60, stability: 0.25, bandwidth: 0.10, cost: 0.05)
+        /// 省流量档：成本提到 0.30（倍率进入主决策项，直接压低高倍率节点得分）、延迟降到 0.35。
+        /// 稳定性/带宽与速度档持平 —— 省流量不等于要抖动大，稳定性仍保 0.25。
+        public static let saver = Weights(latency: 0.35, stability: 0.25, bandwidth: 0.10, cost: 0.30)
+    }
+
+    /// 档位 → 权重组映射（三档预设的常量表）。三组都归一（Σ=1），锚点归一 + 归一权重
+    /// 保证不同档位的总分仍在同一 0–100 尺度，可跨档解释。UI 只暴露这三档、不给裸滑杆。
+    public static func weights(for profile: ScoringProfile) -> Weights {
+        switch profile {
+        case .speed:    return .speed
+        case .balanced: return .balanced
+        case .saver:    return .saver
+        }
     }
 
     /// 打分输入 —— 调用方从 Node / NodeMetricsHistory 拼装，引擎本身不认识 Node

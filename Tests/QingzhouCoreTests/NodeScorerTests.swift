@@ -241,4 +241,55 @@ final class NodeScorerTests: XCTestCase {
         let pricey = NodeScorer.score(input(proxied: 100, rate: 5.0), preferLowerRate: false)
         XCTAssertEqual(cheap.total, pricey.total, accuracy: 0.0001)
     }
+
+    // MARK: - 三档预设权重（速度优先 / 均衡 / 省流量）
+
+    /// 三组权重都必须归一（Σ = 1），否则总分不可跨档比较（锚点归一的前提）。
+    func testAllProfileWeightsSumToOne() {
+        for profile in ScoringProfile.allCases {
+            let w = NodeScorer.weights(for: profile)
+            XCTAssertEqual(w.latency + w.stability + w.bandwidth + w.cost, 1.0,
+                           accuracy: 1e-9, "\(profile) 权重和应为 1")
+        }
+    }
+
+    func testBalancedProfileMatchesCurrentWeights() {
+        // 均衡档 = 现状（P1 的 .balanced）：0.45/0.30/0.15/0.10
+        XCTAssertEqual(NodeScorer.weights(for: .balanced), NodeScorer.Weights.balanced)
+        XCTAssertEqual(NodeScorer.weights(for: .balanced),
+                       NodeScorer.Weights(latency: 0.45, stability: 0.30, bandwidth: 0.15, cost: 0.10))
+    }
+
+    func testSpeedProfileRaisesLatencyLowersCost() {
+        // 速度优先：延迟权重升、成本压低 —— 0.60/0.25/0.10/0.05
+        let w = NodeScorer.weights(for: .speed)
+        XCTAssertEqual(w, NodeScorer.Weights(latency: 0.60, stability: 0.25, bandwidth: 0.10, cost: 0.05))
+        XCTAssertGreaterThan(w.latency, NodeScorer.Weights.balanced.latency)
+        XCTAssertLessThan(w.cost, NodeScorer.Weights.balanced.cost)
+    }
+
+    func testSaverProfileRaisesCostToThirty() {
+        // 省流量：成本提到 0.30 —— 0.35/0.25/0.10/0.30
+        let w = NodeScorer.weights(for: .saver)
+        XCTAssertEqual(w, NodeScorer.Weights(latency: 0.35, stability: 0.25, bandwidth: 0.10, cost: 0.30))
+        XCTAssertEqual(w.cost, 0.30)
+        XCTAssertGreaterThan(w.cost, NodeScorer.Weights.balanced.cost)
+    }
+
+    /// score() 吃 profile 映射出的权重组：同一节点，速度档比省流量档更看重延迟。
+    /// 低倍率但延迟一般的节点：省流量档给它更高分（成本维吃重）。
+    func testProfileChangesRankingViaWeights() {
+        // 便宜但慢（rate 0.5 → 成本100；proxied 200 → 延迟60）
+        let cheapSlow = input(proxied: 200, rate: 0.5)
+        // 贵但快（rate 3 → 成本25；proxied 50 → 延迟100）
+        let pricyFast = input(proxied: 50, rate: 3.0)
+        let saverCheap = NodeScorer.score(cheapSlow, weights: NodeScorer.weights(for: .saver)).total
+        let saverPricy = NodeScorer.score(pricyFast, weights: NodeScorer.weights(for: .saver)).total
+        let speedCheap = NodeScorer.score(cheapSlow, weights: NodeScorer.weights(for: .speed)).total
+        let speedPricy = NodeScorer.score(pricyFast, weights: NodeScorer.weights(for: .speed)).total
+        // 省流量档：便宜的慢节点应胜出（成本权重 0.30 拉高）
+        XCTAssertGreaterThan(saverCheap, saverPricy)
+        // 速度档：快节点应胜出（延迟权重 0.60）
+        XCTAssertGreaterThan(speedPricy, speedCheap)
+    }
 }

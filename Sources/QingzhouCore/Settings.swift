@@ -22,6 +22,17 @@ public enum AutoSelectTrigger: String, Codable, Sendable, CaseIterable {
     case off
 }
 
+/// 打分预设档位 —— 三组权重的用户可见抽象（不暴露裸权重滑杆）。
+/// 具体权重映射见 `NodeScorer.weights(for:)`；改选即生效下一轮自动择优。
+/// - speed（速度优先）：延迟权重升、成本压低，只要快
+/// - balanced（均衡，默认）：= P1 现状权重 0.45/0.30/0.15/0.10
+/// - saver（省流量）：成本权重提到 0.30，优先低倍率
+public enum ScoringProfile: String, Codable, Sendable, CaseIterable {
+    case speed
+    case balanced
+    case saver
+}
+
 /// 全局设置 —— 持久化到 UserDefaults / 文件。
 public struct Settings: Codable, Sendable {
     public var proxyMode: ProxyMode
@@ -35,6 +46,9 @@ public struct Settings: Codable, Sendable {
     public var proxiedTestTarget: String
     /// 自动择优时「延迟接近就优先低倍率节点」（省流量）。倍率见 NodeRateParser。
     public var preferLowerRate: Bool
+    /// 打分预设档位（速度优先 / 均衡 / 省流量），映射三组打分权重（见 NodeScorer.weights(for:)）。
+    /// 默认 .balanced（= P1 现状权重）。改选即生效下一轮自动择优。
+    public var scoringProfile: ScoringProfile
     /// 后台周期性"只测速、不换节点"间隔，秒。0 = 关闭。
     /// 这跟 autoSelect 是两回事：autoSelect 会偷偷把 currentNodeId 改成最快的那个；
     /// 这个只刷新延迟列，currentNodeId 不动，让 UI 的延迟数据保持新鲜。
@@ -74,6 +88,7 @@ public struct Settings: Codable, Sendable {
         autoSelectUsesProxiedLatency: Bool = true,
         proxiedTestTarget: String = "",
         preferLowerRate: Bool = true,
+        scoringProfile: ScoringProfile = .balanced,
         autoMeasureIntervalSeconds: TimeInterval = 30 * 60,
         subscriptionRefreshIntervalSeconds: TimeInterval = 3600,
         nodeSortOrder: NodeSortOrder = .latency,
@@ -96,6 +111,7 @@ public struct Settings: Codable, Sendable {
         self.autoSelectUsesProxiedLatency = autoSelectUsesProxiedLatency
         self.proxiedTestTarget = proxiedTestTarget
         self.preferLowerRate = preferLowerRate
+        self.scoringProfile = scoringProfile
         self.autoMeasureIntervalSeconds = autoMeasureIntervalSeconds
         self.subscriptionRefreshIntervalSeconds = subscriptionRefreshIntervalSeconds
         self.nodeSortOrder = nodeSortOrder
@@ -119,6 +135,7 @@ public struct Settings: Codable, Sendable {
         case autoSelectUsesProxiedLatency
         case proxiedTestTarget
         case preferLowerRate
+        case scoringProfile
         case autoMeasureIntervalSeconds
         case subscriptionRefreshIntervalSeconds
         case nodeSortOrder, excludedRegions, preferredRegion
@@ -138,6 +155,9 @@ public struct Settings: Codable, Sendable {
         self.autoSelectUsesProxiedLatency = try c.decodeIfPresent(Bool.self, forKey: .autoSelectUsesProxiedLatency) ?? true
         self.proxiedTestTarget = try c.decodeIfPresent(String.self, forKey: .proxiedTestTarget) ?? ""
         self.preferLowerRate = try c.decodeIfPresent(Bool.self, forKey: .preferLowerRate) ?? true
+        // 缺失 or 未知档位值（未来新增档 / 手改文件）统一回落 .balanced：
+        // c.decode 缺 key 或值无法解码都抛错，try? 一并吞掉。
+        self.scoringProfile = (try? c.decode(ScoringProfile.self, forKey: .scoringProfile)) ?? .balanced
         self.autoMeasureIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .autoMeasureIntervalSeconds) ?? 30 * 60
         self.subscriptionRefreshIntervalSeconds = try c.decodeIfPresent(TimeInterval.self, forKey: .subscriptionRefreshIntervalSeconds) ?? 3600
         self.nodeSortOrder = try c.decodeIfPresent(NodeSortOrder.self, forKey: .nodeSortOrder) ?? .latency

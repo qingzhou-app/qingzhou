@@ -196,6 +196,14 @@ public struct SettingsView: View {
             Text("VPN 运行中择优时，把直连结果为绿色的节点逐个真实走一遍代理再选（更准，多花些时间）：能避开「直连快但出口绕路或已失效」的假好节点。自动测速本身只测直连、不受此开关影响。关闭本开关会清空已测的经代理延迟。")
                 .font(.caption2).foregroundStyle(.secondary)
 
+            Picker("择优偏好", selection: state.setting(\.scoringProfile)) {
+                Text("速度优先").tag(ScoringProfile.speed)
+                Text("均衡").tag(ScoringProfile.balanced)
+                Text("省流量").tag(ScoringProfile.saver)
+            }
+            Text("自动择优给每个节点按「延迟 / 稳定性 / 带宽 / 成本」四维综合打分，这里选看重什么：速度优先＝只挑最快、几乎不看倍率；均衡＝默认，四维兼顾；省流量＝优先低倍率节点省流量。改选下轮择优即生效。")
+                .font(.caption2).foregroundStyle(.secondary)
+
             Toggle("延迟接近时优先低倍率", isOn: state.setting(\.preferLowerRate))
             Text("自动择优时，若几个节点延迟差不多，优先选倍率低的（更省流量）。倍率从节点名 / 订阅元数据识别，非 1 倍会在节点上标出（0.5x 绿、2x 橙）。")
                 .font(.caption2).foregroundStyle(.secondary)

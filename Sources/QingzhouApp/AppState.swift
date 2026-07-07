@@ -1470,7 +1470,8 @@ public final class AppState {
                         peakDownBps: node.observedPeakDownBps,
                         rate: node.rateForComparison
                     ),
-                    preferLowerRate: settings.preferLowerRate
+                    preferLowerRate: settings.preferLowerRate,
+                    weights: NodeScorer.weights(for: settings.scoringProfile)
                 )
             }
         ) {
@@ -1558,7 +1559,8 @@ public final class AppState {
                 peakDownBps: node.observedPeakDownBps,
                 rate: node.rateForComparison
             ),
-            preferLowerRate: settings.preferLowerRate
+            preferLowerRate: settings.preferLowerRate,
+            weights: NodeScorer.weights(for: settings.scoringProfile)
         )
     }
 

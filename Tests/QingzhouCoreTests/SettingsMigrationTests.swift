@@ -138,4 +138,37 @@ final class SettingsMigrationTests: XCTestCase {
     func testIgnoredUpdateVersionDefaultIsEmpty() {
         XCTAssertEqual(Settings().ignoredUpdateVersion, "")
     }
+
+    // MARK: - scoringProfile（三档打分预设）
+
+    /// 旧 JSON 没有 scoringProfile → 默认 .balanced（均衡，= P1 现状权重），解码不能崩。
+    func testDecodeWithoutScoringProfileDefaultsToBalanced() throws {
+        XCTAssertEqual(try decode("{}").scoringProfile, .balanced)
+        let old = try decode("""
+        { "proxyMode": "global", "autoSelectTrigger": "off", "logLevel": "WARN" }
+        """)
+        XCTAssertEqual(old.scoringProfile, .balanced)
+    }
+
+    func testScoringProfileDefaultIsBalanced() {
+        XCTAssertEqual(Settings().scoringProfile, .balanced)
+    }
+
+    func testScoringProfileRoundtrips() throws {
+        for profile in ScoringProfile.allCases {
+            var s = Settings()
+            s.scoringProfile = profile
+            let data = try JSONEncoder().encode(s)
+            let reloaded = try JSONDecoder().decode(Settings.self, from: data)
+            XCTAssertEqual(reloaded.scoringProfile, profile)
+        }
+    }
+
+    /// 未知档位值（未来新增档 / 手改文件）→ 回落 .balanced，不能崩。
+    func testDecodeUnknownScoringProfileFallsBackToBalanced() throws {
+        let s = try decode("""
+        { "proxyMode": "rule", "scoringProfile": "turbo" }
+        """)
+        XCTAssertEqual(s.scoringProfile, .balanced)
+    }
 }

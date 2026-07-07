@@ -6286,6 +6286,61 @@
           }
         }
       }
+    },
+    "择优偏好": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selection preference"
+          }
+        }
+      }
+    },
+    "速度优先": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speed first"
+          }
+        }
+      }
+    },
+    "均衡": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Balanced"
+          }
+        }
+      }
+    },
+    "省流量": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Data saver"
+          }
+        }
+      }
+    },
+    "自动择优给每个节点按「延迟 / 稳定性 / 带宽 / 成本」四维综合打分，这里选看重什么：速度优先＝只挑最快、几乎不看倍率；均衡＝默认，四维兼顾；省流量＝优先低倍率节点省流量。改选下轮择优即生效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-select scores every node across four dimensions — latency, stability, bandwidth, and cost. Choose what matters most: Speed first picks the fastest and nearly ignores rate; Balanced (default) weighs all four; Data saver favors low-rate nodes to save data. Takes effect on the next selection round."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
