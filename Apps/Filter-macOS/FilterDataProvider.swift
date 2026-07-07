@@ -42,11 +42,17 @@ final class FilterDataProvider: NEFilterDataProvider, NSXPCListenerDelegate, Fil
         if let socketFlow = flow as? NEFilterSocketFlow,
            let port = localPort(of: socketFlow),
            let bundleID = bundleID(fromAuditToken: flow.sourceAppAuditToken) {
-            // 值 = "bundleID\t<unix秒>"：\t 后是观测时刻，主 App 按「端口+时间窗」认领，
-            // 端口被系统回收复用时老连接不再误标。解码侧在 QingzhouCore/SourceAppMap.swift，
-            // 两侧格式必须同步改；无 \t 的旧格式主 App 仍认（纯端口匹配）。
-            let value = "\(bundleID)\t\(Int(Date().timeIntervalSince1970))"
-            portToApp.withLock { $0[port] = value }
+            // 值 = 最近 ≤3 条 "bundleID\t<unix秒>" 记录（\n 分隔，新的在后）：主 App 按
+            // 「端口 + 时间最近邻」认领 —— 保留多条是为了端口在窗口内被两个 App 先后
+            // 复用时也能各认各的。解码侧在 QingzhouCore/SourceAppMap.swift，两侧格式
+            // 必须同步改；无 \t 的旧格式主 App 仍认（纯端口匹配）。
+            let entry = "\(bundleID)\t\(Int(Date().timeIntervalSince1970))"
+            portToApp.withLock { map in
+                var lines = map[port].map { $0.split(separator: "\n").map(String.init) } ?? []
+                lines.append(entry)
+                if lines.count > 3 { lines.removeFirst(lines.count - 3) }
+                map[port] = lines.joined(separator: "\n")
+            }
         }
         return .allow()                                       // 只观测，绝不阻断
     }

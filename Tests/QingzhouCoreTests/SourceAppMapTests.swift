@@ -53,4 +53,25 @@ final class SourceAppMapTests: XCTestCase {
         XCTAssertTrue(SourceAppMap(raw: [:]).isEmpty)
         XCTAssertFalse(SourceAppMap(raw: ["1": "a"]).isEmpty)
     }
+
+    // MARK: - 同端口多条记录（15s 内两个 App 先后复用同端口的场景）
+
+    func testTwoAppsReusingSamePortResolveByNearestTimestamp() {
+        // 旧 App 在 t0 建连、新 App 在 t0+10s 复用同端口，两条都在窗口内 → 按时间最近邻认领
+        let map = SourceAppMap(raw: ["50000": "com.old.app\t1751900000\ncom.new.app\t1751900010"])
+        XCTAssertEqual(map.bundleID(forPort: "50000", openedAt: t0.addingTimeInterval(1)), "com.old.app")
+        XCTAssertEqual(map.bundleID(forPort: "50000", openedAt: t0.addingTimeInterval(9)), "com.new.app")
+    }
+
+    func testMultiEntryStillRejectsWhenAllOutsideWindow() {
+        let map = SourceAppMap(raw: ["50000": "com.a.app\t1751900000\ncom.b.app\t1751900010"])
+        XCTAssertNil(map.bundleID(forPort: "50000", openedAt: t0.addingTimeInterval(-3600)))
+    }
+
+    func testLegacyEntryOnlyUsedWhenNoTimestampedEntryMatches() {
+        // 混合值：带时间戳的条目窗口内命中 → 优先；全部超窗 → 退回无时间戳条目（旧扩展兼容语义）
+        let map = SourceAppMap(raw: ["50000": "com.legacy.app\ncom.new.app\t1751900000"])
+        XCTAssertEqual(map.bundleID(forPort: "50000", openedAt: t0.addingTimeInterval(2)), "com.new.app")
+        XCTAssertEqual(map.bundleID(forPort: "50000", openedAt: t0.addingTimeInterval(-3600)), "com.legacy.app")
+    }
 }
