@@ -10,10 +10,22 @@
             "value" : "Qingzhou uses the camera to scan QR codes so you can quickly add nodes or subscriptions."
           }
         },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QRコードをスキャンして、ノードやサブスクリプションをすばやく追加します。"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "扫描二维码以快速添加节点或订阅"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "掃描 QR code 以快速新增節點或訂閱"
           }
         }
       }
@@ -27,10 +39,22 @@
             "value" : "Qingzhou needs to install a network extension to label which app initiated each connection (analyzed on this device only, never uploaded)."
           }
         },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qingzhouは、各接続をどのAppが開始したかを識別するためにネットワーク拡張機能をインストールする必要があります（解析はこのデバイス上でのみ行い、アップロードしません）。"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "轻舟需要安装网络扩展，用于标注每条连接由哪个 App 发起（仅本机分析，不上传）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輕舟需要安裝網路擴充功能，用於標註每條連線由哪個 App 發起（僅本機分析，不上傳）。"
           }
         }
       }
