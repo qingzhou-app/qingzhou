@@ -6341,6 +6341,116 @@
           }
         }
       }
+    },
+    "为什么选它": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Why this node"
+          }
+        }
+      }
+    },
+    "综合评分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overall score"
+          }
+        }
+      }
+    },
+    "%lld 分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pts"
+          }
+        }
+      }
+    },
+    "延迟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latency"
+          }
+        }
+      }
+    },
+    "稳定性": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stability"
+          }
+        }
+      }
+    },
+    "带宽": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bandwidth"
+          }
+        }
+      }
+    },
+    "成本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cost"
+          }
+        }
+      }
+    },
+    "%lld 分 · 权重 %lld%%": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pts · weight %lld%%"
+          }
+        }
+      }
+    },
+    "自动择优按此综合评分选节点：延迟 / 稳定性 / 带宽 / 成本四维各归一到 0–100 分再加权求和。每维右侧是它的得分与权重，权重由「设置 → 择优偏好」的档位决定。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-select picks nodes by this overall score: latency, stability, bandwidth, and cost are each normalized to 0–100 and weighted. Each row shows the dimension's score and weight; weights come from the profile in Settings → Selection preference."
+          }
+        }
+      }
+    },
+    "暂无评分数据 —— 先给节点测一次速。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No score yet — run a speed test on this node first."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

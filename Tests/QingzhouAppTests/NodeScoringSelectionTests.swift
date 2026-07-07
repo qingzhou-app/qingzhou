@@ -203,6 +203,22 @@ final class NodeScoringSelectionTests: XCTestCase {
         XCTAssertEqual(state.scoreForAutoSelect(n).latency.score, 77.5, accuracy: 0.01)
     }
 
+    // MARK: - 三档预设经 AppState 生效（也是「为什么选它」UI 分量条的数据源）
+
+    /// scoreForAutoSelect 的各维权重随 settings.scoringProfile 改变 —— 既验证 P2 三档
+    /// 在择优路径生效，也验证节点详情「为什么选它」读到的分量权重是档位相关的。
+    func testScoreForAutoSelectReflectsScoringProfileWeights() {
+        let state = makeState()
+        let n = node("N", host: "a.com", latency: 100)
+        state.settings.scoringProfile = .speed
+        XCTAssertEqual(state.scoreForAutoSelect(n).latency.weight, 0.60, accuracy: 1e-9)
+        XCTAssertEqual(state.scoreForAutoSelect(n).cost.weight, 0.05, accuracy: 1e-9)
+        state.settings.scoringProfile = .saver
+        XCTAssertEqual(state.scoreForAutoSelect(n).cost.weight, 0.30, accuracy: 1e-9)
+        state.settings.scoringProfile = .balanced
+        XCTAssertEqual(state.scoreForAutoSelect(n).latency.weight, 0.45, accuracy: 1e-9)
+    }
+
     // MARK: - 落盘与启动加载
 
     func testHistoryPersistsAndReloads() throws {

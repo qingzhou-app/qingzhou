@@ -13,6 +13,10 @@ public struct NodeDetailView: View {
     @State var draft: Node
     @State private var newParamKey: String = ""
     @State private var newParamValue: String = ""
+    /// 「为什么选它」评分构成，**进入详情时算一次**缓存（用户主动看才算 —— 节点多时
+    /// 别每帧重算，同 NodeRateParser 预编译正则的教训）。测速/经代理测速改了数据后
+    /// 在按钮回调里刷新。
+    @State private var scoreBreakdown: NodeScorer.Score?
     @Environment(\.dismiss) private var dismiss
 
     public init(state: AppState, node: Node) {
@@ -23,6 +27,7 @@ public struct NodeDetailView: View {
     public var body: some View {
         Form {
             identitySection
+            scoreSection
             basicSection
             credentialSection
             parametersSection
@@ -31,6 +36,7 @@ public struct NodeDetailView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(draft.name.isEmpty ? L("节点详情") : draft.name)
+        .onAppear { scoreBreakdown = state.scoreForAutoSelect(draft) }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") { save() }
@@ -57,6 +63,55 @@ public struct NodeDetailView: View {
                 LabeledContent("来源", value: L("手动添加"))
             }
         }
+    }
+
+    /// 「为什么选它」评分构成条：总分 + 四维分量（横向 bar，标注每维得分与权重）。
+    /// 透明度是信任来源 —— 让用户看懂自动择优凭什么选它，而非黑箱。
+    private var scoreSection: some View {
+        Section {
+            if let s = scoreBreakdown {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("综合评分").font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text(String(format: L("%lld 分"), Int(s.total.rounded())))
+                        .font(.title3.weight(.bold).monospacedDigit())
+                        .foregroundStyle(.tint)
+                }
+                dimensionRow(L("延迟"), comp: s.latency, color: .blue)
+                dimensionRow(L("稳定性"), comp: s.stability, color: .green)
+                dimensionRow(L("带宽"), comp: s.bandwidth, color: .purple)
+                dimensionRow(L("成本"), comp: s.cost, color: .orange)
+                Text("自动择优按此综合评分选节点：延迟 / 稳定性 / 带宽 / 成本四维各归一到 0–100 分再加权求和。每维右侧是它的得分与权重，权重由「设置 → 择优偏好」的档位决定。")
+                    .font(.caption2).foregroundStyle(.secondary)
+            } else {
+                Text("暂无评分数据 —— 先给节点测一次速。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("为什么选它")
+        }
+    }
+
+    /// 单维分量行：维度名 + 「N 分 · 权重 M%」+ 横向 bar（填充比例 = 得分/100）。
+    private func dimensionRow(_ title: String, comp: NodeScorer.Component, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title).font(.caption)
+                Spacer()
+                Text(String(format: L("%lld 分 · 权重 %lld%%"),
+                            Int(comp.score.rounded()), Int((comp.weight * 100).rounded())))
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(color.opacity(0.15))
+                    Capsule().fill(color)
+                        .frame(width: max(0, geo.size.width * comp.score / 100))
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.vertical, 2)
     }
 
     private var basicSection: some View {
@@ -191,6 +246,8 @@ public struct NodeDetailView: View {
                         draft.lastProxiedLatencyMs = nil
                         draft.lastProxiedTestedAt = Date()
                     }
+                    // 经代理延迟变了 → 刷新「为什么选它」评分（延迟维会重新混合）
+                    scoreBreakdown = state.scoreForAutoSelect(draft)
                 }
             } label: {
                 if state.proxiedMeasuringNodeIds.contains(draft.id) {
