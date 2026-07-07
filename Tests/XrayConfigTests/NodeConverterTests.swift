@@ -417,6 +417,143 @@ final class NodeConverterTests: XCTestCase {
         }
     }
 
+    // MARK: - Hysteria2 × v26.6.27 schema（finalmask / quicParams）
+
+    private func finalmask(_ out: [String: Any]) -> [String: Any]? {
+        streamSettings(out)["finalmask"] as? [String: Any]
+    }
+
+    /// salamander obfs 走 streamSettings.finalmask.udp（infra/conf/transport_internet.go
+    /// 的 udpmaskLoader，type="salamander"，settings.password）——
+    /// 修复「带 obfs 的 hy2 节点握手失败」（旧 fork 没这字段，只能丢弃 obfs）。
+    func testHysteria2SalamanderObfs() throws {
+        let node = Node(name: "h", protocolType: .hysteria2, host: "h.example", port: 443,
+                        password: "pwd",
+                        parameters: ["obfs": "salamander", "obfs-password": "ob-pass"])
+        let out = try NodeConverter.toOutboundDict(node)
+        let fm = try XCTUnwrap(finalmask(out), "obfs=salamander 必须产出 finalmask")
+        let udp = try XCTUnwrap(fm["udp"] as? [[String: Any]])
+        XCTAssertEqual(udp.count, 1)
+        XCTAssertEqual(udp[0]["type"] as? String, "salamander")
+        let s = try XCTUnwrap(udp[0]["settings"] as? [String: Any])
+        XCTAssertEqual(s["password"] as? String, "ob-pass")
+        // obfs 相关键不许漏进 hysteriaSettings（那里没这字段，白写）
+        let hy = try XCTUnwrap(streamSettings(out)["hysteriaSettings"] as? [String: Any])
+        XCTAssertNil(hy["obfs"])
+        XCTAssertNil(hy["obfs-password"])
+    }
+
+    /// salamander 必须带 obfs-password —— 缺了转出去也连不上，宁可显式报错。
+    func testHysteria2ObfsWithoutPasswordRejected() {
+        let node = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                        password: "pwd", parameters: ["obfs": "salamander"])
+        XCTAssertThrowsError(try NodeConverter.toOutboundDict(node)) { err in
+            XCTAssertEqual(err as? NodeConverterError, .missingObfsPassword)
+        }
+    }
+
+    /// hysteria2 只有 salamander 一种混淆；未知 obfs 类型显式拒绝（静默丢弃 = 假连接）。
+    func testHysteria2UnknownObfsRejected() {
+        let node = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                        password: "pwd",
+                        parameters: ["obfs": "faketcp", "obfs-password": "x"])
+        XCTAssertThrowsError(try NodeConverter.toOutboundDict(node)) { err in
+            guard case .unsupportedTransport = err as? NodeConverterError else {
+                return XCTFail("wrong error: \(err)")
+            }
+        }
+    }
+
+    /// 什么扩展参数都没有 → 不产出 finalmask（配置最小化，跟旧行为逐字节兼容）。
+    func testHysteria2NoFinalmaskWithoutParams() throws {
+        let node = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443, password: "pwd")
+        XCTAssertNil(finalmask(try NodeConverter.toOutboundDict(node)))
+    }
+
+    /// 端口跳跃：mport → finalmask.quicParams.udpHop.ports（v26.6.27 把 congestion/up/
+    /// down/udphop 从 hysteriaSettings 挪进了 quicParams —— 旧位置只剩 deprecation 警告）；
+    /// hopInterval 合法（≥5，xray 硬下限）才透传，settings.port 保持主端口。
+    func testHysteria2PortHopping() throws {
+        let node = Node(name: "h", protocolType: .hysteria2, host: "h.example", port: 40000,
+                        password: "pwd",
+                        parameters: ["mport": "40000-50000", "hopInterval": "30"])
+        let out = try NodeConverter.toOutboundDict(node)
+        XCTAssertEqual((out["settings"] as? [String: Any])?["port"] as? Int, 40000)
+        let quic = try XCTUnwrap(finalmask(out)?["quicParams"] as? [String: Any])
+        let hop = try XCTUnwrap(quic["udpHop"] as? [String: Any])
+        XCTAssertEqual(hop["ports"] as? String, "40000-50000")
+        XCTAssertEqual(hop["interval"] as? Int, 30)
+        // 旧位置（hysteriaSettings.udphop 等 deprecated 键）绝不能出现
+        let hy = try XCTUnwrap(streamSettings(out)["hysteriaSettings"] as? [String: Any])
+        for dead in ["udphop", "congestion", "up", "down"] {
+            XCTAssertNil(hy[dead], "hysteriaSettings 里不许有 deprecated 键 \(dead)")
+        }
+    }
+
+    /// hopInterval 非法（<5 / 非数字）→ 只丢 interval，跳跃端口照常。
+    func testHysteria2HopIntervalInvalidIgnored() throws {
+        for bad in ["3", "abc", "0"] {
+            let node = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                            password: "pwd",
+                            parameters: ["mport": "443,8443", "hopInterval": bad])
+            let quic = try XCTUnwrap(finalmask(try NodeConverter.toOutboundDict(node))?["quicParams"] as? [String: Any])
+            let hop = try XCTUnwrap(quic["udpHop"] as? [String: Any])
+            XCTAssertNil(hop["interval"], "非法 hopInterval=\(bad) 不应透传")
+        }
+    }
+
+    /// mport 格式垃圾（非端口列表）→ 整个 udpHop 不产出，别把垃圾喂给 xray。
+    func testHysteria2GarbageMportIgnored() throws {
+        for bad in ["abc", "443;8443", "80-", "0-100", "1-70000"] {
+            let node = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                            password: "pwd", parameters: ["mport": bad])
+            let fm = finalmask(try NodeConverter.toOutboundDict(node))
+            XCTAssertNil((fm?["quicParams"] as? [String: Any])?["udpHop"],
+                         "垃圾 mport=\(bad) 不应产出 udpHop")
+        }
+    }
+
+    /// brutal 带宽：up/down 纯数字按 hysteria2 惯例是 Mbps（xray Bandwidth 裸数字当 bps，
+    /// 直接透传会 <65536 B/s 被拒）→ 补 " mbps"；带单位的字符串按小写透传。
+    func testHysteria2BrutalBandwidth() throws {
+        let node = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                        password: "pwd",
+                        parameters: ["up": "100", "down": "500 Mbps"])
+        let quic = try XCTUnwrap(finalmask(try NodeConverter.toOutboundDict(node))?["quicParams"] as? [String: Any])
+        XCTAssertEqual(quic["brutalUp"] as? String, "100 mbps")
+        XCTAssertEqual(quic["brutalDown"] as? String, "500 mbps")
+    }
+
+    /// congestion 白名单（reno/bbr/brutal/force-brutal）；force-brutal 没配 up 会被 xray
+    /// 整体拒绝 → 丢掉 congestion 保配置可用；未知值忽略。
+    func testHysteria2CongestionParam() throws {
+        let ok = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                      password: "pwd", parameters: ["congestion": "bbr"])
+        let quicOK = try XCTUnwrap(finalmask(try NodeConverter.toOutboundDict(ok))?["quicParams"] as? [String: Any])
+        XCTAssertEqual(quicOK["congestion"] as? String, "bbr")
+
+        let forceNoUp = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                             password: "pwd", parameters: ["congestion": "force-brutal"])
+        let fmForce = finalmask(try NodeConverter.toOutboundDict(forceNoUp))
+        XCTAssertNil((fmForce?["quicParams"] as? [String: Any])?["congestion"],
+                     "force-brutal 无 up 时应丢弃（xray 会拒整个配置）")
+
+        let unknown = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                           password: "pwd", parameters: ["congestion": "cubic"])
+        XCTAssertNil(finalmask(try NodeConverter.toOutboundDict(unknown)),
+                     "未知 congestion 忽略后不应留下空 quicParams")
+    }
+
+    /// pinSHA256 → tlsSettings.pinnedPeerCertSha256（allowInsecure 移除后官方替代，
+    /// xray 侧接受冒号分隔 hex，原样透传）。
+    func testHysteria2PinSHA256() throws {
+        let node = Node(name: "h", protocolType: .hysteria2, host: "h", port: 443,
+                        password: "pwd",
+                        parameters: ["pinSHA256": "AB:CD:EF:01"])
+        let tls = try XCTUnwrap(streamSettings(try NodeConverter.toOutboundDict(node))["tlsSettings"] as? [String: Any])
+        XCTAssertEqual(tls["pinnedPeerCertSha256"] as? String, "AB:CD:EF:01")
+    }
+
     /// compose 应该能接住 hysteria2 的 outbound 输出，且最终配置里没有 allowInsecure。
     func testHysteria2OutputIsAcceptedByComposer() throws {
         let node = Node(

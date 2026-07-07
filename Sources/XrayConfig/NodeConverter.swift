@@ -18,6 +18,7 @@ import QingzhouCore
 
 public enum NodeConverterError: Swift.Error, LocalizedError, Equatable {
     case missingPassword
+    case missingObfsPassword
     case missingUUID
     case missingCipher
     case invalidPort(Int)
@@ -27,6 +28,7 @@ public enum NodeConverterError: Swift.Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .missingPassword:           return "节点缺少 password 字段"
+        case .missingObfsPassword:       return "节点声明了 obfs 混淆但缺少 obfs-password"
         case .missingUUID:               return "节点缺少 uuid 字段"
         case .missingCipher:             return "节点缺少 cipher / encryption 字段"
         case let .invalidPort(p):        return "节点端口非法：\(p)"
