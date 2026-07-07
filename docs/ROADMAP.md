@@ -186,13 +186,18 @@ burst 丢包率 + 经代理并入总分）。五代沿革见 `docs/NODE-SELECTIO
   ✅ **组织账号已注册完成（2026-07-03）**；剩：identifier 在新 org team 下重建、1024 图标导出、
   `PRIVACY.md` 生效日期填写 + GitHub Pages 部署、截图、TestFlight、审核测试节点准备
 
-**机场兼容性审计（2026-07-05）剩余 TODO**（P0/P1 已修：ss-2022 明文 userinfo、
+**机场兼容性审计（2026-07-05）—— 已全部收口**（P0/P1 已修：ss-2022 明文 userinfo、
 Clash vless+reality 参数、一枝红杏 `:倍率` 格式）：
-- **零节点可见错误**：SIP008/SSD/空订阅解析出 0 节点时给醒目提示，区分「空」vs「格式不识别」
-- **SIP008 (JSON) 订阅格式**：Outline/部分 SS 机场用，现在静默空导入
+- ✅ **零节点可见错误**：`SubscriptionPayload.formatRecognized` 区分「空」vs「格式不识别」，
+  AppState.refreshSubscription 据此 toast（891b649）
+- ✅ **SIP008 (JSON) 订阅格式**：`SIP008Parser` + SubscriptionParser 分支识别 `servers` 数组（891b649）
 - ✅ **hysteria2 salamander obfs**：已修（v26.6.27 schema，obfs 走 `finalmask.udp` salamander mask）
-- **裸 UTF-8 fragment 兜底**：URLComponents 对未编码 emoji/中文名可能返回 nil → 整条丢
-- **SSR / TUIC 协议**：尾部机场，成本大，排后
+- ✅ **裸 UTF-8 fragment 兜底**：`ProxyURLParser.fragmentEncoded` 预编码 + malformedURL 重试。
+  实测 iOS17+/macOS14+ 的 Foundation 已宽松到裸 emoji/中文 fragment 不返回 nil，此兜底主要保严格
+  Foundation（Linux swift-corelibs）不丢节点；happy path 零行为变化
+- ✅ **SSR / TUIC 协议**：评估结论 = xray-core v26.6.27 无二者出站实现（SSR=auth_chain/obfs 插件族、
+  TUIC=QUIC 系 sing-box 专属），加 converter 是死代码，故**不加协议**，改为 `unsupportedProtocol(name:)`
+  给清晰「暂不支持该协议」提示（非静默丢弃）
 
 **排队立项（按优先级）**：
 1. ✅ **英文 i18n**（2026-07-03 完成：Localizable/AppShortcuts/InfoPlist/Widget 全量目录，

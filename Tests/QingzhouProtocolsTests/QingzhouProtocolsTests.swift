@@ -253,4 +253,109 @@ final class QingzhouProtocolsTests: XCTestCase {
         XCTAssertEqual(errors.count, 1)
         XCTAssertEqual(errors[0].0, "garbage")
     }
+
+    // MARK: - 裸 UTF-8 fragment 兜底（机场兼容审计 item 3）
+    //
+    // 背景：分享链接的 `#名称` 段常含未编码 emoji/中文。iOS 17+/macOS 14+ 的 Foundation
+    // 里 `URLComponents(string:)` 已足够宽松、能容忍裸 fragment；但严格 Foundation
+    // （如 Linux swift-corelibs）会对未编码 fragment 整条返回 nil → 节点被丢。
+    // `ProxyURLParser.fragmentEncoded` 是纯函数兜底：把 `#` 之后预编码，让下游 URLComponents
+    // 一定能解出 name，且已经是 %xx 的转义不双重编码。
+
+    func testFragmentEncodedEncodesBareEmojiName() {
+        let raw = "trojan://pw@host.example:443?sni=x#🇭🇰香港节点"
+        let encoded = ProxyURLParser.fragmentEncoded(raw)
+        // 裸 emoji/中文应被百分号编码（不再字面出现）
+        XCTAssertFalse(encoded.contains("🇭🇰"), "裸 emoji 应被编码")
+        XCTAssertFalse(encoded.contains("香港"), "裸中文应被编码")
+        // 编码后必须能被 URLComponents 解析，且 fragment 解回原名
+        let comps = URLComponents(string: encoded)
+        XCTAssertNotNil(comps)
+        XCTAssertEqual(comps?.fragment, "🇭🇰香港节点")
+        // authority / query 不受影响
+        XCTAssertEqual(comps?.host, "host.example")
+        XCTAssertEqual(comps?.port, 443)
+    }
+
+    func testFragmentEncodedPreservesExistingPercentEscapes() {
+        // fragment 已部分编码（%20=空格）：不能双重编码成 %2520
+        let raw = "trojan://pw@h:443#香港%20A"
+        let encoded = ProxyURLParser.fragmentEncoded(raw)
+        XCTAssertFalse(encoded.contains("%2520"), "已有 %20 不该被双重编码")
+        XCTAssertEqual(URLComponents(string: encoded)?.fragment, "香港 A")
+    }
+
+    func testFragmentEncodedNoHashIsUnchanged() {
+        let raw = "trojan://pw@h:443?sni=x"
+        XCTAssertEqual(ProxyURLParser.fragmentEncoded(raw), raw)
+    }
+
+    // 端到端回归：裸 emoji/中文名在当前平台 Foundation 下应正确解析出 name
+    // （在此平台本就通过，用于锁定行为、防止改写解析器时回退；兜底则保严格平台不丢节点）。
+
+    func testParseTrojanBareEmojiName() throws {
+        let node = try ProxyURLParser.parse("trojan://pw@example.com:443?sni=x#🚀香港01")
+        XCTAssertEqual(node.protocolType, .trojan)
+        XCTAssertEqual(node.host, "example.com")
+        XCTAssertEqual(node.name, "🚀香港01")
+    }
+
+    func testParseVLESSBareChineseName() throws {
+        let node = try ProxyURLParser.parse("vless://uuid@h.example:443?type=ws#日本 东京")
+        XCTAssertEqual(node.protocolType, .vless)
+        XCTAssertEqual(node.uuid, "uuid")
+        XCTAssertEqual(node.name, "日本 东京")
+    }
+
+    func testParseHysteria2BareEmojiName() throws {
+        let node = try ProxyURLParser.parse("hysteria2://pw@h.example:443?insecure=1#🇯🇵急速")
+        XCTAssertEqual(node.protocolType, .hysteria2)
+        XCTAssertEqual(node.name, "🇯🇵急速")
+    }
+
+    // MARK: - SSR / TUIC：xray-core v26.6.27 不原生支持，给清晰提示而非静默丢（审计 item 4）
+    //
+    // 决策：SSR（auth_chain / obfs 插件）与 TUIC（QUIC，sing-box 专属）xray-core 均无出站实现，
+    // 加 converter 只会是跑不通的死代码。因此不加协议，改成识别出来给可读的「暂不支持」错误，
+    // 区别于完全未知的 scheme（unsupportedScheme）。
+
+    func testParseSSRGivesClearUnsupportedProtocol() {
+        // ssr://base64(host:port:proto:method:obfs:base64pass/?params)
+        XCTAssertThrowsError(try ProxyURLParser.parse("ssr://c29tZS1iYXNlNjQtYmxvYg")) { err in
+            XCTAssertEqual(err as? ProxyURLParseError, .unsupportedProtocol(name: "SSR"))
+        }
+    }
+
+    func testParseShadowsocksRAliasAlsoSSR() {
+        XCTAssertThrowsError(try ProxyURLParser.parse("shadowsocksr://c29tZS1ibG9i")) { err in
+            XCTAssertEqual(err as? ProxyURLParseError, .unsupportedProtocol(name: "SSR"))
+        }
+    }
+
+    func testParseTUICGivesClearUnsupportedProtocol() {
+        XCTAssertThrowsError(try ProxyURLParser.parse("tuic://uuid:password@h.example:443?alpn=h3#TUIC节点")) { err in
+            XCTAssertEqual(err as? ProxyURLParseError, .unsupportedProtocol(name: "TUIC"))
+        }
+    }
+
+    func testUnsupportedProtocolMessageIsHumanReadable() {
+        let msg = String(describing: ProxyURLParseError.unsupportedProtocol(name: "TUIC"))
+        XCTAssertTrue(msg.contains("暂不支持"), "错误信息应含「暂不支持」，实际：\(msg)")
+        XCTAssertTrue(msg.contains("TUIC"), "错误信息应含协议名，实际：\(msg)")
+    }
+
+    func testParseBatchSurfacesUnsupportedProtocolNotSilent() {
+        // 一条好 trojan + 一条 ssr + 一条 tuic：好节点收下，坏的进 errors（非静默丢弃）
+        let text = """
+        trojan://pw@example.com:443#ok
+        ssr://c29tZS1ibG9i
+        tuic://uuid:pw@h.example:443#t
+        """
+        let (nodes, errors) = ProxyURLParser.parseBatch(text)
+        XCTAssertEqual(nodes.count, 1)
+        XCTAssertEqual(errors.count, 2)
+        let reasons = errors.map { $0.1 as? ProxyURLParseError }
+        XCTAssertTrue(reasons.contains(.unsupportedProtocol(name: "SSR")))
+        XCTAssertTrue(reasons.contains(.unsupportedProtocol(name: "TUIC")))
+    }
 }
