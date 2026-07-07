@@ -282,10 +282,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let cachesURL = FileManager.default
             .urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        // mph 缓存路径**故意留空** —— libXray 的 mph 缓存 build/load 机制对不上
-        //（建好后 run 时报 "matcher not found"）。空路径时 xray 在内存里实时构建
-        // geosite/geoip matcher（rule 模式启动多几百毫秒，可接受），不依赖缓存文件，稳。
-        let mphCache = ""
+        // mph 缓存：新版 libXray（#132 后）已整体移除该机制 —— 我们本来也没用
+        //（老机制 build/load 对不上，run 时报 "matcher not found"）。xray 在内存里
+        // 实时构建 geosite/geoip matcher（rule 模式启动多几百毫秒，可接受）。
 
         let fm = FileManager.default
         let geoipPath = geoDir + "/geoip.dat"
@@ -305,7 +304,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         os_log("calling XrayCore.setTunFd + run …", log: log, type: .default)
         XrayCore.setTunFd(pair.xray)
         do {
-            try XrayCore.run(configJSON: configJSON, geoDir: geoDir, mphCachePath: mphCache)
+            try XrayCore.run(configJSON: configJSON, geoDir: geoDir)
             os_log("✅ xray-core started OK (version %{public}@)", log: log, type: .default, XrayCore.version)
             startStatsReporting()
             completionHandler(nil)

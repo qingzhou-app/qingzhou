@@ -110,7 +110,8 @@ public enum XrayConfigComposer {
             "protocol": "tun",
             "settings": [
                 "name": tunInterfaceName,
-                "MTU": 1500
+                // v26.6.27 的 json tag 是小写 mtu（Go 解码大小写不敏感，改小写只为对齐 schema）
+                "mtu": 1500
             ],
             "sniffing": [
                 "enabled": true,

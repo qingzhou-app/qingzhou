@@ -17,19 +17,19 @@ import (
 type Holder struct {
 	domainToIP cache.Lru
 	ipRange    *net.IPNet
-	mu         *sync.Mutex
+	mu         sync.Mutex
 
 	config *FakeDnsPool
 }
 
-// Qingzhou fix (start-side twin of upstream #6022): holders are constructed
-// config-only (ipRange/mu/domainToIP all nil, see NewFakeDNSHolderConfigOnly)
-// and registered as a queryable feature at core.New time, but only initialized
-// in Start(). Any dispatcher-sniffer / DNS query landing in that window derefs
-// a nil ipRange and aborts the whole process (recorded: NE extension crash
-// loop on both iOS and macOS whenever traffic is queued during tunnel start).
-// initialize() publishes ipRange last, so a non-nil ipRange implies mu and
-// domainToIP are usable. Uninitialized holders answer "not a fake IP".
+// Qingzhou guard (start-side twin of #6022; see our issue #6442): holders are
+// constructed config-only (ipRange/domainToIP nil) and registered as a queryable
+// feature at core.New time, but only initialized in Start(). Upstream 06b49317
+// (#6275) fixed the TUN inbound pumping traffic before Start — that closes the
+// main path, but any other pre-Start query (secondary probe instances, app
+// messages) would still nil-deref. initialize() publishes ipRange last, so a
+// non-nil ipRange implies domainToIP is usable. Uninitialized holders answer
+// "not a fake IP" — semantically correct: no fake IP was ever handed out yet.
 func (fkdns *Holder) initialized() bool {
 	return fkdns.ipRange != nil
 }
@@ -67,9 +67,7 @@ func (fkdns *Holder) Start() error {
 }
 
 func (fkdns *Holder) Close() error {
-	// Backport of upstream XTLS/Xray-core@7ab0a3c (#6022): nil-ing these fields
-	// races with in-flight GetDomainFromFakeDNS / IsIPInIPPool calls from the
-	// dispatcher sniffer and panics the whole process. Nothing to do; wait GC.
+	// nothing to do for now, just wait GC
 	return nil
 }
 
@@ -88,7 +86,7 @@ func NewFakeDNSHolder() (*Holder, error) {
 }
 
 func NewFakeDNSHolderConfigOnly(conf *FakeDnsPool) (*Holder, error) {
-	return &Holder{nil, nil, nil, conf}, nil
+	return &Holder{config: conf}, nil
 }
 
 func (fkdns *Holder) initializeFromConfig() error {
@@ -108,10 +106,9 @@ func (fkdns *Holder) initialize(ipPoolCidr string, lruSize int) error {
 	if math.Log2(float64(lruSize)) >= float64(rooms) {
 		return errors.New("LRU size is bigger than subnet size").AtError()
 	}
-	// ipRange doubles as the "initialized" flag (see initialized()) — publish it
-	// last so readers that observe it non-nil also see mu / domainToIP set.
-	fkdns.mu = new(sync.Mutex)
 	fkdns.domainToIP = cache.NewLru(lruSize)
+	// ipRange doubles as the "initialized" flag (see initialized()) — keep it
+	// published last so readers that observe it non-nil also see domainToIP set.
 	fkdns.ipRange = ipRange
 	return nil
 }
@@ -126,7 +123,7 @@ func (fkdns *Holder) GetFakeIPForDomain(domain string) []net.Address {
 	if v, ok := fkdns.domainToIP.Get(domain); ok {
 		return []net.Address{v.(net.Address)}
 	}
-	currentTimeMillis := uint64(time.Now().UnixNano() / 1e6)
+	currentTimeMillis := uint64(time.Now().UnixMilli())
 	ones, bits := fkdns.ipRange.Mask.Size()
 	rooms := bits - ones
 	if rooms < 64 {
@@ -228,12 +225,11 @@ func (h *HolderMulti) Start() error {
 }
 
 func (h *HolderMulti) Close() error {
+	var errs []error
 	for _, v := range h.holders {
-		if err := v.Close(); err != nil {
-			return errors.New("Cannot close all fake dns pools").Base(err)
-		}
+		errs = append(errs, v.Close())
 	}
-	return nil
+	return errors.Combine(errs...)
 }
 
 func (h *HolderMulti) createHolderGroups() error {
@@ -248,7 +244,7 @@ func (h *HolderMulti) createHolderGroups() error {
 }
 
 func NewFakeDNSHolderMulti(conf *FakeDnsPoolMulti) (*HolderMulti, error) {
-	holderMulti := &HolderMulti{nil, conf}
+	holderMulti := &HolderMulti{config: conf}
 	if err := holderMulti.createHolderGroups(); err != nil {
 		return nil, err
 	}

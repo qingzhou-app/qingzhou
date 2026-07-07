@@ -26,7 +26,9 @@ settings:
     #           已归档上传 App Store（iOS 1.0(3)）。
     # build 4 = 来源 App 标注关联键升级「端口+时间窗」——Filter-macOS 系统扩展代码变了，
     #           不 bump 版本号 macOS 不会替换运行中的旧扩展（见该 target 注释的激活坑）。
-    CURRENT_PROJECT_VERSION: "4"
+    # build 5 = xray-core 升级 v26.6.27 + libXray Invoke API 迁移 + 多维打分 P1 +
+    #           iCloud 差异摘要 + 端口时间窗最近邻。全量重测的基线版本。
+    CURRENT_PROJECT_VERSION: "5"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 
