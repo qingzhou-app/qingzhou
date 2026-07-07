@@ -8,6 +8,18 @@
             "state": "translated",
             "value": "• Siri: say “Turn on Qingzhou”"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• Siri：Siriに「Qingzhouをオンにして」と話しかける"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• Siri：對 Siri 說「開啟輕舟」"
+          }
         }
       }
     },
@@ -17,6 +29,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "• Shortcuts: search “Qingzhou” — start / stop / toggle / status check"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• ショートカット：「Qingzhou」を検索 — オン / オフ / 切り替え / 状態確認"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• 捷徑：搜尋「輕舟」，開 / 關 / 切換、狀態判斷"
           }
         }
       }
@@ -28,6 +52,18 @@
             "state": "translated",
             "value": "• Control Center: add the “Qingzhou VPN” control for one-tap toggling"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• コントロールセンター：「Qingzhou VPN」コントロールを追加してワンタップで切り替え"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• 控制中心：加入「輕舟 VPN」控制項目，一鍵啟停"
+          }
         }
       }
     },
@@ -37,6 +73,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "• Automation: auto-connect when an app opens, disconnect when it closes"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• オートメーション：Appを開くと自動的に接続し、閉じると切断"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "• 自動化：開啟某 App 時自動連線，關閉時中斷"
           }
         }
       }
@@ -49,6 +97,18 @@
             "state": "translated",
             "value": "Toggle the VPN with one tap."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ワンタップでVPNを切り替えます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一鍵啟停 VPN。"
+          }
         }
       }
     },
@@ -59,6 +119,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Switching…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切り替え中…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切換中…"
           }
         }
       }
@@ -71,6 +143,18 @@
             "state": "translated",
             "value": "Connected"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続済み"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已連線"
+          }
         }
       }
     },
@@ -81,6 +165,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "On connects to the last used node; off disconnects."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オン＝前回使用したノードに接続、オフ＝切断。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開 = 連線上次使用的節點，關 = 中斷。"
           }
         }
       }
@@ -93,6 +189,18 @@
             "state": "translated",
             "value": "On"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オン"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟"
+          }
         }
       }
     },
@@ -104,6 +212,18 @@
             "state": "translated",
             "value": "Disconnect"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切断"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中斷"
+          }
         }
       }
     },
@@ -113,6 +233,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "More to Try"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その他の使い方"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更多玩法"
           }
         }
       }
@@ -125,6 +257,18 @@
             "state": "translated",
             "value": "Not Connected"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未接続"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未連線"
+          }
         }
       }
     },
@@ -135,6 +279,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "See connection status and toggle the VPN with one tap."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続状態を確認し、ワンタップで切り替えます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看連線狀態，一鍵啟停。"
           }
         }
       }
@@ -147,6 +303,18 @@
             "state": "translated",
             "value": "Set Qingzhou VPN"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qingzhou VPNを設定"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定輕舟 VPN"
+          }
         }
       }
     },
@@ -158,6 +326,18 @@
             "state": "translated",
             "value": "Qingzhou VPN"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qingzhou VPN"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "輕舟 VPN"
+          }
         }
       }
     },
@@ -168,6 +348,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connect"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線"
           }
         }
       }

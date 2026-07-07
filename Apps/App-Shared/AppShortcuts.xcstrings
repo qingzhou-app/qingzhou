@@ -9,6 +9,18 @@
             "state" : "translated",
             "value" : "Toggle ${applicationName}"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}を切り替える"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換${applicationName}"
+          }
         }
       }
     },
@@ -19,6 +31,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Switch ${applicationName} on or off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}をオン/オフ"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開關${applicationName}"
           }
         }
       }
@@ -31,6 +55,18 @@
             "state" : "translated",
             "value" : "Turn on ${applicationName}"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}をオンにする"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟${applicationName}"
+          }
         }
       }
     },
@@ -41,6 +77,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Connect with ${applicationName}"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}で接続する"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用${applicationName}連線"
           }
         }
       }
@@ -53,6 +101,18 @@
             "state" : "translated",
             "value" : "Turn off ${applicationName}"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}をオフにする"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉${applicationName}"
+          }
         }
       }
     },
@@ -63,6 +123,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Disconnect ${applicationName}"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}を切断する"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "中斷${applicationName}"
           }
         }
       }

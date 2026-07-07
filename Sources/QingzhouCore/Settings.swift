@@ -168,9 +168,9 @@ public struct Settings: Codable, Sendable {
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         self.logLevel = try c.decodeIfPresent(String.self, forKey: .logLevel) ?? "INFO"
         self.theme = try c.decodeIfPresent(AppearanceTheme.self, forKey: .theme) ?? .system
-        // 语言选项 2026-07-03 起只放出 zhHans / en（system/zhHant/ja 暂下架：繁日无翻译，
-        // system 在放出前默认简中更可控）。旧值仍能解码（enum case 保留），AppState 启动时迁移。
-        self.language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .zhHans
+        // 语言选项：zhHans / zhHant / en / ja 均已放出（E.18 补齐繁中 + 日语翻译）。
+        // 缺 key（旧持久化数据）或未知值统一回落 zhHans；enum case 全保留，向后兼容。
+        self.language = (try? c.decode(AppLanguage.self, forKey: .language)) ?? .zhHans
         self.autoConnectOnAppLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoConnectOnAppLaunch) ?? false
         self.autoConnectApps = try c.decodeIfPresent(Set<String>.self, forKey: .autoConnectApps) ?? []
         self.iCloudSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .iCloudSyncEnabled) ?? true
