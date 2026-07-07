@@ -329,11 +329,13 @@ public struct SettingsView: View {
                 Text("浅色").tag(AppearanceTheme.light)
                 Text("深色").tag(AppearanceTheme.dark)
             }
-            // 只放出已支持的语种（繁中/日语没有翻译、跟随系统暂不放出 —— 都下架，
-            // 见 Settings.language 注释；enum case 保留兼容旧持久化数据）
+            // 已放出的语种（E.18 补齐繁中 / 日语翻译）。每种语言的 Text 用其母语自称，
+            // 不随当前界面语言变化（惯例：语言选择项永远显示各自的原生名）。
             Picker("语言", selection: state.setting(\.language)) {
                 Text("简体中文").tag(AppLanguage.zhHans)
+                Text("繁體中文").tag(AppLanguage.zhHant)
                 Text("English").tag(AppLanguage.en)
+                Text("日本語").tag(AppLanguage.ja)
             }
         }
     }
