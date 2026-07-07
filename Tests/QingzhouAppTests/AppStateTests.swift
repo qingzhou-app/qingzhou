@@ -1,4 +1,5 @@
 import XCTest
+import NetworkExtension
 import QingzhouCore
 import QingzhouRules
 import QingzhouLogging
@@ -427,6 +428,41 @@ final class AppStateTests: XCTestCase {
         let state = makeState()
         state.isVPNRunning = true
         await state.adoptRunningTunnelState()
+        XCTAssertTrue(state.isVPNRunning)
+    }
+
+    // MARK: - 系统 VPN 状态实时对齐（小组件/系统设置/快捷指令在 App 外改了隧道）
+
+    func testReconcileTurnsOnWhenSystemConnected() {
+        let state = makeState()
+        XCTAssertFalse(state.isVPNRunning)
+        // 小组件在后台开了 VPN → 系统状态 connected → App 侧应翻「开」
+        state.reconcileVPNStatus(with: .connected)
+        XCTAssertTrue(state.isVPNRunning)
+    }
+
+    func testReconcileTurnsOffWhenSystemDisconnected() {
+        let state = makeState()
+        state.isVPNRunning = true
+        // 小组件在后台关了 VPN → 系统状态 disconnected → App 侧应翻「关」
+        state.reconcileVPNStatus(with: .disconnected)
+        XCTAssertFalse(state.isVPNRunning)
+    }
+
+    func testReconcileIgnoresTransientDisconnecting() {
+        let state = makeState()
+        state.isVPNRunning = true
+        // .disconnecting 是瞬态，不翻，避免开关闪烁
+        state.reconcileVPNStatus(with: .disconnecting)
+        XCTAssertTrue(state.isVPNRunning)
+    }
+
+    func testReconcileSkippedDuringHotSwitch() {
+        let state = makeState()
+        state.isVPNRunning = true
+        state.isSwitchingTunnel = true
+        // 热切换 stop→start 的中间态不能被误读成「用户关了 VPN」
+        state.reconcileVPNStatus(with: .disconnected)
         XCTAssertTrue(state.isVPNRunning)
     }
 }

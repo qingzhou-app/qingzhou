@@ -1028,6 +1028,52 @@ public final class AppState {
         logger.info("Adopted running tunnel from system (status: \(tunnelManager.status.description))", category: "tunnel")
     }
 
+    /// 系统 VPN 状态变化的实时监听 token（NEVPNStatusDidChange）。
+    private var vpnStatusObserver: NSObjectProtocol?
+
+    /// 监听系统 VPN 状态：小组件 / 系统设置 / 快捷指令在 App 之外把隧道开关了，
+    /// `isVPNRunning` 也要跟着变 —— 否则用户从小组件开了 VPN 回到 App，开关还显示「关」。
+    /// adoptRunningTunnelState 只在启动跑一次，覆盖不到「运行期被外部改动」，故补这条实时通道。
+    func startObservingVPNStatus() async {
+        guard vpnStatusObserver == nil else { return }
+        // load 一次拿到 connection，之后系统会对它 post NEVPNStatusDidChange。
+        try? await tunnelManager.load()
+        reconcileVPNStatusFromSystem()
+        vpnStatusObserver = NotificationCenter.default.addObserver(
+            forName: .NEVPNStatusDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reconcileVPNStatusFromSystem() }
+        }
+    }
+
+    private func stopObservingVPNStatus() {
+        if let vpnStatusObserver {
+            NotificationCenter.default.removeObserver(vpnStatusObserver)
+            self.vpnStatusObserver = nil
+        }
+    }
+
+    func reconcileVPNStatusFromSystem() {
+        reconcileVPNStatus(with: tunnelManager.status)
+    }
+
+    /// 把 isVPNRunning 对齐到给定的系统 NEVPNStatus。热切换窗口内不动（那期间由
+    /// performReapply 自己维护状态，stop→start 的中间态不能被误读成「用户关了 VPN」）。
+    /// status 作参数注入 —— 决策表可单测（真实 NEVPNStatus 来自不可构造的系统 connection）。
+    func reconcileVPNStatus(with status: NEVPNStatus) {
+        guard !isSwitchingTunnel else { return }
+        if Self.isTunnelActive(status), !isVPNRunning {
+            isVPNRunning = true
+            if lastTunnelStartAt == nil { lastTunnelStartAt = .distantPast }
+            scheduleIPRefresh()
+            logger.info("VPN status synced from system: running (\(status.description))", category: "tunnel")
+        } else if isVPNRunning, status == .disconnected || status == .invalid {
+            // 只在终态翻「关」，.disconnecting 等瞬态不动，避免开关闪烁
+            isVPNRunning = false
+            logger.info("VPN status synced from system: stopped", category: "tunnel")
+        }
+    }
+
     /// NEVPNStatus 里算「隧道在跑」的状态（含建立中 / 网络切换重连中）。
     static func isTunnelActive(_ status: NEVPNStatus) -> Bool {
         switch status {
@@ -1957,6 +2003,8 @@ public final class AppState {
         // 它可能还在跑 —— isVPNRunning 初值 false 会让开关错误显示「关闭」，实际流量仍在代理。
         Task { @MainActor [weak self] in
             await self?.adoptRunningTunnelState()
+            // 启动采认之后挂上实时监听：运行期小组件/系统设置/快捷指令改 VPN 也能同步回来
+            await self?.startObservingVPNStatus()
         }
         // iCloud vault 启动检查（云端更新 → 提示恢复；无云端文档 → 镜像上去）
         Task { @MainActor [weak self] in
@@ -1981,6 +2029,7 @@ public final class AppState {
     }
 
     public func stopSchedulers() {
+        stopObservingVPNStatus()
         schedulerTask?.cancel()
         schedulerTask = nil
         updateCheckTask?.cancel()
