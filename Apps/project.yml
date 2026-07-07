@@ -30,7 +30,9 @@ settings:
     #           iCloud 差异摘要 + 端口时间窗最近邻。全量重测的基线版本。
     # build 6 = 打分 P2（三档预设 + 「为什么选它」详情页 + Top-3 域名探测目标 + 留存 100）
     #           + hysteria2 原生 converter 补齐 v26.6.27 schema（端口跳跃/salamander/brutal）。
-    CURRENT_PROJECT_VERSION: "6"
+    # build 7 = 小组件 VPN 状态同步修复 + S9 GetVPNStatusIntent + 机场兼容(fragment/SSR提示)
+    #           + 繁中/日语本地化 + Live Activity(灵动岛) + Focus 联动。
+    CURRENT_PROJECT_VERSION: "7"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 
