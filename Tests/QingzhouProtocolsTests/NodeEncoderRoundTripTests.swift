@@ -107,6 +107,43 @@ final class NodeEncoderRoundTripTests: XCTestCase {
         ))
     }
 
+    /// hy2 全参数（salamander obfs + 端口跳跃 + pinSHA256 + brutal 带宽）round-trip。
+    func testHysteria2FullParamsRoundTrip() throws {
+        try assertRoundTrip(Node(
+            name: "hy2 obfs+hop",
+            protocolType: .hysteria2,
+            host: "hy.example.com",
+            port: 40000,
+            password: "letmein",
+            parameters: [
+                "sni": "hy.example.com",
+                "obfs": "salamander",
+                "obfs-password": "ob-pass",
+                "mport": "40000-50000",
+                "hopInterval": "30",
+                "pinSHA256": "AB:CD:EF:01:23:45",
+                "up": "100",
+                "down": "500"
+            ]
+        ))
+    }
+
+    /// 端口跳跃写在 authority 的链接（host:40000-50000）：parse → encode → parse
+    /// 语义字段全等（11B 质量门）。encode 后端口串走 mport 查询参数，身份指纹不变。
+    func testHysteria2PortHoppingLinkReparse() throws {
+        let original = "hysteria2://pwd@hy.example.com:40000-50000"
+            + "?sni=hy.example.com&obfs=salamander&obfs-password=op#hop"
+        let node1 = try ProxyURLParser.parse(original)
+        let link2 = try XCTUnwrap(NodeEncoder.shareLink(node1))
+        let node2 = try ProxyURLParser.parse(link2)
+        XCTAssertEqual(node2.name, node1.name)
+        XCTAssertEqual(node2.host, node1.host)
+        XCTAssertEqual(node2.port, node1.port)
+        XCTAssertEqual(node2.password, node1.password)
+        XCTAssertEqual(node2.parameters, node1.parameters)
+        XCTAssertEqual(node2.identityFingerprint, node1.identityFingerprint)
+    }
+
     // MARK: - 边界
 
     /// 名称带空格 / 中文 / emoji —— fragment percent-encode 后要能原样回来。
