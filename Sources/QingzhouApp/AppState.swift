@@ -1370,8 +1370,10 @@ public final class AppState {
             if let i = self.nodes.firstIndex(where: { $0.id == nodeID }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
                 self.nodes[i].lastTestedAt = testedAt
-                // 成功失败都落测量历史 —— 稳定性维度的成功率就靠失败样本算
-                self.recordNodeDirectMeasurement(self.nodes[i], latencyMs: result.latencyMs, at: testedAt)
+                // 成功失败都落测量历史（含 burst 丢包率）—— 稳定性维度靠失败样本算
+                self.recordNodeDirectMeasurement(
+                    self.nodes[i], latencyMs: result.latencyMs,
+                    lossFraction: result.lossFraction, at: testedAt)
             }
         }
         nodes = measured
@@ -1454,8 +1456,8 @@ public final class AppState {
                 failedCount += 1
             }
         }
-        // 精选内核同样按总分选：延迟维用**当轮经代理实测值**（真实路径，不再 ×1.3 惩罚），
-        // 其余维度与直连轮同一口径。
+        // 精选内核同样按总分选：延迟维用**当轮经代理实测值**（不带时间戳 = 新鲜，
+        // 0.7 权重）与本轮直连（0.3）按分数混合，其余维度与直连轮同一口径。
         if var best = bestByScore(
             measured.map(\.node),
             latency: { node in measured.first { $0.node.id == node.id }?.ms ?? .max },
@@ -1543,13 +1545,15 @@ public final class AppState {
         return bestByScore(viable, latency: latency, score: scoreForAutoSelect)
     }
 
-    /// 直连轮的节点总分。经代理延迟**不喂**进打分 —— 各节点 lastProxiedLatencyMs 的
-    /// 新鲜度参差（有的是几天前测的），混着比对经代理测过的节点不公平；经代理维度在
-    /// 精选阶段（refineWithProxiedLatency）用当轮实测值单独算。
+    /// 直连轮的节点总分。经代理延迟**带时间戳**喂进打分：NodeScorer 的 24h 新鲜度门槛
+    /// 把陈旧值挡在延迟维之外 —— 「各节点 lastProxiedLatencyMs 新鲜度参差不公平」的
+    /// 老顾虑由门槛统一解决，新鲜的经代理值（0.7 权重）与直连（0.3）按分数混合。
     func scoreForAutoSelect(_ node: Node) -> NodeScorer.Score {
         NodeScorer.score(
             NodeScorer.Input(
                 directLatencyMs: node.lastLatencyMs,
+                proxiedLatencyMs: node.lastProxiedLatencyMs,
+                proxiedTestedAt: node.lastProxiedTestedAt,
                 history: nodeMetricsHistory.samples(for: node.identityFingerprint),
                 peakDownBps: node.observedPeakDownBps,
                 rate: node.rateForComparison
@@ -1633,9 +1637,11 @@ public final class AppState {
             if let i = self.nodes.firstIndex(where: { $0.id == nodeID }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
                 self.nodes[i].lastTestedAt = testedAt
-                // 定时/手动测速轮同样落测量历史 —— 稳定性维度的免费样本源，
-                // 不然只有择优轮攒数据，历史积累慢一半（自动测速与择优默认同为 30 分钟档）。
-                self.recordNodeDirectMeasurement(self.nodes[i], latencyMs: result.latencyMs, at: testedAt)
+                // 定时/手动测速轮同样落测量历史（含 burst 丢包率）—— 稳定性维度的免费
+                // 样本源，不然只有择优轮攒数据，历史积累慢一半（两者默认同为 30 分钟档）。
+                self.recordNodeDirectMeasurement(
+                    self.nodes[i], latencyMs: result.latencyMs,
+                    lossFraction: result.lossFraction, at: testedAt)
             }
         }
         persist()
@@ -2202,11 +2208,14 @@ public final class AppState {
         persistence.saveAsync(ruleHitStats, name: Self.ruleHitStatsFile)
     }
 
-    /// 记一条直连测量样本进节点历史（成功失败都记 —— 稳定性维度靠失败样本算成功率）。
-    /// 节流落盘同 domainHistory 模式。
-    func recordNodeDirectMeasurement(_ node: Node, latencyMs: Int?, at date: Date) {
+    /// 记一条直连测量样本进节点历史（成功失败都记 —— 稳定性维度靠失败样本算丢包率；
+    /// `lossFraction` 是本轮 burst 的失败占比）。节流落盘同 domainHistory 模式。
+    func recordNodeDirectMeasurement(
+        _ node: Node, latencyMs: Int?, lossFraction: Double? = nil, at date: Date
+    ) {
         nodeMetricsHistory.recordDirect(
-            fingerprint: node.identityFingerprint, latencyMs: latencyMs, at: date)
+            fingerprint: node.identityFingerprint, latencyMs: latencyMs,
+            lossFraction: lossFraction, at: date)
         nodeMetricsDirty = true
         flushNodeMetricsIfNeeded()
     }

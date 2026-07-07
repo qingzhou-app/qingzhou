@@ -8,6 +8,7 @@ final class NodeScorerTests: XCTestCase {
     private func input(
         direct: Int? = nil,
         proxied: Int? = nil,
+        proxiedAt: Date? = nil,
         history: [NodeMetricSample] = [],
         peakDownBps: Int64? = nil,
         rate: Double = 1.0
@@ -15,14 +16,16 @@ final class NodeScorerTests: XCTestCase {
         NodeScorer.Input(
             directLatencyMs: direct,
             proxiedLatencyMs: proxied,
+            proxiedTestedAt: proxiedAt,
             history: history,
             peakDownBps: peakDownBps,
             rate: rate
         )
     }
 
-    private func sample(latency: Int?, proxied: Int? = nil) -> NodeMetricSample {
-        NodeMetricSample(at: Date(timeIntervalSince1970: 0), latencyMs: latency, proxiedMs: proxied)
+    private func sample(latency: Int?, proxied: Int? = nil, loss: Double? = nil) -> NodeMetricSample {
+        NodeMetricSample(at: Date(timeIntervalSince1970: 0), latencyMs: latency,
+                         proxiedMs: proxied, lossFraction: loss)
     }
 
     // MARK: - 延迟维（锚点：≤50→100 · 100→85 · 200→60 · 400→30 · ≥800→0）
@@ -51,13 +54,53 @@ final class NodeScorerTests: XCTestCase {
         XCTAssertEqual(NodeScorer.score(input(direct: 50)).latency.score, 95.5)
     }
 
-    func testProxiedLatencyPreferredOverDirect() {
-        // 经代理延迟是真实路径，优先于直连；直连值再差也不参与
-        XCTAssertEqual(NodeScorer.score(input(direct: 1000, proxied: 50)).latency.score, 100)
-    }
-
     func testNoLatencyDataScoresZero() {
         XCTAssertEqual(NodeScorer.score(input()).latency.score, 0)
+    }
+
+    // MARK: - 延迟维混合（两者都有 → 0.7×经代理分 + 0.3×直连分，各自先锚点归一）
+
+    func testLatencyBlendsProxiedWithDirect() {
+        // proxied 100 → 85；direct 100×1.3=130 → 77.5；0.7×85 + 0.3×77.5 = 82.75
+        XCTAssertEqual(NodeScorer.score(input(direct: 100, proxied: 100)).latency.score,
+                       82.75, accuracy: 0.0001)
+        // 归一后再混合、不混原始 ms：direct 1000（→0 分）仍按 0.3 权重拉低总分
+        // （旧语义「经代理优先、直连不参与」下这里是 100）
+        XCTAssertEqual(NodeScorer.score(input(direct: 1000, proxied: 50)).latency.score,
+                       70, accuracy: 0.0001)
+    }
+
+    func testLatencyProxiedOnlyGetsFullWeight() {
+        // 没有直连值：经代理独占延迟维（不做 0.7 折减）
+        XCTAssertEqual(NodeScorer.score(input(proxied: 100)).latency.score, 85)
+    }
+
+    func testLatencyStaleProxiedFallsBackToDirectOnly() {
+        // 经代理值距今 >24h：不参与混合（陈旧的经代理数字比新鲜直连更误导）→ 只剩直连×1.3
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let stale = now.addingTimeInterval(-25 * 3600)
+        XCTAssertEqual(
+            NodeScorer.score(input(direct: 100, proxied: 100, proxiedAt: stale), now: now).latency.score,
+            77.5)
+        // ≤24h 仍新鲜：正常混合
+        let fresh = now.addingTimeInterval(-3600)
+        XCTAssertEqual(
+            NodeScorer.score(input(direct: 100, proxied: 100, proxiedAt: fresh), now: now).latency.score,
+            82.75, accuracy: 0.0001)
+    }
+
+    func testLatencyStaleProxiedAloneScoresZero() {
+        // 陈旧经代理值整体出局（不只是不混合）：没有直连兜底时延迟维为 0
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let stale = now.addingTimeInterval(-25 * 3600)
+        XCTAssertEqual(
+            NodeScorer.score(input(proxied: 100, proxiedAt: stale), now: now).latency.score, 0)
+    }
+
+    func testLatencyProxiedWithoutTimestampTreatedAsFresh() {
+        // 经代理精选轮传当轮实测值、不带时间戳 —— 视为新鲜，照常混合
+        XCTAssertEqual(NodeScorer.score(input(direct: 100, proxied: 100)).latency.score,
+                       82.75, accuracy: 0.0001)
     }
 
     // MARK: - 稳定性维（100 × 成功率 × (1 − 0.5×变异系数)；样本<3 → 70 中性）
@@ -99,6 +142,37 @@ final class NodeScorerTests: XCTestCase {
                        sample(latency: nil, proxied: 110),
                        sample(latency: nil, proxied: 120)]
         XCTAssertEqual(NodeScorer.score(input(history: history)).stability.score, 100)
+    }
+
+    // MARK: - 稳定性维吸收丢包率（成功率细化为 1 − 平均丢包率）
+
+    func testStabilityUsesLossFractionWhenPresent() {
+        // burst 3 次每轮丢 1 次（lossFraction=1/3）、延迟恒定：
+        // 100 × (1 − 1/3) × 1 ≈ 66.67 —— 旧口径只看「本轮成没成」会给满分
+        let history = [sample(latency: 100, loss: 1.0 / 3),
+                       sample(latency: 100, loss: 1.0 / 3),
+                       sample(latency: 100, loss: 1.0 / 3)]
+        XCTAssertEqual(NodeScorer.score(input(history: history)).stability.score,
+                       100.0 * 2 / 3, accuracy: 0.01)
+    }
+
+    func testStabilityLegacySamplesFallBackToBinaryLoss() {
+        // 无 lossFraction 的老样本按旧语义折算：成功 = 丢包 0、整轮失败 = 丢包 1；
+        // 有 lossFraction 的按值。avgLoss = (0 + 1 + 2/3)/3 = 5/9 → 100×4/9 ≈ 44.44
+        //（延迟 [100,100] 恒定 → cv=0，抖动项不折损）
+        let history = [sample(latency: 100),
+                       sample(latency: nil),
+                       sample(latency: 100, loss: 2.0 / 3)]
+        XCTAssertEqual(NodeScorer.score(input(history: history)).stability.score,
+                       100.0 * 4 / 9, accuracy: 0.01)
+    }
+
+    func testStabilityAllBurstFailedSampleCountsAsFullLoss() {
+        // burst 全失败的样本（latency=nil, lossFraction=1.0）与老失败样本等价
+        let history = [sample(latency: 100), sample(latency: 100),
+                       sample(latency: nil, loss: 1.0)]
+        XCTAssertEqual(NodeScorer.score(input(history: history)).stability.score,
+                       100.0 * 2 / 3, accuracy: 0.01)
     }
 
     // MARK: - 带宽维（≥8MB/s→100 · 2MB/s→60 · 0.5MB/s→30 · 无数据→60 中性）

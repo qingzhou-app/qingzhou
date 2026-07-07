@@ -180,6 +180,27 @@ final class NodeScoringSelectionTests: XCTestCase {
         XCTAssertEqual(state.nodeMetricsHistory.samples(for: good.identityFingerprint).map(\.latencyMs), [80])
         XCTAssertEqual(state.nodeMetricsHistory.samples(for: bad.identityFingerprint).count, 1)
         XCTAssertNil(state.nodeMetricsHistory.samples(for: bad.identityFingerprint).first?.latencyMs)
+        // burst 丢包率跟着落历史：3/3 全成 → 0；全败 → 1.0（稳定性维度的数据源）
+        XCTAssertEqual(
+            state.nodeMetricsHistory.samples(for: good.identityFingerprint).first?.lossFraction ?? -1,
+            0, accuracy: 0.0001)
+        XCTAssertEqual(
+            state.nodeMetricsHistory.samples(for: bad.identityFingerprint).first?.lossFraction ?? -1,
+            1.0, accuracy: 0.0001)
+    }
+
+    // MARK: - 经代理延迟并入总分（0.7/0.3 混合 + 24h 新鲜度门槛）
+
+    func testScoreForAutoSelectBlendsFreshProxiedAndGatesStale() {
+        let state = makeState()
+        var n = node("N", host: "a.com", latency: 100)
+        // 新鲜经代理值（1h 前）：延迟维 = 0.7×85(proxied 100) + 0.3×77.5(direct 130) = 82.75
+        n.lastProxiedLatencyMs = 100
+        n.lastProxiedTestedAt = Date().addingTimeInterval(-3600)
+        XCTAssertEqual(state.scoreForAutoSelect(n).latency.score, 82.75, accuracy: 0.01)
+        // 陈旧经代理值（25h 前）：不参与，退回直连×1.3 → 77.5
+        n.lastProxiedTestedAt = Date().addingTimeInterval(-25 * 3600)
+        XCTAssertEqual(state.scoreForAutoSelect(n).latency.score, 77.5, accuracy: 0.01)
     }
 
     // MARK: - 落盘与启动加载

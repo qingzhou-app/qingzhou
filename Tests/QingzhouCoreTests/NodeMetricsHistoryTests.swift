@@ -72,11 +72,46 @@ final class NodeMetricsHistoryTests: XCTestCase {
         XCTAssertEqual(samples.first?.proxiedMs, 120)
     }
 
+    // MARK: - 丢包率（burst 探测的失败占比）
+
+    func testRecordDirectStoresLossFraction() {
+        var history = NodeMetricsHistory()
+        // burst 3 次成 2 次：延迟取中位数由测速层算好，历史只负责留痕
+        history.recordDirect(fingerprint: fp, latencyMs: 80, lossFraction: 1.0 / 3, at: t0)
+        let samples = history.samples(for: fp)
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples.first?.latencyMs, 80)
+        XCTAssertEqual(samples.first?.lossFraction ?? -1, 1.0 / 3, accuracy: 0.0001)
+    }
+
+    func testRecordDirectWithoutLossFractionLeavesNil() {
+        var history = NodeMetricsHistory()
+        history.recordDirect(fingerprint: fp, latencyMs: 80, at: t0)
+        XCTAssertNil(history.samples(for: fp).first?.lossFraction)
+    }
+
     // MARK: - 序列化
+
+    /// 老版本落盘的 JSON 没有 lossFraction 字段 —— 升级后必须照常解码（字段为 nil），
+    /// 否则一升级用户攒的全部测量历史直接报废。
+    func testDecodingLegacyJSONWithoutLossFraction() throws {
+        let legacy = """
+        {"samples":{"\(fp)":[{"at":"2023-11-14T22:13:20Z","latencyMs":88},{"at":"2023-11-14T22:14:20Z"}]}}
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let history = try decoder.decode(NodeMetricsHistory.self, from: Data(legacy.utf8))
+        let samples = history.samples(for: fp)
+        XCTAssertEqual(samples.count, 2)
+        XCTAssertEqual(samples.first?.latencyMs, 88)
+        XCTAssertNil(samples.first?.lossFraction)
+        XCTAssertNil(samples.last?.latencyMs)
+        XCTAssertNil(samples.last?.lossFraction)
+    }
 
     func testCodableRoundTripWithISO8601Dates() throws {
         var history = NodeMetricsHistory()
-        history.recordDirect(fingerprint: fp, latencyMs: 88, at: t0)
+        history.recordDirect(fingerprint: fp, latencyMs: 88, lossFraction: 1.0 / 3, at: t0)
         history.recordDirect(fingerprint: fp, latencyMs: nil, at: t0.addingTimeInterval(30))
         history.recordProxied(fingerprint: fp, proxiedMs: 140, at: t0.addingTimeInterval(60))
         history.recordDirect(fingerprint: "ss://x@b.com:8388", latencyMs: 42, at: t0)

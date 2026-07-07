@@ -8,7 +8,7 @@ import Foundation
 ///
 /// | 维度 | 权重(均衡档) | 缺数据时 |
 /// |---|---|---|
-/// | 延迟 | 0.45 | 经代理优先，缺则直连×1.3 惩罚；全缺 → 0 |
+/// | 延迟 | 0.45 | 两者都有且经代理新鲜(≤24h) → 0.7×经代理分+0.3×直连分（各自先锚点归一再混合）；只有经代理 → 全权重；只有直连 → ×1.3 惩罚；全缺 → 0 |
 /// | 稳定性 | 0.30 | 样本 <3 → 70 中性 |
 /// | 带宽 | 0.15 | 无被动观测 → 60 中性（没轮到当当前节点的不惩罚） |
 /// | 成本 | 0.10 | 倍率识别不出按 1.0（调用方 `rateForComparison` 已兜底） |
@@ -36,6 +36,9 @@ public enum NodeScorer {
     public struct Input: Sendable {
         public var directLatencyMs: Int?
         public var proxiedLatencyMs: Int?
+        /// 经代理值的测量时间 —— 新鲜度门槛用（距 now 超过 `proxiedFreshnessWindow` 的
+        /// 经代理值不参与延迟维）。nil = 当轮实测（经代理精选路径），视为新鲜。
+        public var proxiedTestedAt: Date?
         public var history: [NodeMetricSample]
         public var peakDownBps: Int64?
         public var rate: Double
@@ -43,12 +46,14 @@ public enum NodeScorer {
         public init(
             directLatencyMs: Int? = nil,
             proxiedLatencyMs: Int? = nil,
+            proxiedTestedAt: Date? = nil,
             history: [NodeMetricSample] = [],
             peakDownBps: Int64? = nil,
             rate: Double = 1.0
         ) {
             self.directLatencyMs = directLatencyMs
             self.proxiedLatencyMs = proxiedLatencyMs
+            self.proxiedTestedAt = proxiedTestedAt
             self.history = history
             self.peakDownBps = peakDownBps
             self.rate = rate
@@ -72,8 +77,15 @@ public enum NodeScorer {
     }
 
     /// 直连延迟的惩罚系数：直连 TCP 握手只量到「设备→节点」，系统性低估全链路延迟，
-    /// 与经代理实测值同台比较时要抬一手。
+    /// 与经代理实测值同台比较时要抬一手。混合与直连独占两条路径口径统一（都 ×1.3）。
     public static let directLatencyPenalty = 1.3
+    /// 延迟维混合权重：两者都有且经代理新鲜时，经代理分占 0.7、直连分占 0.3。
+    /// 经代理是真实路径权重大头；直连保留三成 —— 它每轮都测、更新鲜，能拽住
+    /// 「上次经代理测完线路已变差」的偏差。
+    public static let proxiedBlendWeight = 0.7
+    /// 经代理值的新鲜度门槛：`proxiedTestedAt` 距今超过该时长的经代理值不参与延迟维
+    /// —— 陈旧的经代理数字比新鲜直连更误导（线路质量以小时尺度漂移）。
+    public static let proxiedFreshnessWindow: TimeInterval = 24 * 60 * 60
     /// 稳定性中性分（样本不足时不奖不罚）。
     public static let neutralStability: Double = 70
     /// 带宽中性分（无被动观测时不奖不罚）。
@@ -83,10 +95,12 @@ public enum NodeScorer {
 
     /// 给一个节点打分。`preferLowerRate == false` 时成本维权重置 0、按比例摊给其余维度
     /// —— 保留「延迟接近时优先低倍率」开关的既有语义：关掉 = 倍率完全不参与决策。
+    /// `now` 只用于经代理值的新鲜度判定（单测注入固定时刻）。
     public static func score(
         _ input: Input,
         preferLowerRate: Bool = true,
-        weights: Weights = .balanced
+        weights: Weights = .balanced,
+        now: Date = Date()
     ) -> Score {
         var w = weights
         if !preferLowerRate {
@@ -99,7 +113,7 @@ public enum NodeScorer {
             }
             w.cost = 0
         }
-        let latency = Component(score: latencyScore(input), weight: w.latency)
+        let latency = Component(score: latencyScore(input, now: now), weight: w.latency)
         let stability = Component(score: stabilityScore(history: input.history), weight: w.stability)
         let bandwidth = Component(score: bandwidthScore(input.peakDownBps), weight: w.bandwidth)
         let cost = Component(score: costScore(input.rate), weight: w.cost)
@@ -114,25 +128,48 @@ public enum NodeScorer {
 
     // MARK: - 各维归一（internal 方便聚焦测试，外部只走 score()）
 
-    static func latencyScore(_ input: Input) -> Double {
-        let ms: Double
-        if let proxied = input.proxiedLatencyMs {
-            ms = Double(proxied)                                   // 真实路径，原值使用
-        } else if let direct = input.directLatencyMs {
-            ms = Double(direct) * directLatencyPenalty
-        } else {
+    /// 延迟维：经代理 / 直连各自先过锚点归一，再按 0.7/0.3 混合 —— 不混原始 ms，
+    /// 两者量纲锚点不同（直连要 ×1.3 抬升后才可比）。经代理值有新鲜度门槛：
+    /// `proxiedTestedAt` 距 now 超过 24h 的整体出局（含「只有陈旧经代理」的情况 → 0），
+    /// nil 时间戳 = 当轮实测（经代理精选路径），视为新鲜。
+    static func latencyScore(_ input: Input, now: Date = Date()) -> Double {
+        let proxiedScore: Double? = input.proxiedLatencyMs.flatMap { proxied in
+            if let at = input.proxiedTestedAt, now.timeIntervalSince(at) > proxiedFreshnessWindow {
+                return nil                                         // 陈旧经代理值不参与
+            }
+            return piecewise(Double(proxied), anchors: latencyAnchors)
+        }
+        let directScore: Double? = input.directLatencyMs.map {
+            piecewise(Double($0) * directLatencyPenalty, anchors: latencyAnchors)
+        }
+        switch (proxiedScore, directScore) {
+        case let (proxied?, direct?):
+            return proxiedBlendWeight * proxied + (1 - proxiedBlendWeight) * direct
+        case let (proxied?, nil):
+            return proxied                                         // 只有经代理 → 全权重
+        case let (nil, direct?):
+            return direct                                          // 只有直连 → ×1.3 惩罚（现状保留）
+        case (nil, nil):
             return 0                                               // 全无数据 = 不可用
         }
-        return piecewise(ms, anchors: [(50, 100), (100, 85), (200, 60), (400, 30), (800, 0)])
     }
 
-    /// `100 × 成功率 × (1 − 0.5×延迟变异系数)`，抖动项下限 0（极端抖动不出负分）。
-    /// 成功 = 该轮直连或经代理任一测通（手动经代理测速的独立样本不能算成直连失败）；
-    /// 变异系数只用直连延迟算 —— 直连每轮都测、口径统一，混入经代理值会比错尺度。
+    static let latencyAnchors: [(x: Double, y: Double)] = [(50, 100), (100, 85), (200, 60), (400, 30), (800, 0)]
+
+    /// `100 × (1 − 平均丢包率) × (1 − 0.5×延迟变异系数)`，抖动项下限 0（极端抖动不出负分）。
+    /// 「成功率」细化为丢包率：burst 探测（每轮 3 次握手）的样本带 `lossFraction`，按值
+    /// 平均 —— 「3 次成 2 次」的半坏节点不再与全成的同分；无 lossFraction 的老样本按旧
+    /// 语义折算：成功（直连或经代理任一测通，手动经代理测速的独立样本不能算成直连失败）
+    /// = 丢包 0，整轮失败 = 丢包 1。
+    /// 变异系数只用直连延迟（burst 中位数）算 —— 直连每轮都测、口径统一，
+    /// 混入经代理值会比错尺度。
     static func stabilityScore(history: [NodeMetricSample]) -> Double {
         guard history.count >= minStabilitySamples else { return neutralStability }
-        let successCount = history.count(where: { $0.latencyMs != nil || $0.proxiedMs != nil })
-        let successRate = Double(successCount) / Double(history.count)
+        let totalLoss = history.reduce(0.0) { acc, sample in
+            if let loss = sample.lossFraction { return acc + min(max(loss, 0), 1) }
+            return acc + ((sample.latencyMs != nil || sample.proxiedMs != nil) ? 0 : 1)
+        }
+        let avgLoss = totalLoss / Double(history.count)
         let latencies = history.compactMap { $0.latencyMs }.map(Double.init)
         var cv = 0.0
         if latencies.count >= 2 {
@@ -143,7 +180,7 @@ public enum NodeScorer {
                 cv = variance.squareRoot() / mean
             }
         }
-        return 100 * successRate * max(0, 1 - 0.5 * cv)
+        return 100 * (1 - avgLoss) * max(0, 1 - 0.5 * cv)
     }
 
     static func bandwidthScore(_ peakDownBps: Int64?) -> Double {
