@@ -33,7 +33,9 @@ settings:
     # build 7 = 小组件 VPN 状态同步修复 + S9 GetVPNStatusIntent + 机场兼容(fragment/SSR提示)
     #           + 繁中/日语本地化 + Live Activity(灵动岛) + Focus 联动。
     # build 8 = 小组件深层真相（连接态读流量心跳，区分「真在转发」/「无响应 zombie」）。
-    CURRENT_PROJECT_VERSION: "8"
+    # build 9 = 健康触发故障切换 保守 MVP（扩展检测节点疑似死→告警→一键切，默认关 opt-in）。
+    #           回滚锚点 tag checkpoint/pre-failover-build8。
+    CURRENT_PROJECT_VERSION: "9"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 
