@@ -32,7 +32,8 @@ settings:
     #           + hysteria2 原生 converter 补齐 v26.6.27 schema（端口跳跃/salamander/brutal）。
     # build 7 = 小组件 VPN 状态同步修复 + S9 GetVPNStatusIntent + 机场兼容(fragment/SSR提示)
     #           + 繁中/日语本地化 + Live Activity(灵动岛) + Focus 联动。
-    CURRENT_PROJECT_VERSION: "7"
+    # build 8 = 小组件深层真相（连接态读流量心跳，区分「真在转发」/「无响应 zombie」）。
+    CURRENT_PROJECT_VERSION: "8"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 
