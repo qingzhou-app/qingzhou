@@ -40,7 +40,15 @@ struct QingzhouStatusProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping @Sendable (Timeline<QingzhouStatusEntry>) -> Void) {
         Task { @MainActor in
             let snapshot = await VPNWidgetSnapshot.read()
-            let refresh: TimeInterval = snapshot.phase == .transitioning ? 15 : 30 * 60
+            // 过渡态 15 秒后补刷（点开关常落在 connecting 窗口）；连接态缩到 15 分钟——
+            // 想让「持续卡死(zombie)」在下次刷新被抓到，又不过度消耗 WidgetKit 刷新预算
+            //（系统一天就给几十次，太密会被节流）。断开态维持 30 分钟。
+            let refresh: TimeInterval
+            switch snapshot.phase {
+            case .transitioning: refresh = 15
+            case .connected:     refresh = 15 * 60
+            case .disconnected:  refresh = 30 * 60
+            }
             completion(Timeline(
                 entries: [QingzhouStatusEntry(date: .now, snapshot: snapshot)],
                 policy: .after(Date().addingTimeInterval(refresh))
@@ -78,27 +86,32 @@ struct QingzhouStatusView: View {
 
     // String(localized:)：computed String 走 verbatim，不包一层进不了字符串目录。
     // widget 是独立 bundle，查自己的 Localizable.xcstrings（跟随系统语言）。
+    // isStalled 优先：会话显示连着、但扩展心跳过期 = zombie 隧道，必须和「正常已连接」
+    // 视觉上分开，否则用户以为在用、实际流量已断（App 被杀时这是唯一的告警面）。
     private var statusText: String {
+        if snapshot.isStalled { return String(localized: "无响应") }
         switch snapshot.phase {
-        case .connected:     String(localized: "已连接")
-        case .transitioning: String(localized: "切换中…")
-        case .disconnected:  String(localized: "未连接")
+        case .connected:     return String(localized: "已连接")
+        case .transitioning: return String(localized: "切换中…")
+        case .disconnected:  return String(localized: "未连接")
         }
     }
 
     private var statusIcon: String {
+        if snapshot.isStalled { return "exclamationmark.shield.fill" }
         switch snapshot.phase {
-        case .connected:     "checkmark.shield.fill"
-        case .transitioning: "shield.lefthalf.filled"
-        case .disconnected:  "shield.slash"
+        case .connected:     return "checkmark.shield.fill"
+        case .transitioning: return "shield.lefthalf.filled"
+        case .disconnected:  return "shield.slash"
         }
     }
 
     private var statusColor: Color {
+        if snapshot.isStalled { return .orange }
         switch snapshot.phase {
-        case .connected:     .green
-        case .transitioning: .orange
-        case .disconnected:  .secondary
+        case .connected:     return .green
+        case .transitioning: return .orange
+        case .disconnected:  return .secondary
         }
     }
 
