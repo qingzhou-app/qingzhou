@@ -119,6 +119,68 @@ final class XrayConfigComposerTests: XCTestCase {
         }, "精简版下 GEOIP,us 不得透传")
     }
 
+    // MARK: - 阻断 QUIC（reject UDP 443 → 强制浏览器回退 TCP 443）
+
+    /// 判断一条路由规则是否是 QUIC reject（network=udp, port=443, outboundTag=reject）。
+    private func isQUICReject(_ r: [String: Any]) -> Bool {
+        (r["network"] as? String) == "udp" &&
+        (r["port"] as? Int) == 443 &&
+        (r["outboundTag"] as? String) == "reject"
+    }
+
+    /// rule 模式 blockQUIC=true：QUIC reject 必须紧跟在 DNS(udp 53→dns-out)之后（index 1），
+    /// 即在用户规则 / 内置 geosite/geoip 之前 —— first-match 下才能抢在「→proxy」前拒掉 UDP 443。
+    func testBlockQUICRuleModeInsertsRejectRightAfterDNS() throws {
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule, blockQUIC: true))
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertEqual(rules[0]["outboundTag"] as? String, "dns-out", "DNS 拦截仍须在最前")
+        XCTAssertTrue(isQUICReject(rules[1]),
+                      "QUIC reject 应紧跟 DNS 规则（index 1），实得 \(rules[1])")
+    }
+
+    /// global 模式 blockQUIC=true：同样紧跟 DNS 之后（index 1），抢在 catch-all「→proxy」之前。
+    func testBlockQUICGlobalModeInsertsRejectRightAfterDNS() throws {
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .global, blockQUIC: true))
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertEqual(rules[0]["outboundTag"] as? String, "dns-out", "DNS 拦截仍须在最前")
+        XCTAssertTrue(isQUICReject(rules[1]),
+                      "QUIC reject 应紧跟 DNS 规则（index 1），实得 \(rules[1])")
+    }
+
+    /// blockQUIC=false：rule / global 模式都不得出现 UDP 443 reject 规则（放行 QUIC）。
+    func testBlockQUICFalseOmitsRejectRule() throws {
+        for mode in [ProxyMode.global, .rule] {
+            let json = try parse(try XrayConfigComposer.compose(
+                outboundsJSON: fakeTrojanOutbounds, mode: mode, blockQUIC: false))
+            let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+            XCTAssertFalse(rules.contains(where: isQUICReject),
+                           "\(mode) blockQUIC=false 不应含 UDP 443 reject")
+        }
+    }
+
+    /// direct 模式：无论 blockQUIC 真假都**永不**加 UDP 443 reject —— 直连无代理，QUIC 本就正常，
+    /// 加了反而改变直连行为。
+    func testBlockQUICNeverInDirectMode() throws {
+        for block in [true, false] {
+            let json = try parse(try XrayConfigComposer.compose(
+                outboundsJSON: fakeTrojanOutbounds, mode: .direct, blockQUIC: block))
+            let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+            XCTAssertFalse(rules.contains(where: isQUICReject),
+                           "direct 模式永不阻断 QUIC（blockQUIC=\(block)）")
+        }
+    }
+
+    /// 默认参数 blockQUIC=true：现有 compose 调用（不传该参数）也应默认阻断 QUIC。
+    func testBlockQUICDefaultsToTrueWhenOmitted() throws {
+        let json = try parse(try XrayConfigComposer.compose(
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule))
+        let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+        XCTAssertTrue(rules.contains(where: isQUICReject),
+                      "compose 省略 blockQUIC 时应默认阻断 QUIC")
+    }
+
     func testRoutingRulesDirectModeSendsAllToDirect() throws {
         let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .direct))
         let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
@@ -201,8 +263,10 @@ final class XrayConfigComposerTests: XCTestCase {
             Rule(type: .domainSuffix, value: "example.com", target: .reject),
             Rule(type: .ipCIDR, value: "1.2.3.0/24", target: .direct)
         ]
+        // blockQUIC=false 隔离用户规则位置这一关注点（默认开时 QUIC reject 占 index 1，
+        // 会把用户规则整体后移一格 —— 那条另有 testBlockQUIC* 专门覆盖）。
         let json = try parse(try XrayConfigComposer.compose(
-            outboundsJSON: fakeTrojanOutbounds, mode: .rule, userRules: userRules))
+            outboundsJSON: fakeTrojanOutbounds, mode: .rule, userRules: userRules, blockQUIC: false))
         let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
 
         // 第一条仍是 DNS 拦截（fakedns 的命脉）

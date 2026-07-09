@@ -213,4 +213,30 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertTrue(reloaded.autoConnectOnAppLaunch)
         XCTAssertTrue(reloaded.autoConnectApps.isEmpty)
     }
+
+    // MARK: - blockQUIC（阻断 QUIC / UDP 443 强制回退 TCP，改善 YouTube 等站点兼容性）
+
+    /// 旧 JSON / 缺字段 → 默认 true（开启）。QUIC 经代理节点普遍不通（真机 YouTube 案），
+    /// 默认阻断强制浏览器回退 TCP 443 才能正常访问，所以缺省必须 true 而不是 false。
+    func testDecodeWithoutBlockQUICDefaultsToTrue() throws {
+        XCTAssertTrue(try decode("{}").blockQUIC)
+        let old = try decode("""
+        { "proxyMode": "global", "autoSelectTrigger": "off", "logLevel": "WARN" }
+        """)
+        XCTAssertTrue(old.blockQUIC)
+    }
+
+    func testBlockQUICDefaultIsTrue() {
+        XCTAssertTrue(Settings().blockQUIC)
+    }
+
+    func testBlockQUICRoundtrips() throws {
+        for value in [true, false] {
+            var s = Settings()
+            s.blockQUIC = value
+            let data = try JSONEncoder().encode(s)
+            let reloaded = try JSONDecoder().decode(Settings.self, from: data)
+            XCTAssertEqual(reloaded.blockQUIC, value)
+        }
+    }
 }

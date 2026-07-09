@@ -60,7 +60,8 @@ public enum XrayConfigComposer {
         userRules: [Rule] = [],
         hasFullGeoIP: Bool = false,
         metricsPort: Int? = nil,
-        tunInterfaceName: String = "utun"
+        tunInterfaceName: String = "utun",
+        blockQUIC: Bool = true
     ) throws -> String {
         guard let data = outboundsJSON.data(using: .utf8),
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -120,7 +121,7 @@ public enum XrayConfigComposer {
             ]
         ]]
 
-        var routing = buildRouting(mode: mode, userRules: userRules, hasFullGeoIP: hasFullGeoIP)
+        var routing = buildRouting(mode: mode, userRules: userRules, hasFullGeoIP: hasFullGeoIP, blockQUIC: blockQUIC)
 
         // xray 内置流量统计：metrics 的 expvar 服务经典接法（xray 文档同款）——
         // 一个 loopback 上的 dokodemo-door inbound + 一条 inboundTag→"metrics" 的路由规则
@@ -218,23 +219,35 @@ public enum XrayConfigComposer {
 
     // MARK: - Routing
 
-    static func buildRouting(mode: ProxyMode, userRules: [Rule] = [], hasFullGeoIP: Bool = false) -> [String: Any] {
+    static func buildRouting(mode: ProxyMode, userRules: [Rule] = [], hasFullGeoIP: Bool = false, blockQUIC: Bool = true) -> [String: Any] {
+        // 阻断 QUIC：对 UDP 443 一律 reject（blackhole）→ 浏览器自动回退 TCP 443 → 走代理正常。
+        // QUIC 经代理节点普遍不通（真机确认 YouTube 等在 rule/global 模式打不开，关掉浏览器 QUIC
+        // 即恢复）。必须**紧跟 DNS(udp 53→dns-out)规则之后**插入：first-match 下抢在 catch-all
+        // 「tcp,udp→proxy」/ 用户规则之前拒掉，又不影响 DNS。direct 模式不加（无代理，QUIC 直连
+        // 本就正常，避免改变直连行为）。详见 docs/QUIC.md。
+        let quicRejectRule: [String: Any] = [
+            "type": "field", "network": "udp", "port": 443, "outboundTag": "reject"
+        ]
         switch mode {
         case .global:
             // 全局模式特意不引用 geoip / geosite，这样即使 geo .dat 文件加载失败
             // xray 也能启动。RFC1918 + 链路本地 + loopback 用显式 CIDR 处理。
+            var rules: [[String: Any]] = [
+                // DNS 查询（udp 53）→ dns-out，交给 fakedns 处理。必须在最前，否则被下面
+                // "tcp,udp→proxy" 抢走当普通流量转发，fakedns 永远不触发。
+                ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"]
+            ]
+            if blockQUIC { rules.append(quicRejectRule) }
+            rules += [
+                ["type": "field",
+                 "ip": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12",
+                        "192.168.0.0/16", "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10"],
+                 "outboundTag": "direct"],
+                ["type": "field", "network": "tcp,udp", "outboundTag": "proxy"]
+            ]
             return [
                 "domainStrategy": "AsIs",
-                "rules": [
-                    // DNS 查询（udp 53）→ dns-out，交给 fakedns 处理。必须在最前，否则被下面
-                    // "tcp,udp→proxy" 抢走当普通流量转发，fakedns 永远不触发。
-                    ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"],
-                    ["type": "field",
-                     "ip": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12",
-                            "192.168.0.0/16", "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10"],
-                     "outboundTag": "direct"],
-                    ["type": "field", "network": "tcp,udp", "outboundTag": "proxy"]
-                ]
+                "rules": rules
             ]
         case .rule:
             var rules: [[String: Any]] = [
@@ -242,6 +255,8 @@ public enum XrayConfigComposer {
                 // 否则 DOMAIN 类规则命中 DNS 包本身，fakedns 永远不触发、按域名路由全失效。
                 ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"]
             ]
+            // QUIC 阻断紧跟 DNS 之后、用户规则之前 —— 强制 UDP 443 回退 TCP，先于任何走代理规则。
+            if blockQUIC { rules.append(quicRejectRule) }
             // 用户规则（自定义 + 远程，自定义在前）优先于内置规则：xray 按序 first-match。
             rules += RoutingRuleConverter.xrayRules(from: userRules, hasFullGeoIP: hasFullGeoIP)
             rules += [

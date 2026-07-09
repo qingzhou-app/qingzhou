@@ -1137,6 +1137,7 @@ public final class AppState {
                 shareLink: shareLink,
                 rules: effectiveUserRules,
                 autoStopSeconds: settings.autoStopSeconds,
+                blockQUIC: settings.blockQUIC,
                 description: L("轻舟 · \(node.name)")
             )
             try await tunnelManager.start()
@@ -1337,6 +1338,7 @@ public final class AppState {
                     rules: effectiveUserRules,
                     // 原地切换 = 同一会话延续：定时倒计时不重置（扩展侧计时器没动）
                     autoStopSeconds: settings.autoStopSeconds,
+                    blockQUIC: settings.blockQUIC,
                     description: L("轻舟 · \(node.name)")
                 )
                 try await tunnelManager.switchNodeInPlace(node: node, shareLink: shareLink)
@@ -1375,6 +1377,7 @@ public final class AppState {
                 // 热切换 = 全量重启 = 新会话：定时按设置的时长**重新计时**（切节点/模式后
                 // 从头再数）。不带旧剩余时间过去 —— 语义简单、扩展侧无需额外状态。
                 autoStopSeconds: settings.autoStopSeconds,
+                blockQUIC: settings.blockQUIC,
                 description: L("轻舟 · \(node.name)")
             )
             // 切换窗口先关 On-Demand 再 stop：connect 规则匹配所有流量，stop 后系统

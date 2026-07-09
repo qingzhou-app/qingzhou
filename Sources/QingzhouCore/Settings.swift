@@ -87,6 +87,11 @@ public struct Settings: Codable, Sendable {
     /// 请求通知权限，扩展检测到「当前节点疑似故障」时发通知 + 连接页显示红色横幅一键切。
     /// 首版只检测 + 告警，不自动切数据面。受 FeatureFlags.autoFailoverAlert 编译期总开关约束。
     public var autoFailoverAlert: Bool
+    /// 阻断 QUIC（reject UDP 443）。**默认开**：QUIC 经代理节点普遍走不通（真机确认
+    /// YouTube 等 QUIC 重度站点在规则/全局模式下打不开，浏览器关掉 QUIC 即恢复）。
+    /// 开启后在 rule/global 路由里对 UDP 443 一律 reject → 浏览器自动回退 TCP 443 → 走代理正常。
+    /// 代价：失去 QUIC 传输优化（经代理本就无意义）。见 docs/QUIC.md。
+    public var blockQUIC: Bool
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -112,7 +117,8 @@ public struct Settings: Codable, Sendable {
         autoStopSeconds: TimeInterval = 0,
         ignoredUpdateVersion: String = "",
         showLiveActivity: Bool = true,
-        autoFailoverAlert: Bool = false
+        autoFailoverAlert: Bool = false,
+        blockQUIC: Bool = true
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -138,6 +144,7 @@ public struct Settings: Codable, Sendable {
         self.ignoredUpdateVersion = ignoredUpdateVersion
         self.showLiveActivity = showLiveActivity
         self.autoFailoverAlert = autoFailoverAlert
+        self.blockQUIC = blockQUIC
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -158,6 +165,7 @@ public struct Settings: Codable, Sendable {
         case ignoredUpdateVersion
         case showLiveActivity
         case autoFailoverAlert
+        case blockQUIC
     }
 
     public init(from decoder: Decoder) throws {
@@ -192,5 +200,7 @@ public struct Settings: Codable, Sendable {
         self.showLiveActivity = try c.decodeIfPresent(Bool.self, forKey: .showLiveActivity) ?? true
         // 旧持久化数据没有此 key → 默认关（opt-in）
         self.autoFailoverAlert = try c.decodeIfPresent(Bool.self, forKey: .autoFailoverAlert) ?? false
+        // 旧持久化数据 / 缺字段没有此 key → 默认开（QUIC 经代理不通，默认阻断强制回退 TCP）
+        self.blockQUIC = try c.decodeIfPresent(Bool.self, forKey: .blockQUIC) ?? true
     }
 }

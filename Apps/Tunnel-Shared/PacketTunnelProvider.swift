@@ -81,6 +81,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private var metricsPort: Int?
     /// 统计轮询节流：每 2 个 stats tick（≈2 秒）查一次 QueryStats，别每秒都 GET。
     private var statsTickCount = 0
+    /// 阻断 QUIC（reject UDP 443）。startTunnel 从 providerConfig 读一次存下来，
+    /// reconfigure / performTest 从存的配置重组时也复用同一值 —— 否则切节点/预检后 QUIC 又放开了。
+    /// 默认 true（缺字段/旧配置也阻断，QUIC 经代理普遍不通，见 XrayConfigComposer / docs/QUIC.md）。
+    private var blockQUIC = true
 
     // MARK: - 健康触发的故障切换（保守 MVP：检测 + 告警，首版**不自动切数据面**）
 
@@ -146,6 +150,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let mode = ProxyMode(rawValue: modeRaw) ?? .global
         // 定时自动关闭（秒，0/缺省 = 不启用）。plist 里的数字取回来是 NSNumber。
         let autoStopSeconds = (providerConfig?["autoStopSeconds"] as? NSNumber)?.doubleValue ?? 0
+        // 阻断 QUIC（reject UDP 443）：缺字段/旧配置默认 true。存实例属性供 reconfigure/performTest 复用。
+        self.blockQUIC = providerConfig?["blockQUIC"] as? Bool ?? true
         // 用户规则（自定义 + 远程）：内联压缩 Data，超大规则集降级为 App Group 文件路径
         let userRules = loadUserRules(
             inlineData: providerConfig?["userRulesGZ"] as? Data,
@@ -176,7 +182,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 accessLogPath: TunnelAppGroup.accessLogPath(),
                 userRules: userRules,
                 hasFullGeoIP: geo.isFull,
-                metricsPort: self.metricsPort
+                metricsPort: self.metricsPort,
+                blockQUIC: self.blockQUIC
             )
         } catch {
             os_log("share link → xray config 转换失败: %{public}@",
@@ -801,7 +808,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 accessLogPath: TunnelAppGroup.accessLogPath(),
                 userRules: userRules,
                 hasFullGeoIP: geo.isFull,
-                metricsPort: self.metricsPort
+                metricsPort: self.metricsPort,
+                // 从存的 blockQUIC 重组：别只在 startTunnel 阻断，切换后 QUIC 又放开就白搞了。
+                blockQUIC: self.blockQUIC
             )
         } catch {
             os_log("reconfigure: build config failed, keep old xray: %{public}@",
@@ -940,7 +949,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 hasFullGeoIP: geo.isFull,
                 // 预检没有 TUN fd，TestXray 会严格校验接口名 —— 必须传合法的 utunN，
                 // 否则 xray 报「interface name must be utunN」把好配置误判成无效、中止热切换。
-                tunInterfaceName: "utun9"
+                tunInterfaceName: "utun9",
+                // 预检要与真实连接**完全相同**的产物：blockQUIC 也带上，否则预检配置和实跑不一致。
+                blockQUIC: self.blockQUIC
             )
             try XrayCore.testConfig(configJSON: xrayJSON, datDir: geo.dir)
             return nil

@@ -115,6 +115,7 @@ public final class VPNTunnelManager {
         shareLink: String,
         rules: [Rule] = [],
         autoStopSeconds: TimeInterval = 0,
+        blockQUIC: Bool = true,
         description: String = "VPN"
     ) async throws {
         if manager == nil { try await load() }
@@ -150,7 +151,11 @@ public final class VPNTunnelManager {
             "proxyMode": mode.rawValue,
             // 定时自动关闭（秒，0=不启用）。**始终写**（而不是 >0 才写）——
             // 覆盖掉上一次连接残留的旧值，否则关掉定时后旧配置还会到点断 VPN。
-            "autoStopSeconds": autoStopSeconds
+            "autoStopSeconds": autoStopSeconds,
+            // 阻断 QUIC（reject UDP 443）。plist 用 NSNumber(Bool) 落 VPN preferences；
+            // 扩展 startTunnel 读 providerConfig["blockQUIC"] as? Bool ?? true。**始终写**，
+            // 覆盖旧值，否则关掉后旧配置还会继续阻断。
+            "blockQUIC": NSNumber(value: blockQUIC)
         ]
         // 用户规则：压缩内联（Data 是合法 plist 类型）；超大时写 App Group 文件传路径。
         switch makeRulesPayload(rules) {
