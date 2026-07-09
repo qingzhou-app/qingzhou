@@ -35,7 +35,8 @@ settings:
     # build 8 = 小组件深层真相（连接态读流量心跳，区分「真在转发」/「无响应 zombie」）。
     # build 9 = 健康触发故障切换 保守 MVP（扩展检测节点疑似死→告警→一键切，默认关 opt-in）。
     #           回滚锚点 tag checkpoint/pre-failover-build8。
-    CURRENT_PROJECT_VERSION: "9"
+    # build 10 = 阻断 QUIC（reject UDP 443 默认开）修 YouTube/天气等 QUIC 站点通过代理不通。
+    CURRENT_PROJECT_VERSION: "10"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 
