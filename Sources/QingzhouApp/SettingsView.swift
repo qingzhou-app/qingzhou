@@ -146,6 +146,9 @@ public struct SettingsView: View {
             }
             Text("全程走虚拟网卡（TUN），整机流量自动经隧道转发，无需配置系统代理。")
                 .font(.caption2).foregroundStyle(.secondary)
+            Toggle("阻断 QUIC", isOn: state.setting(\.blockQUIC))
+            Text("改善 YouTube 等站点兼容性（默认开启）")
+                .font(.caption2).foregroundStyle(.secondary)
             Picker("日志级别", selection: state.setting(\.logLevel)) {
                 Text("DEBUG").tag("DEBUG")
                 Text("INFO").tag("INFO")

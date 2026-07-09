@@ -91,4 +91,5 @@ dyld 在 main() 前加载完，主 App 启动黑屏 1–3 秒。因此 share lin
 
 架构细节 `docs/ARCHITECTURE.md`（含逐模块设计取舍表）、编译 / 签名 / 真机调试 `docs/BUILD.md`、
 真机日志抓取 `docs/IOS-LOGS.md`、路线图 `docs/ROADMAP.md`、IPv6 设计边界（全链路 IPv4 的
-取舍 / 调研 / 备用双栈方案，改 DNS/fakedns 前必读）`docs/IPV6.md`。
+取舍 / 调研 / 备用双栈方案，改 DNS/fakedns 前必读）`docs/IPV6.md`、阻断 QUIC（reject UDP 443
+默认开的症状 / 根因 / 安全边界，改路由或排查 YouTube 打不开前必读）`docs/QUIC.md`。

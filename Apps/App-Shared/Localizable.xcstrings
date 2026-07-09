@@ -1,6 +1,22 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "阻断 QUIC": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Block QUIC" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "QUIC をブロック" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "阻斷 QUIC" } }
+      }
+    },
+    "改善 YouTube 等站点兼容性（默认开启）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Improves compatibility with sites like YouTube (on by default)" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "YouTube などのサイトとの互換性を改善します（デフォルトでオン）" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "改善 YouTube 等網站相容性（預設開啟）" } }
+      }
+    },
     "当前节点疑似故障": {
       "extractionState": "manual",
       "localizations": {
