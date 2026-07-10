@@ -273,6 +273,135 @@ final class SelectionReplayTests: XCTestCase {
         print("===== SAMPLE REPLAY REPORT =====\n\(md)\n===== END SAMPLE =====")
     }
 
+    // MARK: - 簇内合并经代理样本（真实数据：测速轮+择优轮双 pass，经代理并在第二条上）
+
+    /// 真实文件里一轮 = 两次全量直连 pass（~19s 间隔），经代理精选结果由 recordProxied
+    /// 并入**第二条**样本。rounds(from:) 若只取簇内最早一条会把 proxiedMs 全丢 ——
+    /// 直连/丢包保持「最早一条」语义，proxiedMs 取簇内首个非 nil。
+    func testRoundsFromHistoryMergesProxiedMsFromLaterSamplesInSameCluster() {
+        var history = NodeMetricsHistory()
+        history.recordDirect(fingerprint: "a", latencyMs: 40, lossFraction: 0, at: t0)
+        history.recordDirect(fingerprint: "a", latencyMs: 55, lossFraction: 1.0 / 3.0,
+                             at: t0.addingTimeInterval(19))
+        history.recordProxied(fingerprint: "a", proxiedMs: 120, at: t0.addingTimeInterval(60))
+
+        let rounds = SelectionReplay.rounds(from: history)
+        XCTAssertEqual(rounds.count, 1)
+        // 直连 40 / 丢包 0 来自第一条；proxiedMs 120 从第二条捞回来，不能丢
+        XCTAssertEqual(rounds[0].observations["a"], obs(40, proxied: 120, loss: 0))
+    }
+
+    // MARK: - 经代理值跨轮携带（镜像线上 lastProxiedLatencyMs + 24h 新鲜度门槛）
+
+    /// 线上打分用的是 node.lastProxiedLatencyMs（带时间戳，NodeScorer 24h 门槛把关）——
+    /// 回放同义：某轮实测过经代理后，后续轮次打分继续带着这个值和它的测量时间。
+    func testReplayCarriesProxiedForwardIntoLaterRoundsScoring() {
+        let nodes = [SelectionReplay.NodeSpec(id: "x", name: "X")]
+        let rounds = makeRounds([
+            ["x": obs(100, proxied: 80, loss: 0)],
+            ["x": obs(100, loss: 0)],                    // 本轮没测经代理
+        ])
+        let report = SelectionReplay.replay(nodes: nodes, rounds: rounds)
+        // r1 打分应带着 r0 的经代理值（80ms，测于 r0 时刻，30min 前 → 新鲜）
+        let expected = NodeScorer.score(
+            NodeScorer.Input(
+                directLatencyMs: 100,
+                proxiedLatencyMs: 80,
+                proxiedTestedAt: rounds[0].at,
+                history: [
+                    NodeMetricSample(at: rounds[0].at, latencyMs: 100, proxiedMs: 80, lossFraction: 0),
+                    NodeMetricSample(at: rounds[1].at, latencyMs: 100, lossFraction: 0),
+                ]
+            ),
+            now: rounds[1].at
+        ).total
+        XCTAssertEqual(report.rounds[1].scoringChoiceScore ?? -1, expected, accuracy: 0.0001)
+        // 且确实比「只有直连」的打法分高（经代理 80ms 优于直连 100×1.3）
+        let directOnly = NodeScorer.score(
+            NodeScorer.Input(
+                directLatencyMs: 100,
+                history: [
+                    NodeMetricSample(at: rounds[0].at, latencyMs: 100, proxiedMs: 80, lossFraction: 0),
+                    NodeMetricSample(at: rounds[1].at, latencyMs: 100, lossFraction: 0),
+                ]
+            ),
+            now: rounds[1].at
+        ).total
+        XCTAssertGreaterThan(report.rounds[1].scoringChoiceScore ?? -1, directOnly)
+    }
+
+    /// 超过 24h 的携带值由 NodeScorer 新鲜度门槛自动挡掉（回放只负责如实传时间戳）。
+    func testCarriedProxiedOlderThan24hIsGatedByFreshnessWindow() {
+        let nodes = [SelectionReplay.NodeSpec(id: "x", name: "X")]
+        let rounds = [
+            SelectionReplay.Round(at: t0, observations: ["x": obs(100, proxied: 80, loss: 0)]),
+            SelectionReplay.Round(at: t0.addingTimeInterval(25 * 3600),
+                                  observations: ["x": obs(100, loss: 0)]),
+        ]
+        let report = SelectionReplay.replay(nodes: nodes, rounds: rounds)
+        let directOnly = NodeScorer.score(
+            NodeScorer.Input(
+                directLatencyMs: 100,
+                history: [
+                    NodeMetricSample(at: rounds[0].at, latencyMs: 100, proxiedMs: 80, lossFraction: 0),
+                    NodeMetricSample(at: rounds[1].at, latencyMs: 100, lossFraction: 0),
+                ]
+            ),
+            now: rounds[1].at
+        ).total
+        XCTAssertEqual(report.rounds[1].scoringChoiceScore ?? -1, directOnly, accuracy: 0.0001)
+    }
+
+    // MARK: - 分歧归因载荷
+
+    /// 两策略选择不同的轮，RoundDetail 带上双方在打分视角下的完整分量；
+    /// 场景①里分歧轮的主导维度应是稳定性（丢包维救了打分策略）。
+    func testDivergencePayloadCapturesBothChoicesComponents() throws {
+        let nodes = [
+            SelectionReplay.NodeSpec(id: "flaky", name: "SG-Flaky"),
+            SelectionReplay.NodeSpec(id: "steady", name: "JP-Steady"),
+        ]
+        let rounds = makeRounds(Array(repeating: [
+            "flaky": obs(40, loss: 2.0 / 3.0),
+            "steady": obs(60, loss: 0),
+        ], count: 10))
+        let report = SelectionReplay.replay(nodes: nodes, rounds: rounds)
+
+        // 同选轮（r0：双方都在 flaky）无分歧载荷
+        XCTAssertNil(report.rounds[0].divergence)
+        // r3 起 ping=flaky / scoring=steady → 有载荷
+        let d = try XCTUnwrap(report.rounds[4].divergence)
+        // 打分选择（steady）稳定性维加权分应显著高于 ping 选择（flaky）
+        XCTAssertGreaterThan(d.weightedGap(.stability), 8)
+        // 延迟维是 ping 选择占优（flaky 40ms < steady 60ms）→ 负分差
+        XCTAssertLessThan(d.weightedGap(.latency), 0)
+        XCTAssertEqual(d.dominantDimension, .stability)
+        // 载荷与该轮打分列一致（同一 scoreOf 口径）
+        XCTAssertEqual(d.scoringChoiceScore.total, report.rounds[4].scoringChoiceScore ?? -1,
+                       accuracy: 0.0001)
+    }
+
+    // MARK: - Markdown 黏性备注打名字不打 id（id 可能是含凭据的指纹）
+
+    func testRenderMarkdownShowsHeldChallengerNameNotId() {
+        let nodes = [
+            SelectionReplay.NodeSpec(id: "flaky-CREDENTIAL", name: "SG-Flaky"),
+            SelectionReplay.NodeSpec(id: "steady-CREDENTIAL", name: "JP-Steady"),
+        ]
+        let rounds = makeRounds(Array(repeating: [
+            "flaky-CREDENTIAL": obs(40, loss: 2.0 / 3.0),
+            "steady-CREDENTIAL": obs(60, loss: 0),
+        ], count: 5))
+        let report = SelectionReplay.replay(nodes: nodes, rounds: rounds)
+        XCTAssertTrue(report.rounds.contains { $0.scoringHeldChallenger != nil })
+        XCTAssertEqual(
+            report.rounds.first { $0.scoringHeldChallenger != nil }?.scoringHeldChallengerName,
+            "JP-Steady")
+        let md = report.renderMarkdown()
+        XCTAssertTrue(md.contains("黏性拦下挑战者 JP-Steady"), md)
+        XCTAssertFalse(md.contains("CREDENTIAL"), "markdown 不得出现节点 id（可能内嵌凭据）")
+    }
+
     /// 结论负向时措辞不误导（提速为负 → 写「有效延迟 +X%」而不是「提速 -X%」）。
     func testMarkdownPhrasesNegativeOutcomesHonestly() {
         let nodes = [
