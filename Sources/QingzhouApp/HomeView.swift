@@ -19,6 +19,7 @@ public struct HomeView: View {
     }
 
     public var body: some View {
+        ScrollViewReader { scrollProxy in
         ScrollView {
             VStack(spacing: 14) {
                 if FailoverBanner.shouldShow(state: state) {
@@ -32,12 +33,23 @@ public struct HomeView: View {
                     currentNodeCard
                     subscriptionCard
                     networkCard
+                        .id("qz-card-network")   // App Store 截图 demo 的滚动锚点（无副作用）
                     trafficCard
                     speedTestCard
                     systemCard
                 }
             }
             .padding()
+        }
+        // App Store 截图 demo 钩子（-qz-screenshot 才可达）：首页竖排下流量波形在首屏之下，
+        // -qz-scroll <y> 以「公网 IP 卡」为锚滚动页面（y 是 scrollTo 的 UnitPoint 比例，
+        // 调到会话时长行 + 波形同框）——真实用户下滑即达的状态，不改布局。
+        .task {
+            if let y = ScreenshotDemoMode.scrollAnchorY {
+                try? await Task.sleep(for: .milliseconds(700))
+                scrollProxy.scrollTo("qz-card-network", anchor: UnitPoint(x: 0.5, y: y))
+            }
+        }
         }
         .navigationTitle("首页")
         // 注意：之前在这里 .task { await firstLoad() } 会和 app entry 的 .task 重复触发
@@ -58,6 +70,14 @@ public struct HomeView: View {
         #if os(iOS)
         .navigationDestination(isPresented: $showConnections) {
             ConnectionsView(state: state)
+        }
+        // App Store 截图 demo 钩子（-qz-screenshot 才可达）：连接明细 / 域名分析都挂在
+        // 首页入口之后，自动替用户走一步 push —— 与真实点「查看连接明细」到达的状态一致。
+        .task {
+            if ScreenshotDemoMode.wantsConnectionsPush {
+                try? await Task.sleep(for: .milliseconds(500))
+                showConnections = true
+            }
         }
         #endif
         // 触觉反馈（iOS；macOS 上这些反馈类型是 no-op）：

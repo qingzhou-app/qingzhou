@@ -78,6 +78,14 @@ public struct ConnectionsView: View {
             #endif
         }
         .searchable(text: $keyword, prompt: "搜索 host / route / app")
+        // App Store 截图 demo 钩子（-qz-screenshot 才可达）：-qz-tab analysis 时自动弹出
+        // 域名分析 sheet —— 与真实点工具栏「域名分析」到达的状态一致。
+        .task {
+            if ScreenshotDemoMode.wantsDomainAnalysisSheet {
+                try? await Task.sleep(for: .milliseconds(600))
+                showDomainAnalysis = true
+            }
+        }
     }
 
     /// 空态文案：按「为什么空」区分。踩过的坑：三个分组共用「开启 VPN 后…」——

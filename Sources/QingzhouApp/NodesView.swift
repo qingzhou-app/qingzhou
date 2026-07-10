@@ -172,6 +172,19 @@ public struct NodesView: View {
         .sensoryFeedback(.success, trigger: isMeasuring) { wasMeasuring, now in
             wasMeasuring && !now
         }
+        // App Store 截图 demo 钩子（-qz-screenshot 启动参数才可达，正常启动恒 false）：
+        // nodes → 呈现「自动择优刚完成」的反馈条；node-detail → 自动打开当前节点详情 sheet
+        //（「为什么选它」评分构成）。都是真实交互后可达的 UI 状态，不伪造新界面。
+        .task {
+            guard ScreenshotDemoMode.isActive else { return }
+            if ScreenshotDemoMode.wantsAutoSelectBanner, let n = state.currentNode {
+                autoSelectMessage = L("已选: \(n.name)") + (n.lastLatencyMs.map { L(" (\($0) ms)") } ?? "")
+            }
+            if ScreenshotDemoMode.wantsNodeDetail {
+                try? await Task.sleep(for: .milliseconds(700))
+                detailNode = state.currentNode
+            }
+        }
     }
 
     /// 批量测速（工具栏按钮 / 下拉刷新共用）：记下总数，进度随 measuringNodeIds 递减。
