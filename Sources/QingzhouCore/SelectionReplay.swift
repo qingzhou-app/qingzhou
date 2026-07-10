@@ -118,6 +118,46 @@ public enum SelectionReplay {
         public var scoringChoiceScore: Double?
         /// 本轮被分数黏性拦下（领先够但连续轮数没攒满）的挑战者 id —— nil = 未拦或直接放行。
         public var scoringHeldChallenger: String?
+        /// 被拦挑战者的展示名 —— 对外渲染一律用名字：id 是身份指纹，可能内嵌凭据。
+        public var scoringHeldChallengerName: String?
+        /// 两策略选择不同时的归因载荷；同选 / 一方无选择 → nil。
+        public var divergence: Divergence?
+    }
+
+    /// 分歧轮的归因载荷：双方选择在**打分视角**下的完整分量 —— 报告层据此回答
+    /// 「哪个维度改判了选择」（丢包救了谁 / 经代理改判了谁 / 倍率压了谁），不用重放打分。
+    public struct Divergence: Sendable, Equatable {
+        /// 纯 Ping 所选节点的打分分量。
+        public var pingChoiceScore: NodeScorer.Score
+        /// 多维打分所选节点的打分分量。
+        public var scoringChoiceScore: NodeScorer.Score
+
+        public init(pingChoiceScore: NodeScorer.Score, scoringChoiceScore: NodeScorer.Score) {
+            self.pingChoiceScore = pingChoiceScore
+            self.scoringChoiceScore = scoringChoiceScore
+        }
+
+        public enum Dimension: String, Sendable, CaseIterable {
+            case latency, stability, bandwidth, cost
+        }
+
+        /// 该维加权分差（打分选择 − Ping 选择）；正 = 该维在把打分选择推上去。
+        public func weightedGap(_ d: Dimension) -> Double {
+            switch d {
+            case .latency:   return scoringChoiceScore.latency.weighted - pingChoiceScore.latency.weighted
+            case .stability: return scoringChoiceScore.stability.weighted - pingChoiceScore.stability.weighted
+            case .bandwidth: return scoringChoiceScore.bandwidth.weighted - pingChoiceScore.bandwidth.weighted
+            case .cost:      return scoringChoiceScore.cost.weighted - pingChoiceScore.cost.weighted
+            }
+        }
+
+        /// 打分选择领先幅度最大的维度（主要归因）。四维全不占优 → nil ——
+        /// 典型场景：黏性把总分已落后的在位者留下了（分歧不来自打分而来自黏性）。
+        public var dominantDimension: Dimension? {
+            guard let best = Dimension.allCases.max(by: { weightedGap($0) < weightedGap($1) }),
+                  weightedGap(best) > 0 else { return nil }
+            return best
+        }
     }
 
     public struct ReplayReport: Sendable, Equatable {
@@ -144,7 +184,9 @@ public enum SelectionReplay {
 
     /// 把每节点的测量历史聚类成「轮」—— 同一轮内各节点的样本时间相近（≤ `window`，
     /// 默认沿用 `NodeMetricsHistory.sameRoundWindow`），一次全量测速产生一轮。
-    /// `Round.at` = 该簇最早样本时间；每节点在一簇里至多一条（取簇内该节点最早的一条）。
+    /// `Round.at` = 该簇最早样本时间；每节点在一簇里至多一条：直连/丢包取簇内最早的一条，
+    /// `proxiedMs` 取簇内**首个非 nil**（真实调度一拍常有两遍全量 pass，经代理精选由
+    /// `recordProxied` 并入**后一遍**的样本 —— 只取最早会把经代理数据整批丢掉）。
     public static func rounds(
         from history: NodeMetricsHistory,
         window: TimeInterval = NodeMetricsHistory.sameRoundWindow
@@ -170,8 +212,13 @@ public enum SelectionReplay {
                 flush()
             }
             if clusterStart == nil { clusterStart = s.at }
-            // 同一簇里该节点已有样本 → 保留最早的一条（不覆盖）
-            if current[fp] == nil {
+            // 同一簇里该节点已有样本 → 直连/丢包保留最早一条；proxiedMs 补首个非 nil
+            if var existing = current[fp] {
+                if existing.proxiedMs == nil, let p = s.proxiedMs {
+                    existing.proxiedMs = p
+                    current[fp] = existing
+                }
+            } else {
                 current[fp] = Observation(directMs: s.latencyMs, proxiedMs: s.proxiedMs, lossFraction: s.lossFraction)
             }
         }
@@ -195,6 +242,9 @@ public enum SelectionReplay {
         var pingPrev: String?
         var scoringCurrent: String?
         var scoringPrev: String?
+        // 每节点最近一次经代理实测（值 + 测量时间）—— 镜像线上 node.lastProxiedLatencyMs：
+        // 打分轮轮携带，新鲜与否交给 NodeScorer 的 24h 门槛（回放只如实传时间戳）。
+        var lastProxied: [String: (ms: Int, at: Date)] = [:]
         // 分数黏性连续状态
         var streakChallenger: String?
         var streakIncumbent: String?
@@ -213,11 +263,14 @@ public enum SelectionReplay {
 
         func scoreOf(_ spec: NodeSpec, _ round: Round) -> NodeScorer.Score {
             let ob = round.observations[spec.id]
+            // 携带最近一次经代理实测（本轮实测已在步骤 1 回填进 lastProxied，时间 = 本轮
+            // → 门槛内必然新鲜）；陈旧值由 NodeScorer 的 24h 新鲜度门槛挡掉。
+            let carried = lastProxied[spec.id]
             return NodeScorer.score(
                 NodeScorer.Input(
                     directLatencyMs: ob?.directMs,
-                    proxiedLatencyMs: ob?.proxiedMs,
-                    proxiedTestedAt: nil,               // 当轮经代理实测 = 新鲜
+                    proxiedLatencyMs: carried?.ms,
+                    proxiedTestedAt: carried?.at,
                     history: history.samples(for: spec.id),
                     peakDownBps: spec.peakDownBps,
                     rate: spec.rate
@@ -250,6 +303,7 @@ public enum SelectionReplay {
                                      lossFraction: ob.lossFraction, at: round.at)
                 if let p = ob.proxiedMs {
                     history.recordProxied(fingerprint: spec.id, proxiedMs: p, at: round.at)
+                    lastProxied[spec.id] = (p, round.at)
                 }
             }
 
@@ -308,6 +362,12 @@ public enum SelectionReplay {
             let pe = effective(pingChoice, round)
             let se = effective(scoringChoice, round)
             let scoringChoiceScore = scoringChoice.flatMap { id in byId[id].map { scoreOf($0, round).total } }
+            let divergence: Divergence? = {
+                guard let p = pingChoice, let s = scoringChoice, p != s,
+                      let pSpec = byId[p], let sSpec = byId[s] else { return nil }
+                return Divergence(pingChoiceScore: scoreOf(pSpec, round),
+                                  scoringChoiceScore: scoreOf(sSpec, round))
+            }()
 
             let counted = index >= config.warmupRounds
             if counted {
@@ -333,7 +393,9 @@ public enum SelectionReplay {
                 pingEffectiveMs: pe.ms,
                 scoringChoice: scoringChoice, scoringChoiceName: scoringChoice.flatMap { byId[$0]?.name },
                 scoringEffectiveMs: se.ms, scoringChoiceScore: scoringChoiceScore,
-                scoringHeldChallenger: heldChallenger
+                scoringHeldChallenger: heldChallenger,
+                scoringHeldChallengerName: heldChallenger.flatMap { byId[$0]?.name },
+                divergence: divergence
             ))
         }
 
@@ -416,7 +478,9 @@ public extension SelectionReplay.ReplayReport {
             let pms = d.pingEffectiveMs.map { "\(f1($0)) ms" } ?? "—"
             let sms = d.scoringEffectiveMs.map { "\(f1($0)) ms" } ?? "—"
             let sc = d.scoringChoiceScore.map { f1($0) } ?? "—"
-            let note = d.scoringHeldChallenger.map { "黏性拦下挑战者 \($0)" } ?? ""
+            // 备注只出名字：id 是身份指纹（协议://凭据@host:port），进 Markdown 会泄凭据
+            let note = (d.scoringHeldChallengerName ?? d.scoringHeldChallenger)
+                .map { "黏性拦下挑战者 \($0)" } ?? ""
             md += "| \(tag) | \(pn) | \(pms) | \(sn) | \(sms) | \(sc) | \(note) |\n"
         }
         md += "\n"
