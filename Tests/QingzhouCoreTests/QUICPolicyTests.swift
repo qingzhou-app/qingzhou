@@ -59,6 +59,97 @@ final class QUICPolicyResolverTests: XCTestCase {
     }
 }
 
+/// 「当前 QUIC 运行态」推导纯函数 —— 设置页状态行用的**纯观测**逻辑（不参与阻断决策）。
+/// 语义见 docs/QUIC.md「状态可视化」。
+final class QUICRuntimeStatusResolverTests: XCTestCase {
+
+    /// 全输入空间遍历用的小工具。
+    private func status(_ policy: QUICPolicy, _ proto: ProxyProtocol,
+                        broken: Bool, passed: Bool) -> QUICRuntimeStatus {
+        QUICRuntimeStatusResolver.status(
+            policy: policy, protocolType: proto,
+            knownBrokenOnThisNode: broken, probePassedOnThisNode: passed)
+    }
+
+    // MARK: - 强制档：不看协议 / 不看任何探测标记
+
+    func testAlwaysBlockIsForcedBlockForAllInputs() {
+        for proto in ProxyProtocol.allCases {
+            for broken in [true, false] {
+                for passed in [true, false] {
+                    XCTAssertEqual(status(.alwaysBlock, proto, broken: broken, passed: passed),
+                                   .forcedBlock,
+                                   "alwaysBlock 恒为策略强制阻断（proto=\(proto)）")
+                }
+            }
+        }
+    }
+
+    func testNeverBlockIsForcedAllowForAllInputs() {
+        for proto in ProxyProtocol.allCases {
+            for broken in [true, false] {
+                for passed in [true, false] {
+                    XCTAssertEqual(status(.neverBlock, proto, broken: broken, passed: passed),
+                                   .forcedAllow,
+                                   "neverBlock 恒为策略强制放行（proto=\(proto)）")
+                }
+            }
+        }
+    }
+
+    // MARK: - auto：TCP 系协议一律「已阻断」，探测标记无关
+
+    func testAutoTCPBasedProtocolsAreBlockedRegardlessOfFlags() {
+        for proto in ProxyProtocol.allCases where proto != .hysteria2 {
+            for broken in [true, false] {
+                for passed in [true, false] {
+                    XCTAssertEqual(status(.auto, proto, broken: broken, passed: passed),
+                                   .autoBlockedTCPBased,
+                                   "auto 下非 hysteria2（\(proto)）应显示 TCP 系已阻断")
+                }
+            }
+        }
+    }
+
+    // MARK: - auto + hysteria2 的三个实测阶段
+
+    func testAutoHysteria2NoVerdictIsProbing() {
+        // 未判坏、也还没实测通过 = 放行中 + 实测进行中（或尚未触发）
+        XCTAssertEqual(status(.auto, .hysteria2, broken: false, passed: false), .autoProbing)
+    }
+
+    func testAutoHysteria2ProbePassedKeepsAllowed() {
+        XCTAssertEqual(status(.auto, .hysteria2, broken: false, passed: true), .autoProbePassed)
+    }
+
+    func testAutoHysteria2BrokenIsBlocked() {
+        XCTAssertEqual(status(.auto, .hysteria2, broken: true, passed: false), .autoBrokenBlocked)
+    }
+
+    func testBrokenWinsOverPassed() {
+        // 防御性组合（理论上互斥）：判坏是阻断决策的实际依据，必须压过旧的通过记录
+        XCTAssertEqual(status(.auto, .hysteria2, broken: true, passed: true), .autoBrokenBlocked)
+    }
+
+    // MARK: - 不变量：观测态的 isBlocking 必须与实际阻断决策逐点一致
+
+    func testIsBlockingMatchesShouldBlockOnEntireInputSpace() {
+        for policy in QUICPolicy.allCases {
+            for proto in ProxyProtocol.allCases {
+                for broken in [true, false] {
+                    for passed in [true, false] {
+                        XCTAssertEqual(
+                            status(policy, proto, broken: broken, passed: passed).isBlocking,
+                            QUICPolicyResolver.shouldBlock(
+                                policy: policy, protocolType: proto, knownBrokenOnThisNode: broken),
+                            "运行态显示的阻断与否必须与真实决策一致（\(policy) \(proto) broken=\(broken) passed=\(passed)）—— 状态行绝不能骗人")
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// HTTP/3 实测探测结果（协商到的传输协议名）→ 是否标记「该节点 QUIC 实测坏」的纯决策。
 final class QUICProbeDecisionTests: XCTestCase {
 

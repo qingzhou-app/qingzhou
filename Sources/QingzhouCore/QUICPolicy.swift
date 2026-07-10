@@ -42,6 +42,55 @@ public enum QUICPolicyResolver {
     }
 }
 
+/// 「当前 QUIC 运行态」—— 设置页状态行用的**纯观测**枚举。
+/// ⚠️ 只做展示，谁也不许拿它做阻断决策 —— 决策只认 `QUICPolicyResolver.shouldBlock`
+///（两者的一致性由 `isBlocking` 的不变量测试钉死）。语义见 docs/QUIC.md「状态可视化」。
+public enum QUICRuntimeStatus: String, Equatable, Sendable {
+    /// 策略 = 强制开启：所有节点恒挡。
+    case forcedBlock
+    /// 策略 = 强制关闭：所有节点恒放行。
+    case forcedAllow
+    /// auto：TCP 系协议节点（trojan / vmess / vless / shadowsocks），直接阻断。
+    case autoBlockedTCPBased
+    /// auto：hysteria2 节点暂放行，HTTP/3 实测尚无结论（进行中 / 还没触发）。
+    case autoProbing
+    /// auto：hysteria2 节点实测协商到 h3，确认放行。
+    case autoProbePassed
+    /// auto：hysteria2 节点实测不通，已标记坏并改为阻断。
+    case autoBrokenBlocked
+
+    /// 该运行态下 UDP 443 是否处于阻断。与 `QUICPolicyResolver.shouldBlock` 恒一致。
+    public var isBlocking: Bool {
+        switch self {
+        case .forcedBlock, .autoBlockedTCPBased, .autoBrokenBlocked: return true
+        case .forcedAllow, .autoProbing, .autoProbePassed: return false
+        }
+    }
+}
+
+/// 运行态推导**纯函数**（无 IO，全分支可测）。输入全部来自主 App 已有状态：
+/// 三档策略、当前节点协议、该节点的「实测坏」标记（决策态）与「实测通过」标记（观测态）。
+/// broken 优先于 passed：重探失败后旧的通过记录作废（阻断决策实际看的就是 broken）。
+public enum QUICRuntimeStatusResolver {
+    public static func status(
+        policy: QUICPolicy,
+        protocolType: ProxyProtocol,
+        knownBrokenOnThisNode: Bool,
+        probePassedOnThisNode: Bool
+    ) -> QUICRuntimeStatus {
+        switch policy {
+        case .alwaysBlock:
+            return .forcedBlock
+        case .neverBlock:
+            return .forcedAllow
+        case .auto:
+            guard protocolType == .hysteria2 else { return .autoBlockedTCPBased }
+            if knownBrokenOnThisNode { return .autoBrokenBlocked }
+            return probePassedOnThisNode ? .autoProbePassed : .autoProbing
+        }
+    }
+}
+
 /// HTTP/3 实测探测的**决策纯逻辑**：拿到「实际协商到的传输协议名」后，判断是否要把
 /// 该节点标记为「QUIC 实测坏」。URLSession 调用本身在 App 层（靠编译 + 真机），这里只做判定。
 public enum QUICProbeDecision {
