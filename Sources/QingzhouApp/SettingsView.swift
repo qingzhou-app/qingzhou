@@ -153,12 +153,31 @@ public struct SettingsView: View {
             }
             Text("自动：hysteria2 节点放行并实测，其余挡 QUIC 走 TCP")
                 .font(.caption2).foregroundStyle(.secondary)
+            // 当前 QUIC 运行态（隧道开着才显示）—— auto 档的「放行→实测→通过/改挡」过程
+            // 从此在真机上可见，不再是黑箱。状态推导是 QingzhouCore 纯函数，见 docs/QUIC.md §9。
+            if let quicStatus = state.quicRuntimeStatus {
+                Text(Self.quicStatusText(quicStatus))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             Picker("日志级别", selection: state.setting(\.logLevel)) {
                 Text("DEBUG").tag("DEBUG")
                 Text("INFO").tag("INFO")
                 Text("WARN").tag("WARN")
                 Text("ERROR").tag("ERROR")
             }
+        }
+    }
+
+    /// QUIC 运行态 → 状态行文案。状态推导在 QingzhouCore（纯函数、有单测），这里只做文案映射。
+    static func quicStatusText(_ status: QUICRuntimeStatus) -> String {
+        switch status {
+        case .forcedBlock:         return L("当前：已阻断 QUIC（策略强制开启）")
+        case .forcedAllow:         return L("当前：放行 QUIC（策略强制关闭）")
+        case .autoBlockedTCPBased: return L("当前：已阻断 QUIC（TCP 系协议节点）")
+        case .autoProbing:         return L("当前：暂放行 QUIC，HTTP/3 实测中…")
+        case .autoProbePassed:     return L("当前：放行 QUIC（HTTP/3 实测通过）")
+        case .autoBrokenBlocked:   return L("当前：已阻断 QUIC（实测不通，已自动改挡）")
         }
     }
 

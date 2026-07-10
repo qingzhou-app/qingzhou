@@ -1,0 +1,22 @@
+{
+  "sourceLanguage": "zh-Hans",
+  "strings": {
+    "轻舟": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Qingzhou" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "Qingzhou" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "輕舟" } }
+      }
+    },
+    "当前节点疑似故障，点此切换": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Current node may be down — tap to switch" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "現在のノードに障害の疑いがあります。タップして切り替え" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前節點疑似故障，點此切換" } }
+      }
+    }
+  },
+  "version": "1.0"
+}

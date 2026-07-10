@@ -236,7 +236,14 @@ targets:
     type: app-extension
     platform: iOS
     sources:
+      # 同主 App 的 App-Shared 模式：源码编译 + *.xcstrings 走 Copy Resources ——
+      # 扩展自己的通知文案（节点疑似故障）四语，String(localized:) 查 appex bundle，
+      # 按系统语言解析（appex 独立进程感知不到 App 内语言设置，见 docs/FAILOVER.md）。
       - path: Tunnel-Shared
+        excludes: ["*.xcstrings"]
+      - path: Tunnel-Shared
+        includes: ["*.xcstrings"]
+        buildPhase: resources
       - path: Tunnel-iOS
     info:
       path: Tunnel-iOS/Info.plist
@@ -273,7 +280,12 @@ targets:
     type: app-extension
     platform: macOS
     sources:
+      # 同 iOS tunnel：源码编译 + 字符串目录走资源 phase（通知文案四语）
       - path: Tunnel-Shared
+        excludes: ["*.xcstrings"]
+      - path: Tunnel-Shared
+        includes: ["*.xcstrings"]
+        buildPhase: resources
       - path: Tunnel-macOS
     info:
       path: Tunnel-macOS/Info.plist

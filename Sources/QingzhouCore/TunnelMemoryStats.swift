@@ -51,6 +51,39 @@ public struct TunnelMemoryStats: Codable, Sendable, Equatable {
     }
 }
 
+/// 历史峰值的可信性护栏 —— 读侧钳制 + 写侧防护（纯逻辑，可测）。
+///
+/// 背景（2026-07 真实事故）：用户 Mac 的 memory-stats.json 里 allTimePeakBytes=8427511368
+/// （≈7.85 GiB），而扩展真实 footprint 只有 ~54 MB。那不是采样 API 出错 —— 是 build 8 之前
+/// Xray→Apple 写包循环缺 autoreleasepool 的滞留泄漏（footprint 堆到 ≈ 会话总流量，见
+/// PacketTunnelProvider.runFdToWritePacketsLoop 的注释）在崩溃循环时代留下的**真实读数**。
+/// 泄漏已修（7e64e44），但 allTimePeak 跨会话只增不减（max + 落盘接续），坏样本一旦写入
+/// 就永久粘住，「历史最高」从此失去诊断价值。两道防线：
+/// - **读侧**（sanitizedPersistedPeak）：启动接续上次落盘值之前钳制，超界视为损坏 → 丢弃重建；
+/// - **写侧**（mergingPeak）：单次采样超界不并入峰值 —— 再出病理读数也污染不了历史。
+public enum TunnelMemoryPeakGuard {
+    /// 「NE 隧道扩展物理上可能」的 footprint 峰值上限：2 GiB。
+    /// 取值理由：iOS NE 扩展 jetsam 硬上限 50 MiB（超限即被杀），2 GiB 已是 40 倍；
+    /// macOS 无硬上限、本扩展常态 ~60 MB，footprint 到 GiB 级只可能是灾难性泄漏 ——
+    /// 峰值饱和在 2 GiB 已足够说明「出过大事」，更大的数字没有额外诊断信息量，
+    /// 只会像 8.4 GB 事故那样把指标永久打坏。
+    public static let maxPlausiblePeakBytes: Int64 = 2 * 1024 * 1024 * 1024
+
+    /// 读侧钳制：扩展启动时从上次落盘 JSON 接续历史峰值前过一遍。
+    /// 非正数或超上限 = 损坏 → 返回 0（丢弃，用本会话数据重建）。
+    public static func sanitizedPersistedPeak(_ persistedBytes: Int64) -> Int64 {
+        guard persistedBytes > 0, persistedBytes <= maxPlausiblePeakBytes else { return 0 }
+        return persistedBytes
+    }
+
+    /// 写侧防护：把单次 footprint 采样并入峰值。样本非正（采样失败占位）或超上限
+    /// （病理读数）→ 不并入，峰值保持原值。
+    public static func mergingPeak(_ currentPeak: Int64, sample: Int64) -> Int64 {
+        guard sample > 0, sample <= maxPlausiblePeakBytes else { return currentPeak }
+        return max(currentPeak, sample)
+    }
+}
+
 /// 内置 geo 数据的能力声明 —— UI 校验和规则转换共用，避免两处硬编码漂移。
 ///
 /// geoip.dat 用的是 v2fly 的 `geoip-only-cn-private.dat`（约 1.5 MB，替代 22 MB 全量版，

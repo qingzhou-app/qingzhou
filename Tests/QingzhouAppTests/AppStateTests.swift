@@ -55,6 +55,45 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.nodes.count, 2)
     }
 
+    // MARK: - QUIC 运行态（设置页状态行，纯观测 —— docs/QUIC.md「状态可视化」）
+
+    func testQuicRuntimeStatusNilWhenTunnelOff() throws {
+        let state = makeState()
+        try state.addNode(fromURL: "hy2://pw@h.example.com:443#hy2节点")
+        state.select(state.nodes[0])
+        XCTAssertNil(state.quicRuntimeStatus, "隧道没开就不显示状态行")
+    }
+
+    func testQuicRuntimeStatusProbeLifecycleUnderAuto() throws {
+        let state = makeState()
+        try state.addNode(fromURL: "hy2://pw@h.example.com:443#hy2节点")
+        state.select(state.nodes[0])
+        state.isVPNRunning = true
+        // auto（默认档）+ hysteria2：初始 = 暂放行、实测中
+        XCTAssertEqual(state.quicRuntimeStatus, .autoProbing)
+        let fp = state.nodes[0].identityFingerprint
+        // 实测协商到 h3 → 通过
+        state.quicProbePassedNodes.insert(fp)
+        XCTAssertEqual(state.quicRuntimeStatus, .autoProbePassed)
+        // 之后某轮重探判坏：broken 压过旧的通过记录（与阻断决策一致）
+        state.quicKnownBrokenNodes.insert(fp)
+        XCTAssertEqual(state.quicRuntimeStatus, .autoBrokenBlocked)
+    }
+
+    func testQuicRuntimeStatusTCPBasedAndForcedTiers() throws {
+        let state = makeState()
+        try state.addNode(fromURL: "trojan://pw@t.example.com:443#trojan节点")
+        state.select(state.nodes[0])
+        state.isVPNRunning = true
+        // auto + TCP 系协议：直接挡
+        XCTAssertEqual(state.quicRuntimeStatus, .autoBlockedTCPBased)
+        // 强制档不看协议 / 探测标记
+        state.settings.quicPolicy = .alwaysBlock
+        XCTAssertEqual(state.quicRuntimeStatus, .forcedBlock)
+        state.settings.quicPolicy = .neverBlock
+        XCTAssertEqual(state.quicRuntimeStatus, .forcedAllow)
+    }
+
     // MARK: - 自动择优黏性滞后（VPN 运行中，新最优要显著更好才值得重启隧道）
 
     func testAutoSwitchWorthRestartHysteresis() {

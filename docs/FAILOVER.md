@@ -115,7 +115,7 @@ F23 On-Demand 竞态(→复用关闭序列)、F24 isSwitchingTunnel 窗口自触
 | 开关（编译期 kill-switch） | `Sources/QingzhouApp/FeatureFlags.swift` | `autoFailoverAlert`（true=功能存在于本 build） |
 | 开关（opt-in，默认关） | `Sources/QingzhouCore/Settings.swift` | `autoFailoverAlert=false`；Settings「节点故障提醒」开关，开时才请求通知权限 |
 | 告警 UI + 一键切 | `Sources/QingzhouApp/FailoverBanner.swift`、`AppState+Failover.swift`、`HomeView.swift` | 首页红色横幅；`failoverToBestNode` 排除疑似节点→现有打分选最优→`reapplyRunningTunnel(.nodeOnly)`（绕开黏性/幅度闸 F22；无健康替代时提示机场整体不可用 F10/F12）；通知点击 delegate → 同一切换 |
-| 四语 | `Apps/App-Shared/Localizable.xcstrings` | 横幅/开关/toast 的 zh-Hans/zh-Hant/en/ja。**例外：扩展侧通知文案为中文**（扩展 target 无 strings catalog；可操作的横幅/按钮在主 App 已四语） |
+| 四语 | `Apps/App-Shared/Localizable.xcstrings`、`Apps/Tunnel-Shared/Localizable.xcstrings` | 横幅/开关/toast 的 zh-Hans/zh-Hant/en/ja；扩展侧通知（标题/正文）也已四语 —— appex 自带 strings catalog（`project.yml` 里 Tunnel 两 target 的 `*.xcstrings` 走 Copy Resources phase），`String(localized:)` 查 appex bundle。**已知边界（不解决，记录即可）：扩展进程按系统语言解析** —— 用户在 App 内改语言而系统语言不同时，通知语言 = 系统语言（appex 是独立进程，感知不到主 App 的 `AppLanguage` 设置；主 App 的 L10n bundle override 不跨进程） |
 
 验证：`swift test` 781 全绿（含 10 条 NodeHealthDetector 红队用例）+ iOS/macOS 双端 `xcodebuild` BUILD SUCCEEDED（含隧道扩展）。
 

@@ -151,3 +151,28 @@ DNS(udp 53→dns-out)规则之后**插入一条：
 `runningBlockQUIC` 不一致，原地换会留下**过期的 QUIC 路由**（放行档位下 trojan 漏 UDP443，或阻断
 档位下 hysteria2 的 h3 被自家路由挡死→被误判坏）。故：**不一致时把 `nodeOnly` 升级为全量重启**重建
 routing，一致时才走零断流快路径。用现有 routing-rule + reconfigure 机制，**不碰 socketpair 桥热路径**。
+
+## 9. 状态可视化 —— 设置页「当前 QUIC 运行态」
+
+`.auto` 的「放行 → 实测 → 通过 / 改挡」全在后台发生，用户（和真机验收）完全看不见。
+于是设置页 QUIC 策略选择器下方加一行**当前运行态**说明（footer 轻量形态，**隧道开着才显示**）：
+
+| 运行态（`QUICRuntimeStatus`） | 状态行 |
+|---|---|
+| `.forcedBlock` | 当前：已阻断 QUIC（策略强制开启） |
+| `.forcedAllow` | 当前：放行 QUIC（策略强制关闭） |
+| `.autoBlockedTCPBased` | 当前：已阻断 QUIC（TCP 系协议节点） |
+| `.autoProbing` | 当前：暂放行 QUIC，HTTP/3 实测中… |
+| `.autoProbePassed` | 当前：放行 QUIC（HTTP/3 实测通过） |
+| `.autoBrokenBlocked` | 当前：已阻断 QUIC（实测不通，已自动改挡） |
+
+实现要点（**纯观测，探测 / 阻断语义零改动**）：
+
+- 状态推导是**纯函数** `QUICRuntimeStatusResolver.status(policy:protocolType:knownBrokenOnThisNode:probePassedOnThisNode:)`
+  （`Sources/QingzhouCore/QUICPolicy.swift`，全输入空间单测覆盖）；`QUICRuntimeStatus.isBlocking`
+  与 `QUICPolicyResolver.shouldBlock` 的逐点一致性有不变量测试钉死 —— 状态行绝不能骗人。
+- 「实测通过」来自新增的观测集合 `AppState.quicProbePassedNodes`（探测 OK 且仍是同一节点在跑时记录；
+  每轮探测开始时移除该节点回到「实测中」）。它**不参与**阻断决策 —— 决策仍只认
+  `quicKnownBrokenNodes` / `QUICPolicyResolver`。
+- UI 入口 `AppState.quicRuntimeStatus`（隧道没开 / 无当前节点时 nil = 不显示）+
+  `SettingsView.quicStatusText`（文案映射），四语在 `Apps/App-Shared/Localizable.xcstrings`。

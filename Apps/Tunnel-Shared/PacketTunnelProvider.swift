@@ -675,15 +675,17 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     /// 「疑似故障」本地通知（带 5 分钟/节点冷却）。固定 identifier → 同一时刻只留一条。
     /// 权限由主 App 在用户 opt-in 故障提醒时才申请；未授权时 add 静默 no-op（= 天然的开关）。
-    /// 首版通知文案为中文（扩展 target 无 strings catalog）——可操作的横幅/按钮在主 App 已四语。
+    /// 文案四语：String(localized:) 查 appex 自己的 Localizable.xcstrings（Tunnel-Shared/）。
+    /// 已知边界：扩展是独立进程，按**系统语言**解析 —— 用户在 App 内改语言而系统语言不同时，
+    /// 通知语言 = 系统语言（感知不到主 App 的语言设置，可接受）。见 docs/FAILOVER.md。
     private func sendHealthNotification(nodeName: String, at now: Date) {
         if let last = lastHealthNotifiedAt[nodeName], now.timeIntervalSince(last) < Self.healthNotifyCooldown {
             return
         }
         lastHealthNotifiedAt[nodeName] = now
         let content = UNMutableNotificationContent()
-        content.title = "轻舟"
-        content.body = "当前节点疑似故障，点此切换"
+        content.title = String(localized: "轻舟")
+        content.body = String(localized: "当前节点疑似故障，点此切换")
         content.sound = .default
         content.userInfo = ["type": "nodeHealthSuspect", "nodeName": nodeName]
         let req = UNNotificationRequest(
@@ -720,12 +722,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 if let prev = try? decoder.decode(TunnelMemoryStats.self, from: data) {
-                    memAllTimePeak = prev.allTimePeakBytes
+                    // 读侧钳制：崩溃循环时代可能留下过物理上不可能的天文峰值（实测 8.4GB），
+                    // 照单全收会永久粘住 —— 超界视为损坏，丢弃后用本会话数据重建。
+                    memAllTimePeak = TunnelMemoryPeakGuard.sanitizedPersistedPeak(prev.allTimePeakBytes)
                 }
             }
         }
         if let fp = footprint {
-            memSessionPeak = max(memSessionPeak, fp)
+            // 写侧防护：单次采样超过可信上限（病理读数）不并入峰值，防坏样本再次落盘粘住。
+            memSessionPeak = TunnelMemoryPeakGuard.mergingPeak(memSessionPeak, sample: fp)
             memAllTimePeak = max(memAllTimePeak, memSessionPeak)
 
             // 接近上限预警（40MB，距 jetsam 线还剩 10MB）。带 4MB 迟滞：越线只记一次，

@@ -49,6 +49,54 @@
         "zh-Hant": { "stringUnit": { "state": "translated", "value": "自動：hysteria2 節點放行並實測，其餘阻擋 QUIC 改走 TCP" } }
       }
     },
+    "当前：已阻断 QUIC（策略强制开启）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC blocked (forced on)" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC をブロック中（強制オン）" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：已阻斷 QUIC（策略強制開啟）" } }
+      }
+    },
+    "当前：放行 QUIC（策略强制关闭）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC allowed (forced off)" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC を許可中（強制オフ）" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：放行 QUIC（策略強制關閉）" } }
+      }
+    },
+    "当前：已阻断 QUIC（TCP 系协议节点）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC blocked (TCP-based node)" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC をブロック中（TCP 系ノード）" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：已阻斷 QUIC（TCP 系協定節點）" } }
+      }
+    },
+    "当前：暂放行 QUIC，HTTP/3 实测中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC temporarily allowed — testing HTTP/3…" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC を一時許可中、HTTP/3 実測中…" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：暫放行 QUIC，HTTP/3 實測中…" } }
+      }
+    },
+    "当前：放行 QUIC（HTTP/3 实测通过）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC allowed (HTTP/3 test passed)" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC を許可中（HTTP/3 実測合格）" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：放行 QUIC（HTTP/3 實測通過）" } }
+      }
+    },
+    "当前：已阻断 QUIC（实测不通，已自动改挡）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC blocked (test failed — auto-switched to blocking)" } },
+        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC をブロック中（実測で不通のため自動的にブロックへ変更）" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：已阻斷 QUIC（實測不通，已自動改擋）" } }
+      }
+    },
     "当前节点疑似故障": {
       "extractionState": "manual",
       "localizations": {

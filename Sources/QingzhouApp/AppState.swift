@@ -215,7 +215,13 @@ public final class AppState {
     /// QUIC 策略 auto 下，被 HTTP/3 实测判定「QUIC 走不通」的节点指纹集合。**本会话内存缓存**：
     /// 不落盘、不上云（换会话重探一次可接受，避免把一次网络抖动永久钉死）。key 用 identityFingerprint
     /// （订阅刷新后 UUID 可能变、指纹稳定）。命中 → auto 下该 hysteria2 节点也挡 QUIC。见 docs/QUIC.md。
-    private var quicKnownBrokenNodes: Set<String> = []
+    /// internal 供单测注入（quicRuntimeStatus 用例）。
+    var quicKnownBrokenNodes: Set<String> = []
+    /// auto 下 HTTP/3 实测**通过**的节点指纹集合。**纯观测态**：只喂设置页的「当前 QUIC 运行态」
+    /// 状态行显示「实测通过」，不参与任何阻断决策（决策只认 quicKnownBrokenNodes / resolver）。
+    /// 生命周期与 broken 集一致（本会话内存缓存）；每轮实测开始时移除该节点，回到「实测中」。
+    /// internal 供单测注入。
+    var quicProbePassedNodes: Set<String> = []
     /// 当前**正在跑的隧道**其 routing 是按哪个 blockQUIC 有效值构建的。用于判断原地换出口
     /// （nodeOnly，SwitchOutbound 只换 outbound、不重建 routing）是否会留下过期的 QUIC 路由 ——
     /// 新节点有效阻断值与它不一致时必须升级为全量重启重建 routing。startTunnel / 全量重配时更新。
@@ -378,6 +384,20 @@ public final class AppState {
         // VPN 在跑才需要重启（reapply 内部 guard 会在没跑时直接返回）。全量重配重建 routing，
         // 且成功后走 verifyTunnelConnectivity → 触发 auto+hysteria2 的 h3 实测。
         Task { await reapplyRunningTunnel() }
+    }
+
+    /// 设置页「当前 QUIC 运行态」状态行（**纯观测**，隧道没开 / 没有当前节点时 nil = 不显示）。
+    /// 推导是纯函数 QUICRuntimeStatusResolver.status；探测 / 阻断语义零改动，只加可见性。
+    /// 见 docs/QUIC.md「状态可视化」。
+    public var quicRuntimeStatus: QUICRuntimeStatus? {
+        guard isVPNRunning, let node = currentNode else { return nil }
+        let fingerprint = node.identityFingerprint
+        return QUICRuntimeStatusResolver.status(
+            policy: settings.quicPolicy,
+            protocolType: node.protocolType,
+            knownBrokenOnThisNode: quicKnownBrokenNodes.contains(fingerprint),
+            probePassedOnThisNode: quicProbePassedNodes.contains(fingerprint)
+        )
     }
 
     /// 当前 QUIC 策略下、给定节点的**有效阻断值**（传给扩展 / compose 的 blockQUIC bool）。
@@ -1312,6 +1332,8 @@ public final class AppState {
               !quicKnownBrokenNodes.contains(node.identityFingerprint) else { return }
         let fingerprint = node.identityFingerprint
         let nodeName = node.name
+        // 观测态：新一轮实测开始，该节点回到「实测中」（纯显示，不影响探测/阻断本身）。
+        quicProbePassedNodes.remove(fingerprint)
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(2))   // 给 xray 出站起身时间，降低刚建链的误判
             // 探测期间用户可能换了节点 / 关了 VPN / 切了策略 —— 再确认一次前置条件仍成立。
@@ -1322,6 +1344,11 @@ public final class AppState {
             let proto = await Self.probeHTTP3NegotiatedProtocol()
             guard QUICProbeDecision.shouldMarkBroken(networkProtocolName: proto) else {
                 self.logger.info("QUIC h3 probe OK on \(nodeName) (proto=\(proto ?? "nil")) — keeping QUIC allowed", category: "tunnel")
+                // 观测态：仍是同一节点在跑才记「实测通过」（换节点竞态下探测流量走的已是新节点，
+                // 结论不能记到旧指纹头上）。纯显示，不影响探测/阻断本身。
+                if self.isVPNRunning, self.currentNode?.identityFingerprint == fingerprint {
+                    self.quicProbePassedNodes.insert(fingerprint)
+                }
                 return
             }
             // 判坏。落地前再确认仍是同一节点、仍在跑（避免与用户操作竞态）。
