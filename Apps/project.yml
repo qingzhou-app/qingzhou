@@ -37,7 +37,7 @@ settings:
     #           回滚锚点 tag checkpoint/pre-failover-build8。
     # build 10 = 阻断 QUIC（reject UDP 443 默认开）修 YouTube/天气等 QUIC 站点通过代理不通。
     # build 11 = QUIC 智能三档（自动/强制开/强制关）+ hysteria2 节点 HTTP/3 实测修正。
-    CURRENT_PROJECT_VERSION: "14"
+    CURRENT_PROJECT_VERSION: "15"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 

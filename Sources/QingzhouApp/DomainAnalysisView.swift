@@ -74,10 +74,12 @@ public struct DomainAnalysisView: View {
                 Text("每日").tag(1)
                 Text("建议 \(suggestions.count + merges.count)").tag(2)
                 // 「应用」视角只在 macOS 有（iOS 拿不到进程归属，需 MDM 监督）。
-                // tab 常驻：来源 App 标注没开时不藏 tab，在 tab 内给开启指引 ——
-                // 藏起来用户不知道有这个能力（验收反馈定的交互）。
+                // 来源 App 标注下线（FeatureFlags.sourceAppLabeling=false）后整个 tab 消失；
+                // 功能在线时 tab 常驻（没开启也不藏，tab 内给开启指引，验收反馈定的交互）。
                 #if os(macOS)
-                Text("应用").tag(3)
+                if FeatureFlags.sourceAppLabeling {
+                    Text("应用").tag(3)
+                }
                 #endif
             }
             .pickerStyle(.segmented)
@@ -209,8 +211,13 @@ public struct DomainAnalysisView: View {
                     }
                 }
             default:
+                // 来源 App 标注下线后 mode 到不了 3（tab 已隐藏），保险起见仍 flag 门控。
                 #if os(macOS)
-                appSections(connections)
+                if FeatureFlags.sourceAppLabeling {
+                    appSections(connections)
+                } else {
+                    EmptyView()
+                }
                 #else
                 EmptyView()
                 #endif
