@@ -19,8 +19,8 @@
 
 ### 推广文本（≤170 字符，可随时改不用送审）
 
-- zh-Hans：`多维打分自动择优、零断流换节点、规则分流、流量与域名分析。你的节点，用到极致。`
-- en：`Multi-dimensional node scoring, seamless switching, smart rules, traffic insights. Your nodes, used to their fullest.`
+- zh-Hans：`多维打分自动择优、零断流换节点、规则分流、广告拦截、流量与域名分析。你的节点，用到极致。`
+- en：`Multi-dimensional node scoring, seamless switching, smart rules, ad blocking, traffic insights. Your nodes, used to their fullest.`
 
 ### 描述（zh-Hans）
 
@@ -40,8 +40,9 @@
 
 【分流与洞察】
 • 规则分流：域名 / IP / geo 规则，国内直连、国外代理，可自定义
+• 广告与追踪拦截：内置广告 / 追踪域名规则，命中即拒——App 内弹窗广告、埋点更少，页面更清爽、更省流量
 • 智能 QUIC 策略：自动为不同协议选择 HTTP/3 放行或回退，兼顾速度与兼容性
-• 实时流量波形、代理/直连占比、连接列表、域名分析与规则建议
+• 实时流量波形、代理 / 直连占比、连接列表、域名分析与规则建议（可按直连 / 代理 / 拒绝筛选）
 
 【系统集成】
 • 主屏 / 锁屏 / 控制中心小组件，实时显示隧道真实转发状态
@@ -75,8 +76,9 @@ PROTOCOLS & SUBSCRIPTIONS
 
 ROUTING & INSIGHTS
 • Rule-based routing: domain / IP / geo rules, fully customizable
+• Ad & tracker blocking: built-in ad / tracker domain rules — matched requests are rejected, so in-app pop-up ads and telemetry get cut for cleaner, lighter browsing
 • Smart QUIC policy: automatically allows HTTP/3 or falls back per protocol, balancing speed and compatibility
-• Live traffic waveform, proxy/direct split, connection list, domain analytics with rule suggestions
+• Live traffic waveform, proxy/direct split, connection list, domain analytics with rule suggestions (filterable by direct / proxy / reject)
 
 SYSTEM INTEGRATION
 • Home Screen / Lock Screen / Control Center widgets showing the tunnel's real forwarding state
@@ -94,13 +96,13 @@ Note: Qingzhou is a client tool. It does not provide any VPN service — you nee
 
 ### 关键词（≤100 字符/语言，逗号分隔不加空格）
 
-- zh-Hans：`vpn,代理,proxy,trojan,vmess,vless,shadowsocks,hysteria2,clash,订阅,分流,规则,节点,测速`
-- en：`vpn,proxy,trojan,vmess,vless,shadowsocks,hysteria2,clash,subscription,rules,xray,widget`
+- zh-Hans：`vpn,代理,proxy,trojan,vmess,vless,shadowsocks,hysteria2,clash,订阅,分流,规则,去广告,测速`
+- en：`vpn,proxy,trojan,vmess,vless,shadowsocks,hysteria2,clash,subscription,rules,xray,adblock`
 
 ### What's New（1.0）
 
-- zh-Hans：`轻舟 1.0 首航。多协议支持、多维打分择优、零断流切换、规则分流、流量与域名分析、小组件全家桶。`
-- en：`Maiden voyage. Multi-protocol support, smart node scoring, seamless switching, rule-based routing, traffic insights, and a full set of widgets.`
+- zh-Hans：`轻舟 1.0 首航。多协议支持、多维打分择优、零断流切换、规则分流、广告拦截、流量与域名分析、小组件全家桶。`
+- en：`Maiden voyage. Multi-protocol support, smart node scoring, seamless switching, rule-based routing, ad blocking, traffic insights, and a full set of widgets.`
 
 ### App Review 备注（送审信息 → 备注栏）
 
