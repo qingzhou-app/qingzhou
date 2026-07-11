@@ -11,6 +11,9 @@ public struct ConnectionsView: View {
     @State private var hideBareIPs = false
     /// 「隐藏 DNS」过滤：同款临时状态，两页联动。
     @State private var hideDNS = false
+    /// 「按路由筛选」（全部/直连/代理/拒绝）：与上面两个开关同级的临时状态，
+    /// 经 Binding 传给域名分析页联动；离开本页自动复位为 `.all`。收进统一的「筛选」菜单里。
+    @State private var routeFilter: ConnectionRouteFilter = .all
 
     enum ConnectionFilter: String, CaseIterable, Identifiable {
         case active = "活跃"
@@ -44,6 +47,11 @@ public struct ConnectionsView: View {
         }
         .navigationTitle("连接")
         .toolbar {
+            // 统一「筛选」菜单：路由单选 + 忽略 IP / 隐藏 DNS（收自原顶部那行两个 button）
+            ToolbarItem(placement: .primaryAction) {
+                ConnectionFilterMenu(routeFilter: $routeFilter,
+                                     hideBareIPs: $hideBareIPs, hideDNS: $hideDNS)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { showDomainAnalysis = true } label: {
                     // 图标 + 文字并显：toolbar 默认只出图标，第一眼看不懂。
@@ -63,7 +71,8 @@ public struct ConnectionsView: View {
         }
         .sheet(isPresented: $showDomainAnalysis) {
             NavigationStack {
-                DomainAnalysisView(state: state, hideBareIPs: $hideBareIPs, hideDNS: $hideDNS)
+                DomainAnalysisView(state: state, routeFilter: $routeFilter,
+                                   hideBareIPs: $hideBareIPs, hideDNS: $hideDNS)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("完成") { showDomainAnalysis = false }
@@ -122,12 +131,8 @@ public struct ConnectionsView: View {
                 }
             }
             .pickerStyle(.segmented)
-            // 两个过滤开关并排在分段控件下方：iOS 工具栏空间紧，这里文字能完整展示
-            HStack(spacing: 8) {
-                IgnoreIPToggle(isOn: $hideBareIPs)
-                HideDNSToggle(isOn: $hideDNS)
-                Spacer()
-            }
+            // 「忽略 IP / 隐藏 DNS / 按路由筛选」已收进 toolbar 的统一「筛选」菜单，
+            // 这里不再横排两个 button；筛选生效时下方 filterHint 会给同款轻提示。
             // DoH 检测：裸 IP 连接占比异常高时说明原因（可关闭，会话级）
             if DoHNoticeBanner.shouldShow(state: state) {
                 DoHNoticeBanner(state: state)
@@ -141,6 +146,9 @@ public struct ConnectionsView: View {
                            text: L("仅 IPv6 站点（无 IPv4 地址、直连不可达）：\(state.ipv6OnlyHosts.sorted().joined(separator: "、"))"))
             }
             // 过滤生效时的轻提示：避免用户忘了开着过滤，以为数据丢了
+            if let routeHint = routeFilter.filterHintText {
+                filterHint(icon: "line.3.horizontal.decrease.circle", text: routeHint)
+            }
             if hiddenIPCount > 0 {
                 filterHint(icon: "eye.slash", text: L("忽略 IP：已隐藏 \(hiddenIPCount) 条纯 IP 连接"))
             }
@@ -163,16 +171,16 @@ public struct ConnectionsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// 四层过滤：状态（活跃/已关闭）→ 关键字 →「隐藏 DNS」→「忽略 IP」。
-    /// `hiddenIPCount` / `hiddenDNSCount` 只统计前面层已命中、仅因该项被隐藏的条数，
-    /// 用于轻提示。DNS 判定在「忽略 IP」之前：DNS 查询目标是 IP，两个开关都会命中它，
-    /// 先归给 DNS 计数更贴合用户心智（这条被隐藏是因为它是 DNS，不是因为它是裸 IP）。
+    /// 五层过滤：状态（活跃/已关闭）→ 关键字 →「路由」→「隐藏 DNS」→「忽略 IP」。
+    /// 前两层（作用域 + 关键字）在这里做；后三层（路由/DNS/IP）复用 `ConnectionListFilter`
+    /// 的纯逻辑（与域名分析页同一套口径、有单测锁定）。
+    ///
+    /// `hiddenIPCount` / `hiddenDNSCount` 只统计「路由命中、仅因该项被隐藏」的条数（轻提示用）。
+    /// 层序（口径锁定）：路由（作用域，不计数）在最外，DNS 判定在「忽略 IP」之前
+    ///（DNS 查询目标也是 IP，两开关都会命中，先归 DNS 计数更贴心智）。详见 ConnectionListFilter。
     private var filtered: (visible: [Connection], hiddenIPCount: Int, hiddenDNSCount: Int) {
         let kw = keyword.lowercased()
-        var visible: [Connection] = []
-        var hiddenIP = 0
-        var hiddenDNS = 0
-        for c in state.connections {
+        let prefiltered = state.connections.filter { c in
             let scopeOK: Bool
             switch filter {
             case .active: scopeOK = c.isActive
@@ -184,22 +192,16 @@ public struct ConnectionsView: View {
                 || c.route.lowercased().contains(kw)
                 || c.matchedRule.lowercased().contains(kw)
                 || (c.sourceApp?.lowercased().contains(kw) ?? false)
-            guard scopeOK && kwOK else { continue }
-            if hideDNS && c.isDNSQuery {
-                hiddenDNS += 1
-                continue
-            }
-            if hideBareIPs && HostClassifier.isBareIP(c.targetHost) {
-                hiddenIP += 1
-                continue
-            }
-            visible.append(c)
+            return scopeOK && kwOK
         }
+        let r = ConnectionListFilter.apply(prefiltered, routeFilter: routeFilter,
+                                           hideDNS: hideDNS, hideBareIPs: hideBareIPs)
+        var visible = r.visible
         // 「已关闭」按关闭时间倒序 —— 刚关闭的在最上面；其他分组保持摄入序（新连接在前）
         if filter == .closed {
             visible.sort { ($0.closedAt ?? .distantPast) > ($1.closedAt ?? .distantPast) }
         }
-        return (visible, hiddenIP, hiddenDNS)
+        return (visible, r.hiddenBareIPCount, r.hiddenDNSCount)
     }
 
     private func connectionRow(_ c: Connection) -> some View {

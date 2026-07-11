@@ -13834,6 +13834,167 @@
           }
         }
       }
+    },
+    "筛选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フィルタ"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "篩選"
+          }
+        }
+      }
+    },
+    "路由": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Route"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ルート"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "路由"
+          }
+        }
+      }
+    },
+    "拒绝（广告/追踪）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reject (ads/trackers)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拒否（広告/トラッカー）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拒絕（廣告/追蹤）"
+          }
+        }
+      }
+    },
+    "隐藏 DNS": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide DNS"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS を非表示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隱藏 DNS"
+          }
+        }
+      }
+    },
+    "隐藏 DNS：已隐藏 %lld 条 DNS 查询": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide DNS: %lld DNS queries hidden"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS を非表示：%lld 件の DNS クエリを非表示にしました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隱藏 DNS：已隱藏 %lld 條 DNS 查詢"
+          }
+        }
+      }
+    },
+    "仅显示「%@」类连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing only %@ connections"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ の接続のみ表示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅顯示「%@」類連線"
+          }
+        }
+      }
+    },
+    "按路由（全部/直连/代理/拒绝）筛选，并可隐藏纯 IP / DNS 查询；离开页面自动恢复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter by route (All/Direct/Proxy/Reject), and optionally hide bare IPs / DNS queries; resets automatically when you leave the page"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ルート（すべて/直接/プロキシ/拒否）で絞り込み、IP のみ / DNS クエリを非表示にできます。ページを離れると自動的に元に戻ります"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "依路由（全部/直連/代理/拒絕）篩選，並可隱藏純 IP / DNS 查詢；離開頁面自動復原"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

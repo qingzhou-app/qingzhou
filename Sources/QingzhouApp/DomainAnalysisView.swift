@@ -5,6 +5,8 @@ import QingzhouCore
 /// 数据源是 `AppState.connections`（隧道上报的真实连接；access log 接入前是示例数据）。
 public struct DomainAnalysisView: View {
     @Bindable var state: AppState
+    /// 「按路由筛选」（全部/直连/代理/拒绝）：来自 ConnectionsView 的临时状态，两页联动。
+    @Binding var routeFilter: ConnectionRouteFilter
     /// 「忽略 IP」过滤：来自 ConnectionsView 的临时状态（不持久化），两页联动。
     @Binding var hideBareIPs: Bool
     /// 「隐藏 DNS」过滤：同款临时状态，两页联动。
@@ -21,21 +23,23 @@ public struct DomainAnalysisView: View {
     @State private var appTabAvailable = false
     #endif
 
-    public init(state: AppState, hideBareIPs: Binding<Bool>, hideDNS: Binding<Bool>) {
+    public init(state: AppState, routeFilter: Binding<ConnectionRouteFilter>,
+                hideBareIPs: Binding<Bool>, hideDNS: Binding<Bool>) {
         self.state = state
+        self._routeFilter = routeFilter
         self._hideBareIPs = hideBareIPs
         self._hideDNS = hideDNS
     }
 
     public var body: some View {
-        // 过滤（与连接页联动）：DNS 查询（隧道内部解析，非用户访问）+ 裸 IP 目标
-        //（FakeDNS 反查不到域名，对域名分析无价值）在聚合前剔除。
-        let unsearched = state.connections.filter {
-            if hideDNS && $0.isDNSQuery { return false }
-            if hideBareIPs && HostClassifier.isBareIP($0.targetHost) { return false }
-            return true
-        }
-        let hiddenIPCount = state.connections.count - unsearched.count
+        // 过滤（与连接页联动，同一套 ConnectionListFilter 口径）：路由（作用域）→ 隐藏 DNS →
+        // 忽略 IP 在**聚合前**逐连接剔除。逐连接过滤 = 与连接页「按连接筛选」精确一致：
+        // 某域名当天既走代理又走直连时，选「代理」只把它的代理连接聚进来（不会自相矛盾）。
+        let filterResult = ConnectionListFilter.apply(
+            state.connections, routeFilter: routeFilter, hideDNS: hideDNS, hideBareIPs: hideBareIPs)
+        let unsearched = filterResult.visible
+        let hiddenIPCount = filterResult.hiddenBareIPCount
+        let hiddenDNSCount = filterResult.hiddenDNSCount
         // 搜索：在连接层（聚合之前）按域名关键字过滤 —— 域名/建议/应用三个 tab 吃同一份
         // 过滤结果，口径天然一致；「每日」吃持久化 digest，用 filtered(byDomainKeyword:) 单独过。
         let kw = keyword.trimmingCharacters(in: .whitespaces).lowercased()
@@ -47,8 +51,18 @@ public struct DomainAnalysisView: View {
         let stats = DomainAnalyzer.aggregate(connections, sortBy: .connections)
         // 「每日」读按天聚合的持久化历史（跨重启、保留 30 天），不再从内存最近 200 条
         // 连接现算 —— 那是假历史。「忽略 IP」必须同样作用到这里，否则和域名 tab 数字对不上。
+        // 路由筛选在「每日」历史上按 DomainStat 的**代表 route 精确匹配**（`accepts`）：
+        // 持久化 digest 没有逐连接粒度可还原，只能按聚合后的代表 route 过滤，因此同一天走过
+        // 多路由的 `.mixed` 域名只在「全部」下出现——这是历史视图刻意的取舍（活的域名/建议/应用
+        // 三个 tab 走上面的连接级过滤，与连接页精确一致；仅此持久化视图退化到代表 route 口径）。
         let digests = state.domainHistory.digests(excludingBareIPs: hideBareIPs)
             .compactMap { $0.filtered(byDomainKeyword: kw) }
+            .compactMap { digest -> DailyDigest? in
+                guard routeFilter != .all else { return digest }
+                var d = digest
+                d.domains = digest.domains.filter { routeFilter.accepts($0.route) }
+                return d.domains.isEmpty ? nil : d
+            }
         let suggestions = DomainAnalyzer.suggestions(stats)
         // 「可合并规则」建议：来自自定义规则本身（与连接数据无关），跟随搜索关键字过滤
         let merges = RuleConsolidator.mergeSuggestions(customRules: state.customRules)
@@ -98,15 +112,17 @@ public struct DomainAnalysisView: View {
                 DoHNoticeBanner(state: state)
                     .listRowSeparator(.hidden)
             }
-            // 过滤生效时的轻提示，避免用户忘了开着过滤、以为数据少了
+            // 过滤生效时的轻提示，避免用户忘了开着过滤、以为数据少了（与连接页同款）
+            if let routeHint = routeFilter.filterHintText {
+                filterHintRow(icon: "line.3.horizontal.decrease.circle", text: routeHint)
+            }
             if hiddenIPCount > 0 {
-                HStack(spacing: 4) {
-                    Image(systemName: "eye.slash").imageScale(.small)
-                    Text("忽略 IP：已隐藏 \(hiddenIPCount) 条纯 IP 连接")
-                }
-                .font(.caption2)
-                .foregroundStyle(.orange)
-                .listRowSeparator(.hidden)
+                filterHintRow(icon: "eye.slash",
+                              text: L("忽略 IP：已隐藏 \(hiddenIPCount) 条纯 IP 连接"))
+            }
+            if hiddenDNSCount > 0 {
+                filterHintRow(icon: "point.3.filled.connected.trianglepath.dotted",
+                              text: L("隐藏 DNS：已隐藏 \(hiddenDNSCount) 条 DNS 查询"))
             }
 
             let searching = !kw.isEmpty
@@ -120,6 +136,7 @@ public struct DomainAnalysisView: View {
                     let newToday = state.domainHistory
                         .newTodayStats(excludingBareIPs: hideBareIPs)
                         .filter { kw.isEmpty || $0.domain.lowercased().contains(kw) }
+                        .filter { routeFilter.accepts($0.route) }   // 同「每日」历史的代表 route 口径
                     if !newToday.isEmpty {
                         Section {
                             ForEach(newToday.prefix(8)) { domainRow($0) }
@@ -205,14 +222,13 @@ public struct DomainAnalysisView: View {
             DomainDetailView(state: state, stat: s)
         }
         .toolbar {
+            // 与连接页同一个统一「筛选」菜单（路由单选 + 忽略 IP + 隐藏 DNS），两页联动
             ToolbarItem(placement: .primaryAction) {
-                IgnoreIPToggle(isOn: $hideBareIPs)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                HideDNSToggle(isOn: $hideDNS)
+                ConnectionFilterMenu(routeFilter: $routeFilter,
+                                     hideBareIPs: $hideBareIPs, hideDNS: $hideDNS)
             }
             ToolbarItem {
-                // 导出当前过滤视图（搜索 + 忽略 IP + 隐藏 DNS 生效后的域名聚合），空数据禁用
+                // 导出当前过滤视图（搜索 + 路由 + 忽略 IP + 隐藏 DNS 生效后的域名聚合），空数据禁用
                 DomainStatsExportButton(stats: stats, state: state)
             }
         }
@@ -406,6 +422,17 @@ public struct DomainAnalysisView: View {
     /// 搜索无结果的空态：和连接页一样明确说「是搜索导致的空」，别让用户以为没数据。
     private var searchEmptyState: some View {
         ContentUnavailableView.search(text: keyword)
+    }
+
+    /// 过滤生效轻提示行（List 行，橙色小字），路由/忽略 IP/隐藏 DNS 共用。
+    private func filterHintRow(icon: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).imageScale(.small)
+            Text(text)
+        }
+        .font(.caption2)
+        .foregroundStyle(.orange)
+        .listRowSeparator(.hidden)
     }
 
     private func routeBadge(_ r: DomainRoute) -> some View {
