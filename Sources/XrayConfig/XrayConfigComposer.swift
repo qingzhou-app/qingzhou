@@ -258,13 +258,17 @@ public enum XrayConfigComposer {
             // QUIC 阻断紧跟 DNS 之后、用户规则之前 —— 强制 UDP 443 回退 TCP，先于任何走代理规则。
             if blockQUIC { rules.append(quicRejectRule) }
             // 公共 DNS 明文上游强制直连（东方甄选类 bug 的正修，真机+workaround 双实证）：
-            // dns 模块用明文上游（阿里 / 8.8.8.8 / 1.1.1.1）解析时会**发出新的 UDP:53 查询**，
-            // 这些查询经过路由；catch-all「tcp,udp→proxy」会把 8.8.8.8 这种非 CN 目标当海外流量
-            // 踹去代理节点 → 绕远（几百 ms/超时）+ 从海外出口查国内域名拿到错误边缘 IP。
-            // 在用户规则之前钉死这些 DNS 上游走 direct。DoH（dns 里的 `https+local://`）本就绕
-            // 路由直连、不受此规则影响；这条兜住 DoH 被干扰时回退的明文路径。见 docs/DNS.md。
+            // dns 模块用明文上游（阿里 / 8.8.8.8 / 1.1.1.1）解析时会**发出新的查询**，这些查询
+            // 经过路由；catch-all「tcp,udp→proxy」会把 8.8.8.8 这种非 CN 目标当海外流量踹去代理
+            // → 绕远（几百 ms/超时）+ 从海外出口查国内域名拿到错误边缘 IP。在用户规则之前钉死。
+            //
+            // ⚠️ **纯 IP 规则、不加 network/port 限定**（2026-07-14 真机定案）：build 16 曾加
+            // `network:udp,port:53` 限定，真机实测**无效**、8.8.8.8 仍走代理；而用户手动加的
+            // 无限定纯 IP 规则**有效**。原因：xray 的 DNS 内部 resolver 发出的上游查询，其在路由里
+            // 呈现的 port 与真实 53 不一致（内部封装），port:53 限定匹配不到；只按目标 IP 匹配才拦得住。
+            // 副作用可忽略：这些 IP 本就只做 DNS。见 docs/DNS.md。
             rules.append([
-                "type": "field", "network": "udp", "port": 53,
+                "type": "field",
                 "ip": ["8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "223.5.5.5", "223.6.6.6"],
                 "outboundTag": "direct"
             ])
