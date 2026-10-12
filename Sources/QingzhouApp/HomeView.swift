@@ -123,7 +123,12 @@ public struct HomeView: View {
                             }
                         }
                     }
-                    if let n = state.currentNode {
+                    if state.isVPNRunning, let applied = state.appliedTunnelConfiguration {
+                        Text("\(applied.nodeName) · \(applied.protocolType.rawValue.uppercased())")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else if state.isVPNRunning {
+                        Text("正在确认实际连接").font(.caption).foregroundStyle(.secondary)
+                    } else if let n = state.currentNode {
                         Text("\(n.name) · \(n.protocolType.rawValue.uppercased())")
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
@@ -285,8 +290,20 @@ public struct HomeView: View {
 
     private var currentNodeCard: some View {
         Card(title: "当前节点", systemImage: "server.rack") {
+            if state.isVPNRunning {
+                if let applied = state.appliedTunnelConfiguration {
+                    Text("实际连接：\(applied.nodeName)")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("正在确认实际连接")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             if let node = state.currentNode {
                 VStack(alignment: .leading, spacing: 6) {
+                    if state.isVPNRunning {
+                        Text("已选择").font(.caption).foregroundStyle(.secondary)
+                    }
                     Text(node.name).font(.headline)
                     Text("\(node.protocolType.rawValue.uppercased()) · \(node.host):\(node.port)")
                         .font(.caption.monospaced()).foregroundStyle(.secondary)

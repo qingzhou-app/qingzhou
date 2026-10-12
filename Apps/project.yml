@@ -38,7 +38,8 @@ settings:
     # build 10 = 阻断 QUIC（reject UDP 443 默认开）修 YouTube/天气等 QUIC 站点通过代理不通。
     # build 11 = QUIC 智能三档（自动/强制开/强制关）+ hysteria2 节点 HTTP/3 实测修正。
     # build 20 = 订阅/测速/云镜像数据保护 + 统一评分黏性 + Hysteria2代理可用性候选。
-    CURRENT_PROJECT_VERSION: "20"
+    # build 21 = 扩展确认实际节点/模式，避免选择与运行状态混用；预检先于preferences写入。
+    CURRENT_PROJECT_VERSION: "21"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 

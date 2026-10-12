@@ -52,7 +52,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// 流量统计：两个拷贝循环在不同线程各自累加字节（上行在 readPackets 回调队列、
     /// 下行在 bridgeQueue），用 unfair lock 保护。定时器每秒算 delta 速率 + 写 App Group，
     /// 主 App 轮询读出来画波形 / 显示实时速率。
-    private struct ByteCounters { var up: Int64 = 0; var down: Int64 = 0; var lastUp: Int64 = 0; var lastDown: Int64 = 0 }
+    private struct ByteCounters {
+        var up: Int64 = 0; var down: Int64 = 0; var lastUp: Int64 = 0; var lastDown: Int64 = 0
+        var configurationWindow = TrafficConfigurationWindow()
+    }
     private let byteCounters = OSAllocatedUnfairLock(initialState: ByteCounters())
     private var statsTimer: DispatchSourceTimer?
     /// 流量统计定时器**专用**串行队列。绝不能复用 bridgeQueue —— 那上面跑着
@@ -116,7 +119,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// cancelTunnelWithError(nil) 后系统不会把隧道拉回来。
     private var autoStopTimer: DispatchSourceTimer?
     /// 本次会话标记（写 App Group 给主 App 画倒计时用）。到点自停时回填 stoppedAt 再写一次。
-    private var sessionInfo: TunnelSessionInfo?
+    private let sessionInfo = OSAllocatedUnfairLock(initialState: TunnelSessionInfo?.none)
 
     override func startTunnel(
         options: [String: NSObject]?,
@@ -221,6 +224,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 if error == nil {
                     // xray 真起来了才武装定时（并写会话标记给主 App 画倒计时）。
                     // 只在 startTunnel 路径武装 —— reconfigure（原地重配）不动定时，倒计时跨重配延续。
+                    let applied = Self.appliedConfiguration(
+                        nodeJSON: nodeJSON, mode: mode, blockQUIC: self.blockQUIC,
+                        requestID: (providerConfig?["requestID"] as? String).flatMap(UUID.init(uuidString:)))
+                    self.sessionInfo.withLock { current in
+                        current = TunnelSessionInfo(startedAt: Date(), autoStopSeconds: autoStopSeconds,
+                            appliedConfiguration: applied)
+                    }
                     self.armAutoStop(seconds: autoStopSeconds)
                 }
                 completionHandler(error)
@@ -520,9 +530,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         autoStopTimer?.cancel()
         autoStopTimer = nil
         // 始终写会话标记（含 0）—— 覆盖上一次会话的残留，主 App 才不会拿旧 deadline 画倒计时
-        let info = TunnelSessionInfo(startedAt: Date(), autoStopSeconds: max(0, seconds))
-        sessionInfo = info
-        writeSessionInfo(info)
+        sessionInfo.withLock { current in
+            let info = TunnelSessionInfo(startedAt: Date(), autoStopSeconds: max(0, seconds),
+                appliedConfiguration: current?.appliedConfiguration)
+            current = info
+            Self.writeSessionInfo(info)
+        }
         guard seconds > 0 else {
             os_log("auto-stop disarmed", log: log, type: .default)
             return
@@ -544,10 +557,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     ///    系统 UI 的 VPN 图标同步消失。On-Demand 没开（主 App configure 时约定），不会被拉回。
     private func performAutoStop() {
         os_log("auto-stop fired — stopping tunnel", log: log, type: .default)
-        if var info = sessionInfo {
-            info.stoppedAt = Date()
-            sessionInfo = info
-            writeSessionInfo(info)
+        sessionInfo.withLock { current in
+            if var info = current {
+                info.stoppedAt = Date()
+                current = info
+                Self.writeSessionInfo(info)
+            }
         }
         _ = XrayCore.stop()
         tearDownBridge()
@@ -555,7 +570,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     /// 会话标记 → App Group（ISO8601，与主 App AppGroupStorage 的解码策略一致）。
-    private func writeSessionInfo(_ info: TunnelSessionInfo) {
+    private static func writeSessionInfo(_ info: TunnelSessionInfo) {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(info),
@@ -579,12 +594,18 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let now = Date()
         let elapsed = lastReportAt.map { now.timeIntervalSince($0) } ?? 1
         lastReportAt = now
-        let snap = byteCounters.withLock { c -> (up: Int64, down: Int64, dUp: Int64, dDown: Int64) in
-            let dUp = c.up - c.lastUp
-            let dDown = c.down - c.lastDown
-            c.lastUp = c.up
-            c.lastDown = c.down
-            return (c.up, c.down, dUp, dDown)
+        let counters = byteCounters
+        let health = healthControl
+        let snap = sessionInfo.withLock { info in
+            let configurationID = health.withLock { $0.isSwitching } ? nil : info?.appliedConfiguration?.id
+            return counters.withLock { c -> (up: Int64, down: Int64, dUp: Int64, dDown: Int64, configurationID: UUID?) in
+                let dUp = c.up - c.lastUp
+                let dDown = c.down - c.lastDown
+                c.lastUp = c.up
+                c.lastDown = c.down
+                let attribution = c.configurationWindow.configurationForSample(current: configurationID)
+                return (c.up, c.down, dUp, dDown, attribution)
+            }
         }
         // 速率 = 字节增量 ÷ **实际**经过秒数（不假设定时器精确 1 秒，抗漂移/饿死）
         let secs = elapsed > 0.01 ? elapsed : 1
@@ -594,7 +615,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             uploadSpeedBps: Int64(Double(max(0, snap.dUp)) / secs),
             downloadSpeedBps: Int64(Double(max(0, snap.dDown)) / secs),
             activeConnections: 0,   // access log 接入后填真实连接数（a 的下一支线）
-            sampledAt: now
+            sampledAt: now,
+            configurationID: snap.configurationID
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601   // 跟主 App AppGroupStorage.read 的解码策略一致
@@ -797,7 +819,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         os_log("reconfigure → node=%{public}@ mode=%{public}@ userRules=%d",
                log: log, type: .default, nodeName, mode.rawValue, userRules.count)
         // 健康判死器：进入切换窗口，硬 guard 暂停喂样本（stop→start 计数跳变会虚假触发，F24）。
-        healthControl.withLock { $0.isSwitching = true }
+        let health = healthControl
+        sessionInfo.withLock { _ in health.withLock { $0.isSwitching = true } }
         // 重配也重新解析 geo：可能刚下载完完整版（下载成功触发的热切换就是走这条链路的全量重启，
         // 但保留原地重配路径的正确性 —— 一旦重新启用不至于用错数据）。
         let geo = resolveGeoData()
@@ -828,6 +851,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         _ = XrayCore.stop()
         tearDownBridge()
         bringUpXray(configJSON: xrayJSON) { [weak self] error in
+            let applied = error == nil ? Self.appliedConfiguration(
+                nodeJSON: nodeJSON, mode: mode, blockQUIC: self?.blockQUIC ?? true) : nil
+            self?.sessionInfo.withLock { current in
+                guard var info = current else { return }
+                info.appliedConfiguration = applied
+                current = info
+                Self.writeSessionInfo(info)
+            }
             // 切换完成：退出窗口 + 请求重建 baseline（新节点从头判，含 grace），更新节点名。
             self?.healthControl.withLock { c in
                 c.isSwitching = false
@@ -842,12 +873,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// 热替换成新节点（libXray 本地扩展 SwitchOutbound，见 scripts/patches/libxray/）。
     /// 路由规则指向的 tag 不变，新连接立刻走新出口 —— 换节点零断流、图标不闪。
     /// 失败回错，主 App 回退到全量重启（安全网）。
-    private func switchNode(nodeJSON: String, shareLink: String, nodeName: String,
+    private func switchNode(nodeJSON: String, shareLink: String, nodeName: String, requestID: UUID?,
                             reply: @escaping (Error?) -> Void) {
         os_log("switchNode → node=%{public}@ (in-place, tunnel kept alive)",
                log: log, type: .default, nodeName)
         // 健康判死器：进入切换窗口，硬 guard 暂停喂样本（F24）。
-        healthControl.withLock { $0.isSwitching = true }
+        let health = healthControl
+        sessionInfo.withLock { _ in health.withLock { $0.isSwitching = true } }
         do {
             let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
             guard let data = outboundsJSON.data(using: .utf8),
@@ -863,6 +895,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 data: try JSONSerialization.data(withJSONObject: outbound),
                 encoding: .utf8) ?? "{}"
             try XrayCore.switchOutbound(outboundJSON: outboundJSON)
+            // 只有Go确认换出口成功才提交。失败保持旧配置；模式和routing继承当前实例。
+            sessionInfo.withLock { current in
+                guard var info = current, let old = info.appliedConfiguration else { return }
+                info.appliedConfiguration = Self.appliedConfiguration(
+                    nodeJSON: nodeJSON, mode: old.mode, blockQUIC: old.blockQUIC, requestID: requestID)
+                current = info
+                Self.writeSessionInfo(info)
+            }
             os_log("switchNode done: proxy outbound now %{public}@", log: log, type: .default, nodeName)
             // 切换完成：退出窗口 + 请求重建 baseline（新节点从头判，含 grace），更新节点名。
             healthControl.withLock { c in
@@ -965,6 +1005,16 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
+    private static func appliedConfiguration(nodeJSON: String, mode: ProxyMode,
+                                             blockQUIC: Bool, requestID: UUID? = nil) -> AppliedTunnelConfiguration? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let data = nodeJSON.data(using: .utf8), let node = try? decoder.decode(Node.self, from: data) else {
+            return nil  // 旧shareLink-only路径无法确定Node身份，明确保留未知。
+        }
+        return AppliedTunnelConfiguration(node: node, mode: mode, blockQUIC: blockQUIC, requestID: requestID)
+    }
+
     override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)?) {
         guard let obj = try? JSONSerialization.jsonObject(with: messageData) as? [String: String],
               let command = obj["command"] else {
@@ -993,11 +1043,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             switchNode(
                 nodeJSON: obj["nodeJSON"] ?? "",
                 shareLink: obj["shareLink"] ?? "",
-                nodeName: obj["nodeName"] ?? "node"
+                nodeName: obj["nodeName"] ?? "node",
+                requestID: obj["requestID"].flatMap(UUID.init(uuidString:))
             ) { error in
-                let payload: [String: Any] = error == nil
+                var payload: [String: Any] = error == nil
                     ? ["ok": true]
                     : ["ok": false, "error": error!.localizedDescription]
+                if error == nil, let id = self.sessionInfo.withLock({ $0?.appliedConfiguration?.id }) {
+                    payload["configurationID"] = id.uuidString
+                }
                 completionHandler?(try? JSONSerialization.data(withJSONObject: payload))
             }
         case "setAutoStop":

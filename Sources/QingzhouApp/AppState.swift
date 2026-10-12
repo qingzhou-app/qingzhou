@@ -40,6 +40,15 @@ public final class AppState {
         didSet { selectionIntentGeneration &+= 1 }
     }
     private var selectionIntentGeneration: UInt64 = 0
+    /// 扩展确认的实际配置；当前选择只是用户请求，不能用于推断数据面的节点。
+    public private(set) var appliedTunnelConfiguration: AppliedTunnelConfiguration?
+    private var expectedAppliedConfigurationID: UUID?
+    private var expectedTunnelRequestID: UUID?
+    private var contradictedConfigurationIDs: Set<UUID> = []
+    public var runningNode: Node? {
+        guard let appliedTunnelConfiguration else { return nil }
+        return nodes.first { appliedTunnelConfiguration.matches($0) }
+    }
     public var customRules: [Rule] = []
     public var remoteRules: [Rule] = []
     /// 连接列表（UI 读这里）。写入/老化/关闭统一走 `connectionTracker`，
@@ -100,7 +109,15 @@ public final class AppState {
     /// didSet 是小组件的主刷新时机：连接成功 / 断开 / 定时自停 / 启动采认……所有改到
     /// 这个值的路径都会踢一脚 WidgetKit（拉模型，不踢它 30 分钟才兜底刷新）。
     public var isVPNRunning: Bool = false {
-        didSet { if oldValue != isVPNRunning { WidgetRefresher.reload() } }
+        didSet {
+            if !isVPNRunning {
+                appliedTunnelConfiguration = nil
+                expectedAppliedConfigurationID = nil
+                expectedTunnelRequestID = nil
+                contradictedConfigurationIDs.removeAll()
+            }
+            if oldValue != isVPNRunning { WidgetRefresher.reload() }
+        }
     }
     /// 热切换窗口标志：VPN 运行中切节点/模式触发全量重启（stop→start）期间为 true。
     /// UI 用它把开关滑到"关"、显示"切换中…"——跟真实断流窗口一致，不做假动画。
@@ -228,10 +245,6 @@ public final class AppState {
     /// 生命周期与 broken 集一致（本会话内存缓存）；每轮实测开始时移除该节点，回到「实测中」。
     /// internal 供单测注入。
     var quicProbePassedNodes: Set<String> = []
-    /// 当前**正在跑的隧道**其 routing 是按哪个 blockQUIC 有效值构建的。用于判断原地换出口
-    /// （nodeOnly，SwitchOutbound 只换 outbound、不重建 routing）是否会留下过期的 QUIC 路由 ——
-    /// 新节点有效阻断值与它不一致时必须升级为全量重启重建 routing。startTunnel / 全量重配时更新。
-    private var runningBlockQUIC: Bool = true
     /// access log 文件已读到的字节位置（增量读，不重复解析）。
     private var accessLogOffset: UInt64 = 0
     /// matchedRule 回填器（内含 host→规则 缓存）。规则集 / proxyMode 变化时按 key 重建。
@@ -411,7 +424,8 @@ public final class AppState {
     /// 推导是纯函数 QUICRuntimeStatusResolver.status；探测 / 阻断语义零改动，只加可见性。
     /// 见 docs/QUIC.md「状态可视化」。
     public var quicRuntimeStatus: QUICRuntimeStatus? {
-        guard isVPNRunning, let node = currentNode else { return nil }
+        guard isVPNRunning, let applied = appliedTunnelConfiguration, let node = runningNode,
+              effectiveBlockQUIC(for: node) == applied.blockQUIC else { return nil }
         let fingerprint = node.identityFingerprint
         return QUICRuntimeStatusResolver.status(
             policy: settings.quicPolicy,
@@ -1061,6 +1075,7 @@ public final class AppState {
     public func select(_ node: Node) {
         guard nodes.contains(where: { $0.id == node.id }) else { return }
         let changed = currentNodeId != node.id
+            || (isVPNRunning && appliedTunnelConfiguration?.matches(node) != true)
         currentNodeId = node.id
         logger.info("Selected node \(node.name)", category: "app")
         persist()
@@ -1255,7 +1270,8 @@ public final class AppState {
                 description: L("轻舟 · \(node.name)")
             )
             try await tunnelManager.start()
-            runningBlockQUIC = effBlockQUIC   // 记录本会话 routing 所用的有效阻断值
+            expectedAppliedConfigurationID = nil
+            expectedTunnelRequestID = tunnelManager.configuredRequestID
             isVPNRunning = true
             lastTunnelStartAt = Date()   // 之后只认不早于此刻的会话标记（滤掉上次会话残留）
             tunnelError = nil
@@ -1296,6 +1312,8 @@ public final class AppState {
                 guard let self, self.isVPNRunning, !self.isSwitchingTunnel else { return }
                 let status = self.tunnelManager.status
                 if status == .connected {
+                    self.syncAppliedConfiguration(session: AppGroupStorage.read(
+                        TunnelSessionInfo.self, from: "tunnel-session"), status: status)
                     self.verifyTunnelConnectivity()
                     return
                 }
@@ -1323,14 +1341,14 @@ public final class AppState {
     ///
     /// 直连模式不探测：没有代理链路，墙内访问 google 本来就通不了，会误报。
     private func verifyTunnelConnectivity() {
-        guard settings.proxyMode != .direct else { return }
+        guard let applied = appliedTunnelConfiguration, applied.mode != .direct else { return }
         // 并行跑一次 QUIC/HTTP3 实测（仅 auto + hysteria2 + 当前放行 QUIC 时）——
         // 与下面的通用连通性哨兵各自独立。
         probeQUICForCurrentNodeIfNeeded()
         let preferred = settings.proxiedTestTarget
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(2))   // 给 xray 出站起身时间，降低刚建链的误报
-            guard let self, self.isVPNRunning, !self.isSwitchingTunnel else { return }
+            guard let self, self.isVPNRunning, !self.isSwitchingTunnel, self.appliedTunnelConfiguration?.id == applied.id else { return }
             // 多目标：任一通过即算联网。一个节点出口 reset Google 却能到 Cloudflare 是好节点，
             // 单点探测（旧实现只打 google/generate_204）会把这种节点误判成「无法访问外网」。
             for attempt in 0..<2 {
@@ -1339,7 +1357,7 @@ public final class AppState {
                     return
                 }
                 if attempt == 0 { try? await Task.sleep(for: .seconds(3)) }
-                guard self.isVPNRunning, !self.isSwitchingTunnel else { return }
+                guard self.isVPNRunning, !self.isSwitchingTunnel, self.appliedTunnelConfiguration?.id == applied.id else { return }
             }
             self.tunnelError = L("VPN 已连接，但多个探测目标（Cloudflare / Apple / Google）都访问不通，当前节点可能已失效或凭据错误。若你确认能正常上网，可能只是探测站点被临时阻断——可在设置→测速里换个探测目标，或直接换节点。")
             self.logger.error("Connectivity probe failed on all targets after tunnel connected", category: "tunnel")
@@ -1383,11 +1401,14 @@ public final class AppState {
     /// （未标记坏）。其余情况（强制档 / TCP 基节点 / 已挡）都无需探测。见 docs/QUIC.md。
     private func probeQUICForCurrentNodeIfNeeded() {
         guard settings.quicPolicy == .auto,
-              let node = currentNode,
+              let applied = appliedTunnelConfiguration, !applied.blockQUIC,
+              let node = runningNode,
+              currentNode?.identityFingerprint == node.identityFingerprint, settings.proxyMode == applied.mode,
               node.protocolType == .hysteria2,
               !quicKnownBrokenNodes.contains(node.identityFingerprint) else { return }
         let fingerprint = node.identityFingerprint
         let nodeName = node.name
+        let intent = selectionIntentGeneration
         // 观测态：新一轮实测开始，该节点回到「实测中」（纯显示，不影响探测/阻断本身）。
         quicProbePassedNodes.remove(fingerprint)
         Task { @MainActor [weak self] in
@@ -1395,21 +1416,24 @@ public final class AppState {
             // 探测期间用户可能换了节点 / 关了 VPN / 切了策略 —— 再确认一次前置条件仍成立。
             guard let self, self.isVPNRunning, !self.isSwitchingTunnel,
                   self.settings.quicPolicy == .auto,
-                  self.currentNode?.identityFingerprint == fingerprint,
+                  self.selectionIntentGeneration == intent, self.appliedTunnelConfiguration?.id == applied.id,
+                  self.runningNode?.identityFingerprint == fingerprint,
                   !self.quicKnownBrokenNodes.contains(fingerprint) else { return }
             let proto = await Self.probeHTTP3NegotiatedProtocol()
+            guard self.settings.quicPolicy == .auto, self.selectionIntentGeneration == intent,
+                  self.appliedTunnelConfiguration?.id == applied.id else { return }
             guard QUICProbeDecision.shouldMarkBroken(networkProtocolName: proto) else {
                 self.logger.info("QUIC h3 probe OK on \(nodeName) (proto=\(proto ?? "nil")) — keeping QUIC allowed", category: "tunnel")
                 // 观测态：仍是同一节点在跑才记「实测通过」（换节点竞态下探测流量走的已是新节点，
                 // 结论不能记到旧指纹头上）。纯显示，不影响探测/阻断本身。
-                if self.isVPNRunning, self.currentNode?.identityFingerprint == fingerprint {
+                if self.isVPNRunning, self.runningNode?.identityFingerprint == fingerprint {
                     self.quicProbePassedNodes.insert(fingerprint)
                 }
                 return
             }
             // 判坏。落地前再确认仍是同一节点、仍在跑（避免与用户操作竞态）。
             guard self.isVPNRunning, !self.isSwitchingTunnel,
-                  self.currentNode?.identityFingerprint == fingerprint else { return }
+                  self.runningNode?.identityFingerprint == fingerprint else { return }
             self.quicKnownBrokenNodes.insert(fingerprint)
             self.logger.warn("QUIC h3 probe failed (proto=\(proto ?? "nil")) on \(nodeName) — blocking QUIC + reconfigure", category: "tunnel")
             // 整实例重配：routing 会带上 blockQUIC=true（此刻 effectiveBlockQUIC 已返回 true）。
@@ -1523,6 +1547,9 @@ public final class AppState {
         guard isVPNRunning,
               let node = currentNode,
               let shareLink = NodeEncoder.shareLink(node) else { return }
+        let mode = settings.proxyMode
+        let rules = effectiveUserRules
+        let autoStopSeconds = settings.autoStopSeconds
         isSwitchingTunnel = true
         // 热切换里 isVPNRunning 不变但节点（providerConfiguration 里的节点名）变了 ——
         // 退出时踢一次小组件刷新，别让 widget 上的节点名停留在旧值。
@@ -1532,30 +1559,49 @@ public final class AppState {
         }
         // 新节点在当前 QUIC 策略下的有效阻断值。
         let effBlockQUIC = effectiveBlockQUIC(for: node)
+        // 配置预检：趁旧隧道还在跑，先让扩展用同款构建流程校验新节点的配置（libXray
+        // TestXray）。配置非法 → 不拆在跑的隧道，直接报错返回 —— 否则坏配置会把好隧道
+        // 换成起不来的新会话，用户直接断网。预检本身没跑成（超时等）不拦：尽力而为继续切。
+        do {
+            try await tunnelManager.testNodeConfig(
+                node: node, mode: mode, shareLink: shareLink, rules: rules
+            )
+        } catch VPNTunnelManager.TunnelError.configRejected(let reason) {
+            tunnelError = L("已保持当前节点连接不变。切换目标节点配置无效：\(reason)")
+            logger.error("Pre-switch config test rejected \(node.name): \(reason)", category: "tunnel")
+            return   // 旧隧道原样保留
+        } catch {
+            logger.warn("Pre-switch config test unavailable (\(error)) — continuing switch", category: "tunnel")
+        }
         // 快路径：只换节点（mode / 规则没变）时先试扩展内原地换出口（libXray
         // SwitchOutbound 热替换 "proxy" handler）—— 隧道 / TUN / 路由 / DNS 全不动，
         // 零断流、系统 VPN 图标不闪。任何失败（xray 没在跑 / 节点构建失败 / 扩展
         // 超时）都回退到下面的全量重启，原安全网不变。
         //
         // ⚠️ 但原地换出口**不重建 routing** —— 若新节点有效阻断值与当前隧道 routing 所用的
-        // （runningBlockQUIC）不一致（如 trojan[挡]→hysteria2[放行]，或反向），原地切会留下
+        // （扩展确认的blockQUIC）不一致（如 trojan[挡]→hysteria2[放行]，或反向），原地切会留下
         // 过期的 QUIC 路由。此时降级为全量重启（下方路径重建 routing）。一致时才走零断流快路径。
-        if scope == .nodeOnly && effBlockQUIC == runningBlockQUIC {
+        if scope == .nodeOnly, let applied = appliedTunnelConfiguration,
+           applied.mode == mode, applied.blockQUIC == effBlockQUIC {
             do {
                 // 先落盘新节点配置：扩展若之后被系统回收再由 On-Demand 拉起，用的是
                 // providerConfiguration —— 不落盘会复活成旧节点。saveToPreferences
                 // 不打扰运行中的隧道。
                 try await tunnelManager.configure(
                     node: node,
-                    mode: settings.proxyMode,
+                    mode: mode,
                     shareLink: shareLink,
-                    rules: effectiveUserRules,
+                    rules: rules,
                     // 原地切换 = 同一会话延续：定时倒计时不重置（扩展侧计时器没动）
-                    autoStopSeconds: settings.autoStopSeconds,
-                    blockQUIC: effBlockQUIC,   // == runningBlockQUIC，routing 无需变
+                    autoStopSeconds: autoStopSeconds,
+                    blockQUIC: effBlockQUIC,   // == applied.blockQUIC，routing 无需变
                     description: L("轻舟 · \(node.name)")
                 )
-                try await tunnelManager.switchNodeInPlace(node: node, shareLink: shareLink)
+                let confirmedID = try await tunnelManager.switchNodeInPlace(node: node, shareLink: shareLink)
+                recordAppliedAcknowledgement(confirmedID)
+                expectedTunnelRequestID = tunnelManager.configuredRequestID
+                syncAppliedConfiguration(session: AppGroupStorage.read(
+                    TunnelSessionInfo.self, from: "tunnel-session"), status: tunnelManager.status)
                 markAllConnectionsClosed()   // 旧 handler 已关，旧代理连接全部终止
                 verifyTunnelConnectivity()   // 新节点未必真可用，哨兵照跑
                 logger.info("In-place switched outbound to \(node.name) — tunnel kept alive", category: "tunnel")
@@ -1565,32 +1611,18 @@ public final class AppState {
                 logger.warn("In-place switch failed (\(reason)) — falling back to full restart", category: "tunnel")
             }
         }
-        // 配置预检：趁旧隧道还在跑，先让扩展用同款构建流程校验新节点的配置（libXray
-        // TestXray）。配置非法 → 不拆在跑的隧道，直接报错返回 —— 否则坏配置会把好隧道
-        // 换成起不来的新会话，用户直接断网。预检本身没跑成（超时等）不拦：尽力而为继续切。
-        do {
-            try await tunnelManager.testNodeConfig(
-                node: node, mode: settings.proxyMode, shareLink: shareLink, rules: effectiveUserRules
-            )
-        } catch VPNTunnelManager.TunnelError.configRejected(let reason) {
-            tunnelError = L("已保持当前节点连接不变。切换目标节点配置无效：\(reason)")
-            logger.error("Pre-switch config test rejected \(node.name): \(reason)", category: "tunnel")
-            return   // 旧隧道原样保留
-        } catch {
-            logger.warn("Pre-switch config test unavailable (\(error)) — continuing switch", category: "tunnel")
-        }
         // ⚠️ 原地无感重配（reconfigureInPlace + 扩展 handleAppMessage）暂时禁用 —— 实测在
         // 某些切换（规则→全局）上会让 xray 卡死、之后连全量重启都救不回来，疑似 xray-core
         // 在同一扩展进程内 stop→run 有全局状态没干净复位。扩展侧代码保留待查，这里先走全量重启。
         do {
             try await tunnelManager.configure(
                 node: node,
-                mode: settings.proxyMode,
+                mode: mode,
                 shareLink: shareLink,
-                rules: effectiveUserRules,
+                rules: rules,
                 // 热切换 = 全量重启 = 新会话：定时按设置的时长**重新计时**（切节点/模式后
                 // 从头再数）。不带旧剩余时间过去 —— 语义简单、扩展侧无需额外状态。
-                autoStopSeconds: settings.autoStopSeconds,
+                autoStopSeconds: autoStopSeconds,
                 blockQUIC: effBlockQUIC,   // 全量重启会重建 routing，带上新有效阻断值
                 description: L("轻舟 · \(node.name)")
             )
@@ -1609,7 +1641,8 @@ public final class AppState {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             try await tunnelManager.start()
-            runningBlockQUIC = effBlockQUIC   // 新会话 routing 已按新有效阻断值重建
+            expectedAppliedConfigurationID = nil
+            expectedTunnelRequestID = tunnelManager.configuredRequestID
             lastTunnelStartAt = Date()   // 新会话：时长从新会话标记重新计（滤掉旧标记残留）
             // start() 只等"启动请求提交成功"，不等隧道真连上 —— 到这里就收窗口的话，
             // 开关会在 xray 还没就绪时就滑回"开"（规则模式加载 geo 那几秒尤其明显）。
@@ -1619,13 +1652,20 @@ public final class AppState {
                 if tunnelManager.status == .connected { break }
                 try? await Task.sleep(for: .milliseconds(100))
             }
+            guard tunnelManager.status == .connected else {
+                throw VPNTunnelManager.TunnelError.underlying(NSError(
+                    domain: "qingzhou.tunnel", code: -4,
+                    userInfo: [NSLocalizedDescriptionKey: L("隧道切换未能在规定时间内连接")]))
+            }
+            syncAppliedConfiguration(session: AppGroupStorage.read(
+                TunnelSessionInfo.self, from: "tunnel-session"), status: tunnelManager.status)
             // 恢复 On-Demand（与 configure 同一规则：定时会话不开）—— 切换窗口结束，
             // 扩展再被系统回收时仍能自动重连。
-            if settings.autoStopSeconds <= 0 {
+            if autoStopSeconds <= 0 {
                 try? await tunnelManager.setOnDemandEnabled(true)
             }
             verifyTunnelConnectivity()   // 热切换后同样要哨兵：配置合法 ≠ 节点真的可用
-            logger.info("Clean-restart switched tunnel to \(node.name) / \(settings.proxyMode.rawValue)", category: "tunnel")
+            logger.info("Clean-restart switched tunnel to \(node.name) / \(mode.rawValue)", category: "tunnel")
         } catch {
             tunnelError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             logger.error("Hot-switch failed: \(tunnelError ?? "?")", category: "tunnel")
@@ -2406,7 +2446,7 @@ public final class AppState {
         guard let text = String(data: data, encoding: .utf8) else { return }
         let entries = AccessLogParser.parse(text)
         guard !entries.isEmpty else { return }
-        let proxyName = currentNode?.name
+        let proxyName = appliedTunnelConfiguration?.nodeName
         let resolver = currentMatchedRuleResolver()
         var newConnections: [Connection] = []
         newConnections.reserveCapacity(entries.count)
@@ -2547,7 +2587,7 @@ public final class AppState {
     /// 最新样本（无样本按 0），phase 取系统真实 VPN 状态，计时起点复用 `connectedSince`
     /// （与首页倒计时同一口径，扩展写的会话标记）。macOS 上 controller 全 no-op。
     private func syncLiveActivity() {
-        guard settings.showLiveActivity, isVPNRunning, let node = currentNode else {
+        guard settings.showLiveActivity, isVPNRunning, let applied = appliedTunnelConfiguration else {
             liveActivity.endAll()
             return
         }
@@ -2559,22 +2599,32 @@ public final class AppState {
         }
         let traffic = trafficHistory.latest ?? TrafficStats()
         let state = QingzhouActivityContentState(phase: phase, connectedSince: connectedSince, traffic: traffic)
-        liveActivity.start(nodeName: node.name, protocolName: node.protocolType.rawValue, state: state)
+        liveActivity.start(nodeName: applied.nodeName, protocolName: applied.protocolType.rawValue, state: state)
     }
 
     /// appex 经 App Group 上报的真实 `TrafficStats` 喂进波形窗口。UI 观察 `trafficHistory` 自动重绘。
     /// 顺手做**被动带宽观测**：把当前节点跑出的下行速率峰值记到该节点上（零额外流量）。
     public func ingestTrafficStats(_ stats: TrafficStats) {
         trafficHistory.record(stats)
-        recordObservedBandwidth(downBps: stats.downloadSpeedBps)
+        if abs(stats.sampledAt.timeIntervalSinceNow) <= 3, let id = stats.configurationID {
+            contradictedConfigurationIDs.remove(id) // 新心跳可再次证实此前暂时未知的配置。
+            if let applied = appliedTunnelConfiguration, id != applied.id {
+                contradictedConfigurationIDs.insert(applied.id)
+                appliedTunnelConfiguration = nil
+            }
+        }
+        recordObservedBandwidth(stats)
     }
 
     /// 把当前节点跑出的下行速率并入它的观测峰值。只在有明显下载（≥ floor）且刷新了峰值时
     /// 才落盘 —— 峰值只增不减、更新很稀疏，不会每秒刷盘。
-    private func recordObservedBandwidth(downBps: Int64) {
-        guard downBps >= Self.bandwidthObserveFloorBps,
-              let id = currentNodeId,
-              let idx = nodes.firstIndex(where: { $0.id == id }) else { return }
+    private func recordObservedBandwidth(_ stats: TrafficStats) {
+        let downBps = stats.downloadSpeedBps
+        guard isVPNRunning, !isSwitchingTunnel,
+              downBps >= Self.bandwidthObserveFloorBps,
+              let applied = appliedTunnelConfiguration, applied.mode != .direct,
+              stats.configurationID == applied.id,
+              let idx = nodes.firstIndex(where: { applied.matches($0) }) else { return }
         if downBps > (nodes[idx].observedPeakDownBps ?? 0) {
             nodes[idx].observedPeakDownBps = downBps
             nodes[idx].observedBandwidthAt = Date()
@@ -2605,8 +2655,6 @@ public final class AppState {
             }
             syncAutoStopState()   // 定时关闭：刷新倒计时 + 识别「扩展已按定时自停」
             syncTunnelMemory()    // 扩展内存观测：读快照 + 新增告警转写进主 App 日志
-            syncLiveActivity()    // 灵动岛/锁屏实时活动：每秒推进速率 + phase（主 App 前台时）
-            syncNodeHealth()      // 节点健康：读扩展写的 suspect 信号 → 驱动故障提醒横幅
             // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）
             if let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats"),
                abs(stats.sampledAt.timeIntervalSinceNow) <= 3 {   // 只接受新鲜样本，避免旧文件
@@ -2620,6 +2668,8 @@ public final class AppState {
                     markAllConnectionsClosed()
                 }
             }
+            syncLiveActivity()    // 先让新心跳校验配置身份，再展示实际节点。
+            syncNodeHealth()
             // xray per-outbound 拆分（代理/直连占比）。扩展每 2 秒写一次，5 秒新鲜窗口；
             // 过期（VPN 停了 / 本会话没开 metrics）就收起，不显示残留数据。
             // "xray-stats" 与 XrayCore.TunnelAppGroup.xrayStatsName 一致（两模块互不依赖）。
@@ -2698,6 +2748,7 @@ public final class AppState {
         guard !isSwitchingTunnel else { return }   // 热切换窗口内状态是过渡态，别误判
         // 文件名与 XrayCore.TunnelAppGroup.tunnelSessionName 一致（两模块互不依赖）
         let session = AppGroupStorage.read(TunnelSessionInfo.self, from: "tunnel-session")
+        syncAppliedConfiguration(session: session, status: tunnelManager.status)
 
         if isVPNRunning, let s = session, s.stoppedAt == nil,
            let deadline = s.deadline, deadline > Date() {
@@ -2747,6 +2798,36 @@ public final class AppState {
         } else if tunnelManager.status == .connected {
             loggedUnexpectedTunnelDeath = false
         }
+    }
+
+    /// 会话是扩展的提交点，系统已连接才采认；启动窗口中拒绝上次会话的残留。
+    func syncAppliedConfiguration(session: TunnelSessionInfo?, status: NEVPNStatus) {
+        guard status == .connected || status == .reasserting,
+              let session, session.stoppedAt == nil,
+              session.startedAt >= (lastTunnelStartAt ?? .distantPast).addingTimeInterval(-1) else {
+            appliedTunnelConfiguration = nil
+            return
+        }
+        if let expectedAppliedConfigurationID,
+           session.appliedConfiguration?.id != expectedAppliedConfigurationID {
+            appliedTunnelConfiguration = nil
+            return
+        }
+        if let expectedTunnelRequestID,
+           session.appliedConfiguration?.requestID != expectedTunnelRequestID {
+            appliedTunnelConfiguration = nil
+            return
+        }
+        if let id = session.appliedConfiguration?.id, contradictedConfigurationIDs.contains(id) {
+            appliedTunnelConfiguration = nil
+            return
+        }
+        appliedTunnelConfiguration = session.appliedConfiguration
+    }
+
+    /// 回执与共享文件独立，写文件失败时不能继续采认旧会话为实际配置。
+    func recordAppliedAcknowledgement(_ id: UUID?) {
+        expectedAppliedConfigurationID = id
     }
 }
 

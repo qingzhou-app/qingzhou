@@ -56,6 +56,7 @@ public final class VPNTunnelManager {
 
     private let logger: Logger?
     private(set) public var manager: NETunnelProviderManager?
+    private(set) public var configuredRequestID: UUID?
     private var observer: NSObjectProtocol?
 
     // Extension 的 Bundle Identifier，必须和 project.yml 里 VPN-Tunnel-* target 的 PRODUCT_BUNDLE_IDENTIFIER 一致
@@ -144,6 +145,7 @@ public final class VPNTunnelManager {
         // Extension 启动时通过 protocolConfiguration.providerConfiguration 读出来。
         // 不再需要 App Group 共享存储，因此不会触发「访问其他 App 数据」隐私弹窗。
         var providerConfig: [String: Any] = [
+            "requestID": UUID().uuidString,
             "nodeJSON": nodeJSON,
             "shareLink": shareLink,  // fallback 通道
             "nodeId": node.id.uuidString,
@@ -186,6 +188,7 @@ public final class VPNTunnelManager {
         do {
             try await manager.saveToPreferences()
             try await manager.loadFromPreferences()  // 重读，否则 connection 是旧的
+            configuredRequestID = (providerConfig["requestID"] as? String).flatMap(UUID.init(uuidString:))
             logger?.info("Saved tunnel configuration: \(node.name)", category: "tunnel")
         } catch let error as NSError {
             throw Self.translate(error)
@@ -216,16 +219,18 @@ public final class VPNTunnelManager {
     /// "proxy" outbound handler（libXray 本地扩展 SwitchOutbound）——
     /// 隧道 / TUN / 路由 / DNS 全不动，换节点零断流、系统 VPN 图标不闪。
     /// 只适用于 mode / 规则不变、仅换节点的场景；失败 throws，调用方回退全量重启。
-    public func switchNodeInPlace(node: Node, shareLink: String) async throws {
-        try await sendCommand(
+    public func switchNodeInPlace(node: Node, shareLink: String) async throws -> UUID? {
+        let reply = try await sendCommandForReply(
             [
                 "command": "switchNode",
                 "nodeJSON": Self.encodeNodeJSON(node),
                 "shareLink": shareLink,
-                "nodeName": node.name
+                "nodeName": node.name,
+                "requestID": configuredRequestID?.uuidString ?? ""
             ],
             timeoutSeconds: 5, timeoutLabel: L("原地换节点超时"), failureLabel: L("扩展换节点失败")
         )
+        return (reply["configurationID"] as? String).flatMap(UUID.init(uuidString:))
     }
 
     /// 给**运行中**的扩展重设定时关闭（从现在起按新时长重新计时；0 = 取消定时）。
@@ -345,9 +350,18 @@ public final class VPNTunnelManager {
                             userInfo: [NSLocalizedDescriptionKey: timeoutLabel]))) }
             }
         }
+        return try Self.decodeReply(reply, failureLabel: failureLabel,
+                                    rejectionAsConfigError: rejectionAsConfigError)
+    }
+
+    /// 没有有效确认不能把换节点/预检当成成功；保持命令失败与明确配置拒绝的区分。
+    nonisolated static func decodeReply(_ reply: Data?, failureLabel: String,
+                                        rejectionAsConfigError: Bool = false) throws -> [String: Any] {
         guard let reply,
-              let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any] else {
-            return [:]
+              let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
+              obj["ok"] is Bool else {
+            throw TunnelError.underlying(NSError(domain: "qingzhou.tunnel", code: -3,
+                userInfo: [NSLocalizedDescriptionKey: failureLabel]))
         }
         // 扩展回执：{ok: false, error: ...} 表示执行失败，抛错让上层降级。
         if obj["ok"] as? Bool == false {

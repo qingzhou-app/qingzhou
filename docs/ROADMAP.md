@@ -2,10 +2,11 @@
 
 > 这是 commercial App Store VPN 产品的 6 个月 part-time 路线图。MVP 目标是 W9-10 上架。
 
-## 当前工程状态（2026-10-12，build20修复批次）
+## 当前工程状态（2026-10-13，build21配置生效边界）
 
-- 版本源：`Apps/project.yml`，1.0(20)。内核已升级并锁xray-core v26.6.27 / libXray73bb811。
-- 本批修复：错误订阅保留数据/重复节点防崩、测速按身份回填、云读取与冲突保护、保存失败反馈与last-good恢复、统一评分黏性、Hysteria2不依赖TCP握手。
+- 版本源：`Apps/project.yml`，1.0(21)。内核已升级并锁xray-core v26.6.27 / libXray73bb811。
+- build21：扩展成功应用后报告实际节点/模式，首页与实时活动/小组件读实际配置，带宽按配置版本归属；预检先于preferences更新，旧/无效回执不当成功。
+- build20修复：错误订阅保留数据/重复节点防崩、测速按身份回填、云读取与冲突保护、保存失败反馈与last-good恢复、统一评分黏性、Hysteria2不依赖TCP握手。
 - macOS来源App标注停用，Filter不再嵌入发行包；Widget/Shortcuts/Live Activity/Focus已有实现。
 - 主App仍不依赖Go内核。下一步优先：冻结build真机回归、策略解释与故障诊断、在测试保护下逐步提取协调器。端侧AI/新增协议暂不属于稳定化批次。
 - 单测、Xcode编译、真机验收、ASC审核状态分开记录；真机验收见`ACCEPTANCE.md`，不能从旧清单的勾选推断新build已通过。

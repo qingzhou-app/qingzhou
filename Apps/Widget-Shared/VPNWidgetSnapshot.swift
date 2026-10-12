@@ -60,19 +60,26 @@ struct VPNWidgetSnapshot: Sendable, Equatable {
             phase = .disconnected
         }
 
-        let nodeName = (mgr.manager?.protocolConfiguration as? NETunnelProviderProtocol)?
-            .providerConfiguration?["nodeName"] as? String
+        // 已连接时只显示扩展确认的节点；preferences只是下一次启动的请求配置。
+        var nodeName: String? = phase == .connected ? nil :
+            (mgr.manager?.protocolConfiguration as? NETunnelProviderProtocol)?
+                .providerConfiguration?["nodeName"] as? String
 
         var connectedSince: Date?
         var forwarding: TunnelForwarding = .unknown
         if phase == .connected {
+            let stats = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats")
             if let session = AppGroupStorage.read(TunnelSessionInfo.self, from: "tunnel-session"),
                session.stoppedAt == nil,
                session.startedAt <= Date() {
                 connectedSince = session.startedAt
+                if let applied = session.appliedConfiguration, stats?.configurationID == applied.id,
+                   let sampledAt = stats?.sampledAt, abs(sampledAt.timeIntervalSinceNow) <= 3 {
+                    nodeName = applied.nodeName
+                }
             }
             // 转发层真相：读扩展每秒写的流量心跳，据其新鲜度判活（zombie 检测）。
-            let lastHeartbeat = AppGroupStorage.read(TrafficStats.self, from: "traffic-stats")?.sampledAt
+            let lastHeartbeat = stats?.sampledAt
             forwarding = TunnelLiveness.forwarding(lastHeartbeat: lastHeartbeat)
         }
 

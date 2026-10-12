@@ -16,11 +16,15 @@ public struct TunnelSessionInfo: Codable, Sendable, Equatable {
     public var autoStopSeconds: TimeInterval
     /// 扩展按定时自停的时刻。nil = 还没到点（或没启用定时）。
     public var stoppedAt: Date?
+    /// 只有扩展成功启动/换节点后才能提交；旧扩展的标记没有此字段，解码仍兼容。
+    public var appliedConfiguration: AppliedTunnelConfiguration?
 
-    public init(startedAt: Date, autoStopSeconds: TimeInterval, stoppedAt: Date? = nil) {
+    public init(startedAt: Date, autoStopSeconds: TimeInterval, stoppedAt: Date? = nil,
+                appliedConfiguration: AppliedTunnelConfiguration? = nil) {
         self.startedAt = startedAt
         self.autoStopSeconds = autoStopSeconds
         self.stoppedAt = stoppedAt
+        self.appliedConfiguration = appliedConfiguration
     }
 
     /// 到点时刻。未启用定时（<= 0）时为 nil。

@@ -12,6 +12,8 @@ public struct TrafficStats: Codable, Sendable, Equatable {
     public var downloadSpeedBps: Int64   // 瞬时下行速率 byte/s
     public var activeConnections: Int
     public var sampledAt: Date
+    /// 扩展采样时的实际配置版本。旧扩展没有此字段，只能画波形，不能归属到某节点。
+    public var configurationID: UUID?
 
     public init(
         uploadBytes: Int64 = 0,
@@ -19,7 +21,8 @@ public struct TrafficStats: Codable, Sendable, Equatable {
         uploadSpeedBps: Int64 = 0,
         downloadSpeedBps: Int64 = 0,
         activeConnections: Int = 0,
-        sampledAt: Date = Date()
+        sampledAt: Date = Date(),
+        configurationID: UUID? = nil
     ) {
         self.uploadBytes = uploadBytes
         self.downloadBytes = downloadBytes
@@ -27,6 +30,7 @@ public struct TrafficStats: Codable, Sendable, Equatable {
         self.downloadSpeedBps = downloadSpeedBps
         self.activeConnections = activeConnections
         self.sampledAt = sampledAt
+        self.configurationID = configurationID
     }
 }
 

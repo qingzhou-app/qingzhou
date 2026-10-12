@@ -69,6 +69,8 @@ final class AppStateTests: XCTestCase {
         try state.addNode(fromURL: "hy2://pw@h.example.com:443#hy2节点")
         state.select(state.nodes[0])
         state.isVPNRunning = true
+        state.syncAppliedConfiguration(session: TunnelSessionInfo(startedAt: Date(), autoStopSeconds: 0,
+            appliedConfiguration: AppliedTunnelConfiguration(node: state.nodes[0], mode: .global, blockQUIC: false)), status: .connected)
         // auto（默认档）+ hysteria2：初始 = 暂放行、实测中
         XCTAssertEqual(state.quicRuntimeStatus, .autoProbing)
         let fp = state.nodes[0].identityFingerprint
@@ -77,6 +79,9 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(state.quicRuntimeStatus, .autoProbePassed)
         // 之后某轮重探判坏：broken 压过旧的通过记录（与阻断决策一致）
         state.quicKnownBrokenNodes.insert(fp)
+        XCTAssertNil(state.quicRuntimeStatus, "判坏尚未应用不能冒充已经阻断")
+        state.syncAppliedConfiguration(session: TunnelSessionInfo(startedAt: Date(), autoStopSeconds: 0,
+            appliedConfiguration: AppliedTunnelConfiguration(node: state.nodes[0], mode: .global, blockQUIC: true)), status: .connected)
         XCTAssertEqual(state.quicRuntimeStatus, .autoBrokenBlocked)
     }
 
@@ -85,12 +90,17 @@ final class AppStateTests: XCTestCase {
         try state.addNode(fromURL: "trojan://pw@t.example.com:443#trojan节点")
         state.select(state.nodes[0])
         state.isVPNRunning = true
+        state.syncAppliedConfiguration(session: TunnelSessionInfo(startedAt: Date(), autoStopSeconds: 0,
+            appliedConfiguration: AppliedTunnelConfiguration(node: state.nodes[0], mode: .global, blockQUIC: true)), status: .connected)
         // auto + TCP 系协议：直接挡
         XCTAssertEqual(state.quicRuntimeStatus, .autoBlockedTCPBased)
         // 强制档不看协议 / 探测标记
         state.settings.quicPolicy = .alwaysBlock
         XCTAssertEqual(state.quicRuntimeStatus, .forcedBlock)
         state.settings.quicPolicy = .neverBlock
+        XCTAssertNil(state.quicRuntimeStatus)
+        state.syncAppliedConfiguration(session: TunnelSessionInfo(startedAt: Date(), autoStopSeconds: 0,
+            appliedConfiguration: AppliedTunnelConfiguration(node: state.nodes[0], mode: .global, blockQUIC: false)), status: .connected)
         XCTAssertEqual(state.quicRuntimeStatus, .forcedAllow)
     }
 
