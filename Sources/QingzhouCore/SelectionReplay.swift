@@ -12,10 +12,8 @@ import Foundation
 ///   选总分最高者，叠加**分数黏性**（挑战者领先 ≥`scoreMargin` 分且连续 `scoreStreakRounds`
 ///   轮才换）与倍率成本维。黏性参数镜像 `AppState.autoSwitchScoreMargin` / `…StreakRounds`。
 ///
-/// **与线上流程的刻意偏离**：回放**不叠加** `autoSwitchWorthRestart`（线上的「隧道重启值不值」
-/// ms 幅度闸）。那道闸用**原始直连 ms** 判断，会拦掉「ms 更高但更稳/更省」的切换 —— 正是
-/// 本 harness 要量化的多维收益。它是「运行中隧道重启有断流代价」的现网工程约束，离线回放没有
-/// 隧道，纳入它反而遮蔽被测收益。故策略 B = 「打分最高 + 分数黏性」，不含 ms 幅度闸。
+/// 评分与切换黏性直接复用线上纯策略。回放不执行探针调度、网络切换或系统VPN生命周期；
+/// 给定测量序列的结果用于策略比较，不代表真实设备上的端到端收益保证。
 public enum SelectionReplay {
 
     // MARK: - 输入
@@ -67,9 +65,9 @@ public enum SelectionReplay {
         /// 打分档位（映射现网三档预设 `settings.scoringProfile`）。
         public var profile: ScoringProfile = .balanced
         /// 分数黏性门槛：挑战者总分须领先在位者 ≥ 该值（镜像 `AppState.autoSwitchScoreMargin`）。
-        public var scoreMargin: Double = 8
+        public var scoreMargin: Double = NodeSelectionHysteresis.defaultMargin
         /// 分数黏性持续轮数：领先须连续成立的轮数（镜像 `AppState.autoSwitchScoreStreakRounds`）。
-        public var scoreStreakRounds: Int = 2
+        public var scoreStreakRounds: Int = NodeSelectionHysteresis.defaultRounds
         /// 预热轮数：前 N 轮只喂测量历史（消解稳定性维冷启动的中性分），不计入统计。
         public var warmupRounds: Int = 0
         /// 每轮延迟权重（域名画像加权的接口留口子；P2 落地后按轮内域名分布计算）。
@@ -245,11 +243,7 @@ public enum SelectionReplay {
         // 每节点最近一次经代理实测（值 + 测量时间）—— 镜像线上 node.lastProxiedLatencyMs：
         // 打分轮轮携带，新鲜与否交给 NodeScorer 的 24h 门槛（回放只如实传时间戳）。
         var lastProxied: [String: (ms: Int, at: Date)] = [:]
-        // 分数黏性连续状态
-        var streakChallenger: String?
-        var streakIncumbent: String?
-        var streakRounds = 0
-        func resetStreak() { streakChallenger = nil; streakIncumbent = nil; streakRounds = 0 }
+        var hysteresis = NodeSelectionHysteresis()
 
         // 统计累加器
         var details: [RoundDetail] = []
@@ -330,30 +324,14 @@ public enum SelectionReplay {
             var scoringChoice = scoringCurrent
             var heldChallenger: String?
             if let best = scoringBest {
-                if let inc = scoringCurrent, inc != best.spec.id {
-                    let incumbentViable = round.observations[inc]?.directMs != nil
-                    if !incumbentViable {
-                        scoringChoice = best.spec.id; resetStreak()          // 在位者本轮已坏 → 立即切
-                    } else {
-                        let incScore = byId[inc].map { scoreOf($0, round).total } ?? -.infinity
-                        if best.score - incScore >= config.scoreMargin {
-                            if streakChallenger == best.spec.id && streakIncumbent == inc {
-                                streakRounds += 1
-                            } else {
-                                streakChallenger = best.spec.id; streakIncumbent = inc; streakRounds = 1
-                            }
-                            if streakRounds >= config.scoreStreakRounds {
-                                scoringChoice = best.spec.id; resetStreak()  // 连续攒够 → 切
-                            } else {
-                                heldChallenger = best.spec.id                // 领先够但轮数没满 → 拦
-                            }
-                        } else {
-                            resetStreak()                                    // 领先不够 → 保持
-                        }
-                    }
-                } else {
-                    scoringChoice = best.spec.id; resetStreak()              // 首选 / 最优即在位者
-                }
+                let incScore = scoringCurrent.flatMap { byId[$0] }.map { scoreOf($0, round).total } ?? 0
+                let held = hysteresis.shouldHold(
+                    challenger: best.spec.id, incumbent: scoringCurrent,
+                    challengerScore: best.score, incumbentScore: incScore,
+                    incumbentViable: scoringCurrent.flatMap { round.observations[$0]?.directMs } != nil,
+                    margin: config.scoreMargin, rounds: config.scoreStreakRounds)
+                if held { heldChallenger = best.spec.id }
+                else { scoringChoice = best.spec.id }
             }
 
             // 4. 更新在位状态 + 有效延迟。

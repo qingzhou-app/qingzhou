@@ -66,6 +66,15 @@ final class QingzhouSpeedTestTests: XCTestCase {
         XCTAssertEqual(best?.name, "fast")
     }
 
+    func testHysteriaIsNotMeasuredWithTCPProbe() async {
+        let node = Node(name: "UDP", protocolType: .hysteria2, host: "udp.example", port: 443,
+                        lastLatencyMs: 20, lastProxiedLatencyMs: 40, lastProxiedTestedAt: Date())
+        let selector = NodeSelector(prober: StubProber(mapping: ["udp.example:443": 1]))
+        let measured = await selector.measure(nodes: [node])
+        XCTAssertNil(measured[0].lastLatencyMs, "TCP探针不能代表UDP节点可用性")
+        XCTAssertEqual(measured[0].lastProxiedLatencyMs, 40)
+    }
+
     func testNodeSelectorSkipsExcludedNodes() async {
         let nodes = [
             Node(name: "ex", protocolType: .trojan, host: "ex.example", port: 443, isExcluded: true),

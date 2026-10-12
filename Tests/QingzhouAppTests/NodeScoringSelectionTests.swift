@@ -59,6 +59,35 @@ final class NodeScoringSelectionTests: XCTestCase {
 
     // MARK: - 选优内核：总分最高者当选
 
+    func testManualAutoSelectionCanKeepSlowerStableScoreWinnerWhileVPNRuns() async {
+        let state = makeState(latencyByHost: ["a.com": 60, "b.com": 90])
+        let fast = node("快但抖", host: "a.com", latency: 60)
+        let stable = node("稳但慢", host: "b.com", latency: 90)
+        seedHistory(state, node: fast, count: 10, latencyMs: 60, interleaveFailures: true)
+        seedHistory(state, node: stable, count: 10, latencyMs: 90)
+        state.settings.iCloudSyncEnabled = false
+        state.nodes = [fast, stable]; state.currentNodeId = fast.id; state.isVPNRunning = true
+        await state.autoSelectBestNode()
+        XCTAssertEqual(state.currentNodeId, stable.id)
+        state.persistence.waitForPendingWritesForTesting()
+    }
+
+    func testHealthyHysteriaCandidateDoesNotRequireTCPHandshake() {
+        let state = makeState()
+        let node = Node(name: "UDP-only", protocolType: .hysteria2, host: "udp.example", port: 443,
+                        password: "pw", lastProxiedLatencyMs: 40, lastProxiedTestedAt: Date())
+        state.nodes = [node]
+        XCTAssertEqual(state.pickBestRespectingRegions(from: state.nodes)?.id, node.id)
+    }
+
+    func testStaleHysteriaProxyMeasurementDoesNotMakeCandidateViable() {
+        let state = makeState()
+        let node = Node(name: "UDP-only", protocolType: .hysteria2, host: "udp.example", port: 443,
+                        password: "pw", lastProxiedLatencyMs: 40,
+                        lastProxiedTestedAt: Date(timeIntervalSinceNow: -2 * NodeScorer.proxiedFreshnessWindow))
+        XCTAssertNil(state.pickBestRespectingRegions(from: [node]))
+    }
+
     func testPickBestPrefersStableNodeOverJitteryFasterOne() {
         let state = makeState()
         // 快但一半轮次测不通（稳定性 50）vs 慢 30ms 但满勤（稳定性 100）：
@@ -103,8 +132,7 @@ final class NodeScoringSelectionTests: XCTestCase {
         let state = makeState()
         state.isVPNRunning = true
         let (challenger, incumbent) = bigGapPair()
-        // 手动点「择优」是用户主动要换：一轮就换（仍受 autoSwitchWorthRestart 幅度闸，
-        // 那个闸不归本判定管）
+        // 手动点「择优」是用户主动要换：一轮就换
         XCTAssertFalse(state.shouldHoldForScoreStickiness(
             origin: .manual, challenger: challenger, incumbent: incumbent))
     }
@@ -123,7 +151,7 @@ final class NodeScoringSelectionTests: XCTestCase {
         state.isVPNRunning = true
         let challenger = node("挑战者", host: "a.com", latency: 60)
         let broken = node("在位者已坏", host: "b.com", latency: nil)
-        // 当前节点本轮测速失败 = 已坏：沿用 autoSwitchWorthRestart 的 nil 放行语义，不等轮次
+        // 当前节点本轮测速失败 = 已坏：可用性优先，绕开黏性，不等轮次
         XCTAssertFalse(state.shouldHoldForScoreStickiness(
             origin: .scheduled, challenger: challenger, incumbent: broken))
     }

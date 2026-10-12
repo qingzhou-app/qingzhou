@@ -2,6 +2,20 @@ import Foundation
 import QingzhouCore
 import QingzhouLogging
 
+public enum SubscriptionRefreshError: LocalizedError {
+    case httpStatus(Int)
+    case unrecognizedFormat
+    case noSupportedNodes
+
+    public var errorDescription: String? {
+        switch self {
+        case .httpStatus(let code): return "订阅服务器返回 HTTP \(code)，已保留原有节点"
+        case .unrecognizedFormat: return "订阅格式无法识别，请确认链接正确（能否在浏览器里直接打开）"
+        case .noSupportedNodes: return "订阅中的节点均无法解析或暂不支持，已保留原有节点"
+        }
+    }
+}
+
 /// 把网络请求抽成协议，单测里可以注入假实现避免真实出网。
 public protocol HTTPClient: Sendable {
     func get(_ url: URL) async throws -> (Data, [String: String])
@@ -36,6 +50,9 @@ public struct URLSessionHTTPClient: HTTPClient {
         let (data, response) = try await session.data(for: req)
         var headers: [String: String] = [:]
         if let http = response as? HTTPURLResponse {
+            guard (200..<300).contains(http.statusCode) else {
+                throw SubscriptionRefreshError.httpStatus(http.statusCode)
+            }
             for (key, value) in http.allHeaderFields {
                 if let k = key as? String, let v = value as? String {
                     headers[k.lowercased()] = v
@@ -62,6 +79,10 @@ public actor SubscriptionFetcher {
         let body = String(data: data, encoding: .utf8) ?? ""
         let userInfoHeader = headers["subscription-userinfo"]
         let payload = SubscriptionParser.parse(body: body, userInfoHeader: userInfoHeader)
+        guard payload.formatRecognized else { throw SubscriptionRefreshError.unrecognizedFormat }
+        guard !payload.nodes.isEmpty || payload.failedLines.isEmpty else {
+            throw SubscriptionRefreshError.noSupportedNodes
+        }
         logger?.info("Subscription \(subscription.name): parsed \(payload.nodes.count) nodes, \(payload.failedLines.count) failures", category: "subscription")
 
         var updated = subscription

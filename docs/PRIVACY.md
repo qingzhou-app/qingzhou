@@ -1,7 +1,7 @@
 # 轻舟 隐私政策 / Qingzhou Privacy Policy
 
 > 生效日期 / Effective Date：2026-07-03
-> 最后更新 / Last Updated：2026-07-03
+> 最后更新 / Last Updated：2026-10-12
 
 ---
 
@@ -29,7 +29,7 @@
 
 ### 三、本地存储的数据
 
-为完成应用基础功能,以下数据**仅在你的设备本地**存储,在你不删除应用的前提下保留：
+为完成应用基础功能,以下数据在设备本地存储。配置可按下文的 iCloud 配置镜像设置同步；网络访问历史与测量历史不参与配置镜像：
 
 | 数据 | 用途 | 存储位置 |
 |---|---|---|
@@ -39,7 +39,9 @@
 | 设置项(主题、日志级别、排序偏好) | 个性化界面 | 同上 |
 | 测速结果(延迟数值) | 节点排序 | 同上 |
 
-以上数据**不会**通过网络发送到任何服务器,也**不会**通过 iCloud / Apple ID 备份与其他设备同步,**除非**你手动开启 iOS 的 "iCloud 备份" 功能(此时数据由 Apple 加密保管,我们仍然看不到)。
+应用默认开启 **iCloud 配置镜像**：当你登录 iCloud 且开启 iCloud Drive 时，订阅 URL、节点配置（包括连接凭据）、自定义规则和设置会写入你个人 iCloud Drive 的「轻舟」文档容器，并保留最多五份滚动历史。你可以在设置中关闭镜像；关闭会停止后续同步，不会自动删除云端文件。如需删除已有云端配置，请在「文件」App / Finder 的 iCloud Drive 中删除「轻舟」里的配置文件和 backups 目录。该文档为 JSON，应用没有额外加密，能访问该文档的人也能读取节点凭据。我们不运营这个存储服务，也无法访问你的个人 iCloud 配置。
+
+以下诊断数据只保留在设备本地，不放入配置镜像：连接与域名访问记录、域名每日汇总、规则命中统计、节点测速历史、被动带宽与扩展内存统计。它们用于连接分析、择优与排障，不发送给开发者。系统 iCloud 设备备份是另外一项 Apple 功能，其范围由你的系统设置决定。
 
 ### 四、网络传输的数据
 
@@ -48,6 +50,8 @@
 1. **你自己配置的订阅源 URL**：刷新节点列表时会向这个 URL 发起 HTTPS 请求。请求内容仅包含 User-Agent 头,不带任何个人信息。
 2. **你选中的代理节点服务器**：开启 VPN 后,你的网络流量会通过这台服务器转发。这台服务器由你自己选择和信任,**我们不运营、不监控、不记录**任何经过它的流量。
 3. **公共 DNS 解析服务**：默认配置使用 Google `8.8.8.8` 与 Cloudflare `1.1.1.1` 解析域名,规则模式下国内域名会经过阿里 `223.5.5.5` 解析。这些是公共 DNS 服务,我们不与他们共享任何个人信息,他们的隐私政策见各自官网。
+
+4. **辅助请求**：公网 IP 信息查询、测速目标、App Store 版本查询、规则与 geo 数据下载会请求相应公开服务；请求目的在对应功能中显示。这些服务可看到网络请求的来源 IP 及所请求的资源，应用不会附带设备标识符或上传本地访问历史。订阅 URL 和节点凭据只用于你配置的订阅/节点服务及上文所述个人 iCloud 配置镜像。
 
 ### 五、第三方服务
 
@@ -65,10 +69,10 @@
 
 ### 七、你的权利
 
-由于我们不在云端存储任何与你相关的数据,你可以通过以下方式行使隐私权利：
+开发者不持有你的配置或访问历史。你可以管理设备本地数据及个人 iCloud 配置镜像：
 
-- **访问 / 导出数据**：所有数据在你设备本地的 JSON 文件中,可通过 iOS 系统的 "文件" app 直接查看(后续会提供导出按钮)
-- **删除数据**：卸载本应用即可一次性删除所有本地数据,无残留
+- **访问 / 导出数据**：配置以 JSON 保存在应用本地与个人 iCloud 文档容器中；节点与日志可通过应用相应导出入口导出
+- **删除数据**：卸载应用会删除应用本地数据；个人 iCloud 文档和历史版本需在「文件」App / Finder 中单独删除
 - **撤回授权**：iOS 设置 → 通用 → VPN 与设备管理,删除 VPN 配置即可
 
 ### 八、政策变更
@@ -103,7 +107,7 @@ The App requires no registration, no email, no phone number. We **do not collect
 
 ### 3. Data stored locally
 
-To deliver core features, the following is stored **only on your device**:
+The following data is stored locally. Configuration may also be mirrored as described below; access and measurement histories are excluded from that mirror:
 
 | Data | Purpose | Location |
 |---|---|---|
@@ -113,7 +117,9 @@ To deliver core features, the following is stored **only on your device**:
 | Settings (theme, log level, sort) | UI personalization | same |
 | Latency measurements | Node ranking | same |
 
-This data is **never** transmitted to any server we control, and is **not** synced via iCloud / Apple ID **unless** you explicitly enable iOS iCloud Backup (in which case Apple encrypts and stores it; we still cannot access it).
+**iCloud configuration mirroring is enabled by default.** When you are signed in to iCloud with iCloud Drive enabled, subscription URLs, node configuration (including connection credentials), custom rules, and settings are mirrored to the Qingzhou document container in your personal iCloud Drive, with up to five rolling versions. You can disable mirroring in Settings. This stops future synchronization and does not automatically delete existing cloud files. To remove them, delete the configuration document and backups directory from Qingzhou in Files / Finder. The document is JSON without additional application encryption; anyone with access to it can read the node credentials. We do not operate this storage service or have access to your personal iCloud configuration.
+
+Connection and domain access records, daily domain summaries, rule-hit counters, node measurements, observed bandwidth, and extension memory diagnostics remain local and are excluded from the configuration mirror. They support analysis, selection, and troubleshooting and are not sent to the developer. System iCloud device backup is a separate Apple feature governed by your system settings.
 
 ### 4. Data transmitted over the network
 
@@ -122,6 +128,8 @@ To perform proxy duties, the App makes network requests to:
 1. **Your subscription URL** — HTTPS request to refresh node list. Only carries a User-Agent header.
 2. **Your chosen proxy server** — Your traffic flows through this server, chosen and trusted by you. **We do not operate, monitor, or log** any traffic through it.
 3. **Public DNS resolvers** — Google `8.8.8.8` and Cloudflare `1.1.1.1` by default; AliDNS `223.5.5.5` for Chinese domains in rule mode. We do not share any personal information with these services.
+
+4. **Supporting requests** — Public IP lookups, test targets, App Store version checks, and rule / geo-data downloads contact the relevant public services. Those services may observe the source IP and requested resource. The App does not attach device identifiers or upload local browsing history. Subscription URLs and node credentials are used for your configured services and the personal iCloud configuration mirror described above.
 
 ### 5. Third-party services
 
@@ -137,10 +145,10 @@ The App is intended for users **17 years of age or older**. We do not knowingly 
 
 ### 7. Your rights
 
-Since we hold no cloud-stored data linked to you:
+The developer holds no copy of your configuration or access history. You control local data and the personal iCloud configuration mirror:
 
-- **Access / Export** — All data lives in JSON files in your device's sandbox; you can inspect them through iOS Files app
-- **Delete** — Uninstalling the App removes all local data; no residue
+- **Access / Export** — Configuration is stored as JSON locally and in your personal iCloud document container. Node and log exports are available in the App.
+- **Delete** — Uninstalling removes application-local data. Remove personal iCloud documents and history separately in Files / Finder.
 - **Revoke** — iOS Settings → General → VPN & Device Management → remove the VPN profile
 
 ### 8. Changes to this policy

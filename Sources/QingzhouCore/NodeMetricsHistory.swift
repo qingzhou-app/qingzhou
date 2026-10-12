@@ -83,6 +83,18 @@ public struct NodeMetricsHistory: Codable, Sendable, Equatable {
         samples = samples.filter { fingerprints.contains($0.key) }
     }
 
+    /// 旧身份没有传输配置，只在唯一归属时迁移；有歧义的旧样本不混给多条线路。
+    public mutating func migrateLegacyIdentities(for nodes: [Node]) {
+        for (legacy, group) in Dictionary(grouping: nodes, by: \.legacyIdentityFingerprint) {
+            guard let old = samples[legacy] else { continue }
+            let identities = Set(group.map(\.identityFingerprint))
+            if identities.count == 1, let identity = identities.first, samples[identity] == nil {
+                samples[identity] = old
+            }
+            samples[legacy] = nil
+        }
+    }
+
     private mutating func append(_ sample: NodeMetricSample, for fingerprint: String) {
         var ring = samples[fingerprint] ?? []
         ring.append(sample)

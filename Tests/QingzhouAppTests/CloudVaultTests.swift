@@ -342,6 +342,25 @@ final class CloudVaultStoreTests: XCTestCase {
         XCTAssertEqual(doc?.snapshot.nodes.count, 1)
     }
 
+    func testCoordinatedSaveRejectsRevisionChangedAfterRead() async throws {
+        let dir = tmpDir!
+        let store = CloudVaultStore(containerProvider: { dir })
+        let initial = VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "first", snapshot: Persistence.Snapshot())
+        try await store.save(initial)
+        let expected = try await store.loadHeader()
+        let remote = VaultDocument(revision: 2, modifiedAt: Date(), deviceName: "remote", snapshot: Persistence.Snapshot())
+        try await store.save(remote)
+        do {
+            try await store.save(initial, expecting: expected)
+            XCTFail("read与write之间的新revision不可被覆盖")
+        } catch let error as CloudVaultStore.StoreError {
+            XCTAssertEqual(error, .conflict)
+        }
+        let actual = try await store.loadDocument()
+        XCTAssertEqual(actual?.revision, 2)
+        XCTAssertEqual(actual?.deviceName, "remote")
+    }
+
     func testNotYetDownloadedPlaceholderIsNotTreatedAsMissing() async throws {
         // 云端有文档但本机只有 .icloud 占位符（还没下载完）：必须报「下载中」，
         // 不能当「没有文档」—— 否则启动检查会用空本地盖掉云端
@@ -426,6 +445,70 @@ final class AppStateCloudVaultTests: XCTestCase {
         if case .synced = state.cloudSyncStatus {} else {
             XCTFail("镜像成功后状态应为 synced，实际 \(state.cloudSyncStatus)")
         }
+    }
+
+    func testMirrorDoesNotReplaceUnreadableCloudDocument() async throws {
+        let store = makeStore()
+        let documentURL = tmpDir.appendingPathComponent("cloud/Documents/\(CloudVaultStore.fileName)")
+        try FileManager.default.createDirectory(at: documentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let invalid = Data("broken cloud document".utf8)
+        try invalid.write(to: documentURL)
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@local.example:443#local")
+        await state.cloudMirrorTask?.value
+        XCTAssertEqual(try Data(contentsOf: documentURL), invalid)
+        if case .error = state.cloudSyncStatus {} else { XCTFail("读取失败应保留并报告错误") }
+        state.persistence.waitForPendingWritesForTesting()
+    }
+
+    func testMirrorWaitsForCloudPlaceholderInsteadOfWriting() async throws {
+        let store = makeStore()
+        let documents = tmpDir.appendingPathComponent("cloud/Documents")
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        try Data().write(to: documents.appendingPathComponent(".\(CloudVaultStore.fileName).icloud"))
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@local.example:443#local")
+        await state.cloudMirrorTask?.value
+        XCTAssertFalse(FileManager.default.fileExists(atPath: documents.appendingPathComponent(CloudVaultStore.fileName).path))
+        state.persistence.waitForPendingWritesForTesting()
+    }
+
+    func testLocalEditOffersNewCloudRevisionInsteadOfOverwritingIt() async throws {
+        let store = makeStore()
+        let state = makeState(store: store)
+        try state.addNode(fromURL: "trojan://pw@local.example:443#local")
+        await state.cloudMirrorTask?.value
+        var snapshot = Persistence.Snapshot()
+        snapshot.nodes = [try ProxyURLParser.parse("trojan://pw@other.example:443#other-device")]
+        try await store.save(VaultDocument(revision: 2, modifiedAt: Date(), deviceName: "other", snapshot: snapshot))
+        try state.addNode(fromURL: "trojan://pw@new.example:443#local-edit")
+        await state.cloudMirrorTask?.value
+        let document = try await store.loadDocument()
+        XCTAssertEqual(document?.revision, 2)
+        XCTAssertEqual(document?.snapshot.nodes.first?.name, "other-device")
+        XCTAssertEqual(state.cloudRestoreOffer?.header.revision, 2)
+        XCTAssertEqual(state.nodes.count, 2, "冲突提示不应丢掉本地编辑")
+        state.persistence.waitForPendingWritesForTesting()
+    }
+
+    func testHistoryRestoreCannotOverwriteRevisionCreatedAfterVersionListWasShown() async throws {
+        let store = makeStore()
+        var original = Persistence.Snapshot()
+        original.nodes = [try ProxyURLParser.parse("trojan://pw@old.example:443#old")]
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "old", snapshot: original))
+        try await store.save(VaultDocument(revision: 2, modifiedAt: Date(), deviceName: "empty", snapshot: Persistence.Snapshot()))
+        let state = makeState(store: store)
+        await state.requestManualCloudRestore()
+        let candidate = try XCTUnwrap(state.cloudVersionOptions?.first { $0.backupFileName != nil && $0.header.revision == 1 })
+        var newest = Persistence.Snapshot()
+        newest.nodes = [try ProxyURLParser.parse("trojan://pw@new.example:443#not-confirmed")]
+        try await store.save(VaultDocument(revision: 3, modifiedAt: Date(), deviceName: "new", snapshot: newest))
+        await state.restoreFromCloud(candidate: candidate)
+        let cloud = try await store.loadDocument()
+        XCTAssertEqual(cloud?.revision, 3)
+        XCTAssertEqual(cloud?.snapshot.nodes.first?.name, "not-confirmed")
+        XCTAssertEqual(state.nodes.first?.name, "old", "本地仍可恢复选中的版本，云端冲突单独保留")
+        state.persistence.waitForPendingWritesForTesting()
     }
 
     func testMirrorDisabledDoesNothing() async throws {
@@ -662,6 +745,9 @@ final class AppStateCloudVaultTests: XCTestCase {
         let persisted = state.persistence.loadSnapshot()
         XCTAssertEqual(persisted.nodes.count, 30)
         XCTAssertEqual(persisted.subscriptions.count, 1)
+        let rescued = try await store.loadDocument()
+        XCTAssertEqual(rescued?.snapshot.nodes.count, 30, "明确恢复历史版本后，云端主文档也应回推恢复")
+        XCTAssertNil(state.cloudRestoreOffer, "不能马上重新要求恢复被用户替换的空云版本")
     }
 
     /// 真机事故 #3：版本选择 sheet 里点选 → 确认 alert 第一次弹出后自动消失，再来一遍才正常。

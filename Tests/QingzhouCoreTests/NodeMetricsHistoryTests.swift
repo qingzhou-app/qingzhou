@@ -5,6 +5,21 @@ import XCTest
 /// key 用 identityFingerprint（订阅刷新后 UUID 可能变、指纹稳定）；失败也要记录
 /// （latencyMs=nil），成功率就靠失败样本算 —— 只记成功会把烂节点洗白。
 final class NodeMetricsHistoryTests: XCTestCase {
+    func testLegacyEndpointHistoryMigratesOnlyWhenTransportIsUnambiguous() {
+        var history = NodeMetricsHistory()
+        history.recordDirect(fingerprint: "vless://user@example.com:443", latencyMs: 70)
+        let a = Node(name: "A", protocolType: .vless, host: "example.com", port: 443,
+                     uuid: "user", parameters: ["network": "ws", "path": "/a"])
+        history.migrateLegacyIdentities(for: [a])
+        XCTAssertEqual(history.samples(for: a.identityFingerprint).first?.latencyMs, 70)
+
+        var ambiguous = NodeMetricsHistory()
+        ambiguous.recordDirect(fingerprint: "vless://user@example.com:443", latencyMs: 70)
+        var b = a; b.id = UUID(); b.parameters["path"] = "/b"
+        ambiguous.migrateLegacyIdentities(for: [a,b])
+        XCTAssertTrue(ambiguous.samples(for: a.identityFingerprint).isEmpty)
+        XCTAssertTrue(ambiguous.samples(for: b.identityFingerprint).isEmpty)
+    }
 
     private let fp = "trojan://pw@a.com:443"
     /// 整秒时间戳：Persistence 用 iso8601 编码日期（丢亚秒精度），

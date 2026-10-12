@@ -81,8 +81,9 @@ final class SelectionReplayRealDataTests: XCTestCase {
             ?? FileManager.default.temporaryDirectory.appendingPathComponent("replay-dump.md").path
 
         // ---- 输入 ----
-        let history = try decodeJSON(NodeMetricsHistory.self, at: dataPath)
+        var history = try decodeJSON(NodeMetricsHistory.self, at: dataPath)
         let state = try decodeJSON(StateFile.self, at: statePath)
+        history.migrateLegacyIdentities(for: state.nodes)
         XCTAssertFalse(history.isEmpty, "测量历史为空")
 
         let fingerprints = Set(history.samples.keys)

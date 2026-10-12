@@ -2,6 +2,15 @@
 
 > 这是 commercial App Store VPN 产品的 6 个月 part-time 路线图。MVP 目标是 W9-10 上架。
 
+## 当前工程状态（2026-10-12，build20修复批次）
+
+- 版本源：`Apps/project.yml`，1.0(20)。内核已升级并锁xray-core v26.6.27 / libXray73bb811。
+- 本批修复：错误订阅保留数据/重复节点防崩、测速按身份回填、云读取与冲突保护、保存失败反馈与last-good恢复、统一评分黏性、Hysteria2不依赖TCP握手。
+- macOS来源App标注停用，Filter不再嵌入发行包；Widget/Shortcuts/Live Activity/Focus已有实现。
+- 主App仍不依赖Go内核。下一步优先：冻结build真机回归、策略解释与故障诊断、在测试保护下逐步提取协调器。端侧AI/新增协议暂不属于稳定化批次。
+- 单测、Xcode编译、真机验收、ASC审核状态分开记录；真机验收见`ACCEPTANCE.md`，不能从旧清单的勾选推断新build已通过。
+- 下文保留早期规划与沿革，不能把历史未勾项直接当待办。
+
 ## 已锁定的决策（不再讨论）
 
 | 维度 | 决策 | 理由 |
@@ -125,7 +134,7 @@
 **节点择优算法**升到第 5 代多维打分（延迟/稳定性/带宽/成本四维锚点打分 + 分数黏性 +
 burst 丢包率 + 经代理并入总分）。五代沿革见 `docs/NODE-SELECTION.md`，设计见 `docs/NODE-SCORING.md`。
 
-## 当前状态 (2026-07-03)
+## 历史状态 (2026-07-03，以下未勾项不代表当前进度)
 
 **Sprint 进度**：S1 ✅ · S2 代码完成（真机翻墙日常在用，正式勾掉走 [ACCEPTANCE.md](ACCEPTANCE.md) §3）· S3 ✅ · S6 大部分已就位 · S7 ✅ · S8 ✅（提前）· S9 实现中（Widget 全家桶 + Shortcuts 全套并行开发）· S10 部分（ClashConfigParser 已存在）· **S11 英文 i18n 提前立项**（上国际区 App Store 需要，先做英文，简繁日照原计划）。剩下主线：S4/S5（App Store 上架，**组织账号已就位**）、S9 收尾、S11、S12 v1.0。
 
@@ -219,7 +228,7 @@ Clash vless+reality 参数、一枝红杏 `:倍率` 格式）：
 9. **Focus 联动**（专注模式切换联动 VPN 开关）
 10. **繁体中文 / 日语本地化**（结构就绪，补翻译即可）
 
-**来源 App 标注（macOS 内容过滤 + XPC）**：**已启用**——代码里 `FeatureFlags.sourceAppLabeling = true`
+**来源 App 标注（历史记录，build14起关闭；build20不随包嵌入）**：当时已启用——代码里 `FeatureFlags.sourceAppLabeling = true`
 （此前文档写「已由 flag=false 搁置」有误，实际是 **opt-in**：设置 → macOS 集成一键启用 +
 批准引导，不启用不打扰）。遗留 TODO 保留：关联键升级为**端口 + 时间窗**，进一步消除端口复用误标
 （见 `FeatureFlags.swift` 注释）。

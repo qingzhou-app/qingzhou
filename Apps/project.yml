@@ -37,7 +37,8 @@ settings:
     #           回滚锚点 tag checkpoint/pre-failover-build8。
     # build 10 = 阻断 QUIC（reject UDP 443 默认开）修 YouTube/天气等 QUIC 站点通过代理不通。
     # build 11 = QUIC 智能三档（自动/强制开/强制关）+ hysteria2 节点 HTTP/3 实测修正。
-    CURRENT_PROJECT_VERSION: "19"
+    # build 20 = 订阅/测速/云镜像数据保护 + 统一评分黏性 + Hysteria2代理可用性候选。
+    CURRENT_PROJECT_VERSION: "20"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 
@@ -184,8 +185,7 @@ targets:
           - packet-tunnel-provider
         com.apple.security.application-groups:
           - group.com.sbraveyoung.qingzhou
-        # 激活 content filter 的 System Extension 需要主 App 有这项
-        com.apple.developer.system-extension.install: true
+        # 来源App标注已下线，发行包不安装或携带content-filter system extension。
         # iCloud Drive 文档容器（vault）：配置镜像到用户 iCloud，卸载不丢、换设备可恢复。
         # 需要在 Apple 开发者后台给 App ID 关联这个 iCloud container 并刷新 profile。
         com.apple.developer.icloud-container-identifiers:
@@ -216,10 +216,7 @@ targets:
       - target: Qingzhou-Tunnel-macOS
         embed: true
         codeSign: true
-      # Content Filter 扩展：给连接标注来源 App（需 content-filter-provider entitlement 特批）
-      - target: Qingzhou-Filter-macOS
-        embed: true
-        codeSign: true
+      # 来源App标注关闭：不嵌入Filter。恢复时须同时改FeatureFlags、依赖与安装entitlement。
       # Widget 扩展：通知中心小组件（与 iOS 主屏版共用实现）
       - target: Qingzhou-Widget-macOS
         embed: true

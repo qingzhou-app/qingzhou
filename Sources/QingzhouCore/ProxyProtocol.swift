@@ -8,6 +8,9 @@ public enum ProxyProtocol: String, Codable, Sendable, CaseIterable {
     case vless
     case hysteria2
 
+    /// Hysteria2只要求QUIC/UDP监听，TCP握手不能用于判断它是否可用。
+    public var supportsTCPProbe: Bool { self != .hysteria2 }
+
     /// URL scheme（不含 `://`）。`shadowsocks` 在链接中是 `ss`。
     public var urlScheme: String {
         switch self {

@@ -36,7 +36,10 @@ public final class AppState {
     public var activeSection: AppSection = .home
     public var subscriptions: [Subscription] = []
     public var nodes: [Node] = []
-    public var currentNodeId: UUID?
+    public var currentNodeId: UUID? {
+        didSet { selectionIntentGeneration &+= 1 }
+    }
+    private var selectionIntentGeneration: UInt64 = 0
     public var customRules: [Rule] = []
     public var remoteRules: [Rule] = []
     /// 连接列表（UI 读这里）。写入/老化/关闭统一走 `connectionTracker`，
@@ -200,6 +203,9 @@ public final class AppState {
     private var cloudStartupRetryTask: Task<Void, Never>?
 
     private var schedulerTask: Task<Void, Never>?
+    /// 主actor可在await处重入：一次只允许一个直连测量轮，结果按节点身份合并。
+    private var directMeasurementID: UUID?
+    private var subscriptionRefreshIDs: [UUID: UUID] = [:]
     private var updateCheckTask: Task<Void, Never>?
     private var trafficPollingTask: Task<Void, Never>?
     private var accessLogPollingTask: Task<Void, Never>?
@@ -256,9 +262,7 @@ public final class AppState {
     /// `autoSwitchScoreStreakRounds` 轮总分领先 ≥ `autoSwitchScoreMargin` 才放行切换。
     /// 内存态，重启清零（可接受：顶多多等一轮）。记录在位者指纹 —— 手动切换 / 恢复等
     /// 改变当前节点后，配对对不上号自动作废，无需在各切换入口埋钩子。
-    private var scoreStreakChallenger: String?
-    private var scoreStreakIncumbent: String?
-    private var scoreStreakRounds = 0
+    private var selectionHysteresis = NodeSelectionHysteresis()
     /// appex 写的「IP → 域名」映射，把 access log 的裸 IP 翻回域名。里面既有 fakedns
     /// 假 IP（198.18.x.x）也有真实 DNS 应答的 IP（rule 模式下 CN 域名走 AliDNS 拿真实 IP）。
     /// internal 供单测直接注入（backfillDomainNames 用例）。
@@ -313,6 +317,7 @@ public final class AppState {
         // 订阅换代留下的孤儿历史别在文件里越攒越多
         var metrics = persistence.load(NodeMetricsHistory.self, name: Self.nodeMetricsFile)
             ?? NodeMetricsHistory()
+        metrics.migrateLegacyIdentities(for: snapshot.nodes)
         metrics.prune(keeping: Set(snapshot.nodes.map(\.identityFingerprint)))
         self.nodeMetricsHistory = metrics
         logger.info(
@@ -334,8 +339,24 @@ public final class AppState {
     /// 把当前状态序列化落盘。异步执行 —— 主线程立即返回，编码 + 写盘在后台 utility 队列。
     /// 本地落盘后再（防抖地）镜像到 iCloud vault —— 本地是权威源，云端只是镜像。
     func persist() {
-        persistence.saveSnapshotAsync(currentSnapshot())
-        scheduleCloudMirror()
+        let snapshot = currentSnapshot()
+        let (results, completion) = AsyncStream<Result<Void, Error>>.makeStream()
+        // 立即入串行保存队列；不能等MainActor上的Task启动才入队，测试flush/应用退出会漏掉写入。
+        persistence.saveSnapshotAsync(snapshot) { result in
+            completion.yield(result)
+            completion.finish()
+        }
+        let saved = Task { @MainActor [weak self] in
+            var iterator = results.makeAsyncIterator()
+            guard let result = await iterator.next() else { return false }
+            if case .failure(let error) = result {
+                self?.logger.error("Configuration save failed: \(error)", category: "persistence")
+                self?.showToast(L("配置保存失败，请检查设备剩余空间"))
+                return false
+            }
+            return true
+        }
+        scheduleCloudMirror(after: saved)
     }
 
     /// 当前内存状态的完整快照（本地落盘 / 云端镜像共用）。
@@ -622,12 +643,13 @@ public final class AppState {
     }
 
     /// persist() 后调用：防抖 0.5s 再镜像 —— 连续编辑（批量导入 / 拖排序）只写最后一版。
-    private func scheduleCloudMirror() {
+    private func scheduleCloudMirror(after saved: Task<Bool, Never>) {
         guard settings.iCloudSyncEnabled, cloudRestoreOffer == nil else { return }
         cloudMirrorTask?.cancel()
         cloudMirrorTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
+            guard await saved.value, !Task.isCancelled else { return }
             await self?.mirrorToCloudNow()
         }
     }
@@ -637,7 +659,12 @@ public final class AppState {
     /// 上云内容先经 `VaultSnapshotNormalizer` 剥离瞬态字段（延迟 / 当前节点 / 订阅拉取
     /// 时刻与用量），再与上次镜像的内容哈希比对 —— **内容没变就跳过**：自动测速 /
     /// 自动择优 / 订阅例行刷新不再刷出大量雷同 revision、不再挤掉滚动备份里的有效历史。
-    private func mirrorToCloudNow() async {
+    private enum CloudMirrorAuthorization {
+        case normal
+        case restoredHistory(VaultReplacementContext)
+    }
+
+    private func mirrorToCloudNow(authorization: CloudMirrorAuthorization = .normal) async {
         guard settings.iCloudSyncEnabled, cloudRestoreOffer == nil else { return }
         guard await cloudVault.isAvailable() else {
             cloudSyncStatus = .unavailable
@@ -649,11 +676,33 @@ public final class AppState {
 
         cloudSyncStatus = .syncing
         do {
-            let header = try? await cloudVault.loadHeader()
+            let header = try await cloudVault.loadHeader()
+            try Task.checkCancellation()
             if let header, header.schemaVersion > VaultDocument.currentSchemaVersion {
                 // 云端是新版 App 写的：别用旧格式盖掉
                 cloudSyncStatus = .incompatibleCloud(schemaVersion: header.schemaVersion)
                 return
+            }
+            // 运行期间另一台设备写了新内容：保留两边，沿用恢复/暂不恢复的显式决策。
+            // 用户已拒绝这个revision，才允许下次本地编辑将它覆盖（现有约定）。
+            if case .restoredHistory(let confirmed) = authorization, header != confirmed.header {
+                throw CloudVaultStore.StoreError.conflict
+            }
+            if case .normal = authorization, let header, header.revision > (lastSynced?.lastSyncedRevision ?? 0),
+               lastSynced?.lastDeclinedRevision != header.revision {
+                var remoteHash = header.contentHash
+                if remoteHash == nil, let remote = try await cloudVault.loadDocument() {
+                    remoteHash = try VaultSnapshotNormalizer.contentHash(of: remote.snapshot)
+                }
+                try Task.checkCancellation()
+                if remoteHash != contentHash {
+                    var candidate = VaultRestoreCandidate(header: header)
+                    candidate.diffSummary = await cloudRestoreDiffSummary(for: candidate)
+                    try Task.checkCancellation()
+                    cloudRestoreOffer = candidate
+                    cloudSyncStatus = Self.syncedStatus(from: lastSynced) ?? .unknown
+                    return
+                }
             }
             // 内容去重：云端就是本机上次写的那个 revision、且规范化内容没变 → 什么都不做
             if let header, let lastSynced, let contentHash,
@@ -673,7 +722,7 @@ public final class AppState {
                 snapshot: snapshot,
                 contentHash: contentHash
             )
-            try await cloudVault.save(document)
+            try await cloudVault.save(document, expecting: header)
             let now = Date()
             try? persistence.save(
                 VaultSyncState(lastSyncedRevision: revision, lastSyncedAt: now, lastMirroredContentHash: contentHash),
@@ -681,6 +730,7 @@ public final class AppState {
             )
             cloudSyncStatus = .synced(now)
         } catch {
+            if Task.isCancelled { return }
             cloudSyncStatus = .error("\(error)")
             logger.warn("iCloud vault mirror failed: \(error)", category: "cloud")
         }
@@ -703,8 +753,12 @@ public final class AppState {
         cloudMirrorTask = nil
 
         let document: VaultDocument?
+        var mirrorAuthorization: CloudMirrorAuthorization = .normal
         do {
             if let fileName = candidate?.backupFileName {
+                if let context = candidate?.replacementContext {
+                    mirrorAuthorization = .restoredHistory(context)
+                }
                 document = try await cloudVault.loadBackupDocument(fileName: fileName)
             } else {
                 document = try await cloudVault.loadDocument()
@@ -778,7 +832,7 @@ public final class AppState {
         if candidate?.backupFileName != nil {
             // 恢复的是历史版本：云端主文档还是那份「更新但错误」的（比如被删空的）。
             // 立刻把恢复出来的状态以更高 revision 回推 —— 云端主文档也被救回。
-            await mirrorToCloudNow()
+            await mirrorToCloudNow(authorization: mirrorAuthorization)
         } else {
             // 恢复的就是云端主文档：记录同步进度即可，不用再镜像（内容一致，白 +1 revision）。
             // 哈希记规范化后的恢复内容 —— 之后无实质变化的 persist 不会再产生新 revision。
@@ -870,7 +924,9 @@ public final class AppState {
         for backup in await cloudVault.listBackups()
         where backup.header.schemaVersion <= VaultDocument.currentSchemaVersion
             && backup.header.revision != mainHeader?.revision {
-            options.append(VaultRestoreCandidate(header: backup.header, backupFileName: backup.fileName))
+            options.append(VaultRestoreCandidate(
+                header: backup.header, backupFileName: backup.fileName,
+                replacementContext: mainHeader.map(VaultReplacementContext.existing) ?? .absent))
         }
         guard !options.isEmpty else {
             // 也走 .failed 留在 sheet 内展示（带重试）—— iCloud 元数据可能还没同步完，
@@ -1585,19 +1641,27 @@ public final class AppState {
     }
 
     /// 自动择优的触发来源：分数黏性只约束定时路径（schedulerLoop）—— 手动点「择优」、
-    /// 添加订阅、云恢复都是用户主动动作，一轮就换（仍受 autoSwitchWorthRestart 幅度闸）。
+    /// 添加订阅、云恢复都是用户主动动作，一轮采用综合评分结果。
     public enum AutoSelectOrigin: Sendable { case manual, scheduled }
 
     public func autoSelectBestNode(origin: AutoSelectOrigin = .manual) async {
-        guard !nodes.isEmpty else { return }
+        guard !nodes.isEmpty, directMeasurementID == nil, !Task.isCancelled else { return }
+        let roundID = UUID()
+        directMeasurementID = roundID
+        let selectionAtStart = currentNodeId
+        let intentAtStart = selectionIntentGeneration
+        for i in nodes.indices where !nodes[i].protocolType.supportsTCPProbe {
+            nodes[i].lastLatencyMs = nil; nodes[i].lastTestedAt = nil
+        }
+        let fingerprints = Dictionary(nodes.map { ($0.id, $0.identityFingerprint) }, uniquingKeysWith: { first, _ in first })
         let testedAt = Date()
         // 跟手动测速一样：待测节点显示 loading，每测完一个摘掉。
-        measuringNodeIds = Set(nodes.filter { !$0.isExcluded }.map(\.id))
-        defer { measuringNodeIds = [] }
-        let measured = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
-            guard let self else { return }
+        measuringNodeIds = Set(nodes.filter { !$0.isExcluded && $0.protocolType.supportsTCPProbe }.map(\.id))
+        defer { if directMeasurementID == roundID { directMeasurementID = nil; measuringNodeIds = [] } }
+        _ = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
+            guard let self, !Task.isCancelled, self.directMeasurementID == roundID else { return }
             self.measuringNodeIds.remove(nodeID)
-            if let i = self.nodes.firstIndex(where: { $0.id == nodeID }) {
+            if let i = self.nodes.firstIndex(where: { $0.id == nodeID && $0.identityFingerprint == fingerprints[nodeID] }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
                 self.nodes[i].lastTestedAt = testedAt
                 // 成功失败都落测量历史（含 burst 丢包率）—— 稳定性维度靠失败样本算
@@ -1606,26 +1670,20 @@ public final class AppState {
                     lossFraction: result.lossFraction, at: testedAt)
             }
         }
-        nodes = measured
+        guard !Task.isCancelled else { return }
+        // 用户在测量期间另选节点时，尊重这个更新的意图，不再提交旧的择优请求。
+        guard selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart else { persist(); return }
         let previousId = currentNodeId
-        if var best = pickBestRespectingRegions(from: measured) {
-            // 分数黏性（仅自动路径）：挑战者总分须领先 ≥8 且连续 2 轮 —— 单轮领先大概率
-            // 是测量抖动，为它整条隧道重启不值当（用户反馈过启停频繁）。测速结果照常落盘。
-            if shouldHoldForScoreStickiness(origin: origin, challenger: best, incumbent: currentNode) {
-                persist()
-                return
+        var candidate = pickBestRespectingRegions(from: nodes)
+        if candidate == nil, isVPNRunning, !isSwitchingTunnel,
+           nodes.contains(where: { !$0.protocolType.supportsTCPProbe && !isEffectivelyExcluded($0) }) {
+            for node in nodes.filter({ !$0.protocolType.supportsTCPProbe && !isEffectivelyExcluded($0) }) {
+                if Task.isCancelled || !isVPNRunning || isSwitchingTunnel { break }
+                _ = await measureProxiedLatency(node, showToastOnError: false)
             }
-            // 黏性滞后：VPN 在跑且当前节点本轮仍可用时，新最优要显著更好才值得为它
-            // 整条隧道重启。不够好就整轮收工 —— 连经代理精选也省了（少起临时 xray
-            // 实例，扩展内存压力更小）。测速结果照常落盘，延迟列仍然是新的。
-            if isVPNRunning, !isSwitchingTunnel, best.id != currentNodeId,
-               let current = currentNode, !isEffectivelyExcluded(current),
-               !Self.autoSwitchWorthRestart(currentMs: current.lastLatencyMs,
-                                            bestMs: best.lastLatencyMs ?? .max) {
-                logger.info("Auto-select keeps \(current.name) (\(current.lastLatencyMs ?? -1)ms): candidate \(best.name) (\(best.lastLatencyMs ?? -1)ms) not better enough to restart tunnel", category: "app")
-                persist()
-                return
-            }
+            candidate = pickBestRespectingRegions(from: nodes)
+        }
+        if var best = candidate {
             // 经代理精选（VPN 在跑且开关开着）：直连绿色候选逐个真实走节点测，
             // 避开「直连快但出口绕路 / 已失效」的假好节点。VPN 没开时测不了，直接用直连结果。
             if settings.autoSelectUsesProxiedLatency, isVPNRunning, !isSwitchingTunnel {
@@ -1633,6 +1691,13 @@ public final class AppState {
             } else if settings.autoSelectUsesProxiedLatency {
                 // 静默跳过会让用户以为精选没跑（真机反馈过）—— 至少留下日志可查
                 logger.info("Proxied refine skipped — VPN not running", category: "app")
+            }
+            guard !Task.isCancelled, selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart,
+                  let liveBest = nodes.first(where: { $0.id == best.id && $0.identityFingerprint == best.identityFingerprint }),
+                  !isEffectivelyExcluded(liveBest) else { persist(); return }
+            best = liveBest
+            if shouldHoldForScoreStickiness(origin: origin, challenger: best, incumbent: currentNode) {
+                persist(); return
             }
             currentNodeId = best.id
             logger.info("Auto-selected \(best.name) [\(best.region)] (direct \(best.lastLatencyMs ?? -1)ms / proxied \(best.lastProxiedLatencyMs ?? -1)ms)", category: "app")
@@ -1665,14 +1730,14 @@ public final class AppState {
     /// 选最低者；**测不通的候选直接淘汰**（失效节点进不了当前节点）。
     /// 全部失败 → 退回直连最优，并 toast 说明（不能无声回退，用户会以为精选没跑）。
     private func refineWithProxiedLatency(fallback: Node) async -> Node {
-        let viable = nodes.filter { !isEffectivelyExcluded($0) && $0.lastLatencyMs != nil }
+        let viable = nodes.filter { !isEffectivelyExcluded($0) && ($0.lastLatencyMs != nil || !$0.protocolType.supportsTCPProbe) }
         var pool = viable
         if let pref = settings.preferredRegion {
             let inPref = viable.filter { $0.region == pref }
             if !inPref.isEmpty { pool = inPref }
         }
         var candidates = pool
-            .filter { ($0.lastLatencyMs ?? .max) < Self.directGreenThresholdMs }
+            .filter { !$0.protocolType.supportsTCPProbe || ($0.lastLatencyMs ?? .max) < Self.directGreenThresholdMs }
             .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
         if candidates.isEmpty {
             // 一个绿色都没有（网络差 / 节点普遍远）：退化取直连前几名，精选仍有意义
@@ -1703,7 +1768,7 @@ public final class AppState {
         }
         // 精选内核同样按总分选：延迟维用**当轮经代理实测值**（不带时间戳 = 新鲜，
         // 0.7 权重）与本轮直连（0.3）按分数混合，其余维度与直连轮同一口径。
-        if var best = bestByScore(
+        if let best = bestByScore(
             measured.map(\.node),
             latency: { node in measured.first { $0.node.id == node.id }?.ms ?? .max },
             score: { node in
@@ -1720,16 +1785,7 @@ public final class AppState {
                 )
             }
         ) {
-            var bestMs = measured.first { $0.node.id == best.id }?.ms ?? -1
-            // 黏性滞后（经代理维度）：精选想换掉当前节点、而当前节点本轮也实测过且
-            // 没坏时，同样要求显著更好 —— 不为经代理延迟的抖动重启隧道。
-            if best.id != currentNodeId,
-               let current = measured.first(where: { $0.node.id == currentNodeId }),
-               !Self.autoSwitchWorthRestart(currentMs: current.ms, bestMs: bestMs) {
-                logger.info("Proxied refine keeps \(current.node.name) (\(current.ms)ms): \(best.name) (\(bestMs)ms) not better enough to restart tunnel", category: "app")
-                best = current.node
-                bestMs = current.ms
-            }
+            let bestMs = measured.first { $0.node.id == best.id }?.ms ?? -1
             logger.info("Proxied refine picked \(best.name) (\(bestMs)ms, rate \(best.rateForComparison)) from \(candidates.count) green candidates (\(failedCount) failed)", category: "app")
             if failedCount > 0 {
                 showToast(L("经代理精选完成：实测 \(candidates.count) 个候选，避开 \(failedCount) 个不可用节点"))
@@ -1739,21 +1795,6 @@ public final class AppState {
         logger.warn("Proxied refine: all \(candidates.count) candidates failed — falling back to direct best", category: "app")
         showToast(L("经代理精选：\(candidates.count) 个候选实测均失败，本次按直连结果选择"))
         return fallback
-    }
-
-    /// 自动择优的黏性滞后：VPN 运行中切换节点 = 全量隧道重启 = 图标闪烁 + 数秒断流，
-    /// 所以当前节点仍健康时，新最优必须**显著**更快才值得切 —— 绝对值至少快
-    /// `autoSwitchMinImprovementMs`，且相对当前延迟的降幅不低于 `autoSwitchImprovementRatio`
-    /// （两条取较严者）。延迟抖动导致的「最优每轮易主」不再触发重启（用户反馈：启停频繁）。
-    static let autoSwitchMinImprovementMs = 50
-    static let autoSwitchImprovementRatio = 0.3
-
-    /// 「为这个新最优重启隧道值不值」。当前节点本轮测速失败（nil）= 已坏，无条件放行。
-    /// 只约束 VPN 运行中的切换 —— 没跑时改 currentNodeId 不花钱，调用方不该走这里。
-    static func autoSwitchWorthRestart(currentMs: Int?, bestMs: Int) -> Bool {
-        guard let currentMs else { return true }
-        let floor = max(autoSwitchMinImprovementMs, Int(Double(currentMs) * autoSwitchImprovementRatio))
-        return currentMs - bestMs >= floor
     }
 
     /// 从候选里选 `NodeScorer` 总分最高者 —— 自动择优的内核。旧「延迟最低 + 接近时
@@ -1779,7 +1820,7 @@ public final class AppState {
     /// 2. 若设了优先地区且该地区有可用节点，从中选总分最高者
     /// 3. 否则全局选
     func pickBestRespectingRegions(from measured: [Node]) -> Node? {
-        let viable = measured.filter { !isEffectivelyExcluded($0) && $0.lastLatencyMs != nil }
+        let viable = measured.filter { !isEffectivelyExcluded($0) && hasUsableSelectionMeasurement($0) }
         guard !viable.isEmpty else { return nil }
         let latency: (Node) -> Int = { $0.lastLatencyMs ?? .max }
         if let pref = settings.preferredRegion {
@@ -1809,79 +1850,48 @@ public final class AppState {
         )
     }
 
-    /// 分数黏性的门槛：挑战者总分须领先在位者的分数（锚点归一保证跨轮可比）。
-    static let autoSwitchScoreMargin: Double = 8
-    /// 分数黏性的持续轮数：领先须**连续**成立的自动择优轮数。
-    static let autoSwitchScoreStreakRounds = 2
+    static let autoSwitchScoreMargin = NodeSelectionHysteresis.defaultMargin
+    static let autoSwitchScoreStreakRounds = NodeSelectionHysteresis.defaultRounds
 
-    /// 「分数黏性」判定 + 连续轮次状态推进。返回 true = 本轮按兵不动（保持当前节点）。
-    ///
-    /// 挑战者总分须比在位者高 ≥ `autoSwitchScoreMargin`，且对**同一在位者**连续
-    /// `autoSwitchScoreStreakRounds` 轮成立才放行 —— 幅度 + 持续双滞后，抖动导致的
-    /// 「最优每轮易主」不再频繁触发重启。三类直接放行：手动路径（用户主动要换，一轮
-    /// 就换）、VPN 没跑（改 currentNodeId 不花钱）、在位者本轮测量失败或已被排除
-    /// （可用性 > 稳定，沿用 autoSwitchWorthRestart 的 nil 放行语义）。
-    /// 放行 ≠ 必切：下游还叠着 autoSwitchWorthRestart 的幅度闸。
-    func shouldHoldForScoreStickiness(
-        origin: AutoSelectOrigin,
-        challenger: Node,
-        incumbent: Node?
-    ) -> Bool {
-        guard origin == .scheduled, isVPNRunning, !isSwitchingTunnel,
-              let incumbent, challenger.id != incumbent.id else {
-            // 没有挑战局（手动 / VPN 没跑 / 最优就是在位者）：定时路径下连续性已中断
+    func hasUsableSelectionMeasurement(_ node: Node, now: Date = Date()) -> Bool {
+        if node.protocolType.supportsTCPProbe { return node.lastLatencyMs != nil }
+        guard node.lastProxiedLatencyMs != nil, let at = node.lastProxiedTestedAt else { return false }
+        return now.timeIntervalSince(at) <= NodeScorer.proxiedFreshnessWindow
+    }
+
+    /// 手动请求立即采用综合分数；自动请求使用与回放同一份分数黏性。
+    func shouldHoldForScoreStickiness(origin: AutoSelectOrigin, challenger: Node, incumbent: Node?) -> Bool {
+        guard origin == .scheduled, isVPNRunning, !isSwitchingTunnel else {
             if origin == .scheduled { resetScoreStreak() }
             return false
         }
-        guard !isEffectivelyExcluded(incumbent), incumbent.lastLatencyMs != nil else {
-            resetScoreStreak()
-            return false
-        }
-        let challengerScore = scoreForAutoSelect(challenger).total
-        let incumbentScore = scoreForAutoSelect(incumbent).total
-        guard challengerScore - incumbentScore >= Self.autoSwitchScoreMargin else {
-            resetScoreStreak()
-            logger.info(
-                "Score stickiness keeps \(incumbent.name) (\(String(format: "%.1f", incumbentScore))): challenger \(challenger.name) (\(String(format: "%.1f", challengerScore))) not ahead by \(Int(Self.autoSwitchScoreMargin))",
-                category: "app"
-            )
-            return true
-        }
-        if scoreStreakChallenger == challenger.identityFingerprint,
-           scoreStreakIncumbent == incumbent.identityFingerprint {
-            scoreStreakRounds += 1
-        } else {
-            scoreStreakChallenger = challenger.identityFingerprint
-            scoreStreakIncumbent = incumbent.identityFingerprint
-            scoreStreakRounds = 1
-        }
-        if scoreStreakRounds >= Self.autoSwitchScoreStreakRounds {
-            resetScoreStreak()
-            return false
-        }
-        logger.info(
-            "Score stickiness keeps \(incumbent.name) (\(String(format: "%.1f", incumbentScore))): challenger \(challenger.name) (\(String(format: "%.1f", challengerScore))) ahead, round \(scoreStreakRounds)/\(Self.autoSwitchScoreStreakRounds)",
-            category: "app"
+        return selectionHysteresis.shouldHold(
+            challenger: challenger.identityFingerprint, incumbent: incumbent?.identityFingerprint,
+            challengerScore: scoreForAutoSelect(challenger).total,
+            incumbentScore: incumbent.map { scoreForAutoSelect($0).total } ?? 0,
+            incumbentViable: incumbent.map { !isEffectivelyExcluded($0) && hasUsableSelectionMeasurement($0) } ?? false
         )
-        return true
     }
 
-    private func resetScoreStreak() {
-        scoreStreakChallenger = nil
-        scoreStreakIncumbent = nil
-        scoreStreakRounds = 0
-    }
+    private func resetScoreStreak() { selectionHysteresis.reset() }
 
     public func measureAllNodes() async {
+        guard directMeasurementID == nil, !Task.isCancelled else { return }
+        let roundID = UUID()
+        directMeasurementID = roundID
+        for i in nodes.indices where !nodes[i].protocolType.supportsTCPProbe {
+            nodes[i].lastLatencyMs = nil; nodes[i].lastTestedAt = nil
+        }
+        let fingerprints = Dictionary(nodes.map { ($0.id, $0.identityFingerprint) }, uniquingKeysWith: { first, _ in first })
         let testedAt = Date()
         // 测速开始：把所有待测（非排除）节点标记为"测速中"，UI 显示旋转 loading。
-        measuringNodeIds = Set(nodes.filter { !$0.isExcluded }.map(\.id))
-        defer { measuringNodeIds = [] }  // 不管正常结束还是取消，都清干净
+        measuringNodeIds = Set(nodes.filter { !$0.isExcluded && $0.protocolType.supportsTCPProbe }.map(\.id))
+        defer { if directMeasurementID == roundID { directMeasurementID = nil; measuringNodeIds = [] } }
         // 渐进式：每测完一个节点立刻刷新它那一行的延迟 + 摘掉它的 loading，不用干等全部测完。
-        nodes = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
-            guard let self else { return }
+        _ = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
+            guard let self, !Task.isCancelled, self.directMeasurementID == roundID else { return }
             self.measuringNodeIds.remove(nodeID)
-            if let i = self.nodes.firstIndex(where: { $0.id == nodeID }) {
+            if let i = self.nodes.firstIndex(where: { $0.id == nodeID && $0.identityFingerprint == fingerprints[nodeID] }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
                 self.nodes[i].lastTestedAt = testedAt
                 // 定时/手动测速轮同样落测量历史（含 burst 丢包率）—— 稳定性维度的免费
@@ -1986,33 +1996,40 @@ public final class AppState {
     }
 
     public func refreshSubscription(_ subscription: Subscription) async {
+        guard subscriptions.contains(where: { $0.id == subscription.id }), !Task.isCancelled else { return }
+        let refreshID = UUID()
+        subscriptionRefreshIDs[subscription.id] = refreshID
+        defer { if subscriptionRefreshIDs[subscription.id] == refreshID { subscriptionRefreshIDs[subscription.id] = nil } }
         do {
-            let (updated, payload) = try await subscriptionFetcher.refresh(subscription)
-            if let idx = subscriptions.firstIndex(where: { $0.id == subscription.id }) {
-                subscriptions[idx] = updated
-            } else {
-                subscriptions.append(updated)
-            }
+            let result = try await subscriptionFetcher.refresh(subscription)
+            var updated = result.updated
+            let payload = result.payload
+            guard !Task.isCancelled, subscriptionRefreshIDs[subscription.id] == refreshID,
+                  let idx = subscriptions.firstIndex(where: { $0.id == subscription.id && $0.url == subscription.url }) else { return }
             merge(newNodes: payload.nodes, fromSubscription: updated.id)
-            // 0 节点且原文格式无法识别（既不是 Clash / SIP008、也不是链接列表）：
-            // 多半是链接填错 / 返回了 HTML 登录页，给醒目提示，别让用户对着空列表懵。
-            // 订阅确实为空（Clash proxies:[] / SIP008 servers:[]）不算错误，走正常清空路径。
-            if payload.nodes.isEmpty, !payload.formatRecognized {
-                let msg = L("订阅格式无法识别，请确认链接正确（能否在浏览器里直接打开）")
-                subscriptionErrors[subscription.id] = msg
-                showToast(msg)
-                logger.error("Subscription \(subscription.name): 格式无法识别（0 节点）", category: "subscription")
-            } else {
-                subscriptionErrors[subscription.id] = nil
-            }
+            updated.name = subscriptions[idx].name // 刷新期间的本地改名优先
+            updated.nodeCount = nodes.filter { $0.subscriptionId == updated.id }.count
+            subscriptions[idx] = updated
+            subscriptionErrors[subscription.id] = nil
             persist()
         } catch {
-            subscriptionErrors[subscription.id] = "\(error)"
+            guard !Task.isCancelled, subscriptionRefreshIDs[subscription.id] == refreshID,
+                  subscriptions.contains(where: { $0.id == subscription.id }) else { return }
+            switch error {
+            case SubscriptionRefreshError.httpStatus(let code):
+                subscriptionErrors[subscription.id] = L("订阅服务器返回 HTTP \(code)，已保留原有节点")
+            case SubscriptionRefreshError.unrecognizedFormat:
+                subscriptionErrors[subscription.id] = L("订阅格式无法识别，请确认链接正确（能否在浏览器里直接打开）")
+            case SubscriptionRefreshError.noSupportedNodes:
+                subscriptionErrors[subscription.id] = L("订阅中的节点均无法解析或暂不支持，已保留原有节点")
+            default: subscriptionErrors[subscription.id] = error.localizedDescription
+            }
             logger.error("Refresh subscription \(subscription.name) failed: \(error)", category: "subscription")
         }
     }
 
     public func removeSubscription(_ subscription: Subscription) {
+        subscriptionRefreshIDs[subscription.id] = nil
         subscriptions.removeAll { $0.id == subscription.id }
         nodes.removeAll { $0.subscriptionId == subscription.id }
         if let cn = currentNode, cn.subscriptionId == subscription.id { currentNodeId = nil }
@@ -2022,16 +2039,23 @@ public final class AppState {
 
     public func merge(newNodes incoming: [Node], fromSubscription subId: UUID) {
         let oldBySub = nodes.filter { $0.subscriptionId == subId }
-        let oldByFingerprint = Dictionary(uniqueKeysWithValues: oldBySub.map { ($0.identityFingerprint, $0) })
+        let oldByFingerprint = Dictionary(oldBySub.map { ($0.identityFingerprint, $0) }, uniquingKeysWith: { first, _ in first })
 
         var preserved: [Node] = []
+        var seen = Set<String>()
         for n in incoming {
+            guard seen.insert(n.identityFingerprint).inserted else { continue }
             var merged = n
+            merged.subscriptionId = subId
             if let prev = oldByFingerprint[n.identityFingerprint] {
                 merged.id = prev.id
                 merged.isExcluded = prev.isExcluded
                 merged.lastLatencyMs = prev.lastLatencyMs
                 merged.lastTestedAt = prev.lastTestedAt
+                merged.lastProxiedLatencyMs = prev.lastProxiedLatencyMs
+                merged.lastProxiedTestedAt = prev.lastProxiedTestedAt
+                merged.observedPeakDownBps = prev.observedPeakDownBps
+                merged.observedBandwidthAt = prev.observedBandwidthAt
             }
             preserved.append(merged)
         }

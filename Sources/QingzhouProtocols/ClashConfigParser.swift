@@ -75,6 +75,8 @@ public enum ClashConfigParser {
             do {
                 if let node = try convertOne(raw) {
                     nodes.append(node)
+                } else {
+                    errors.append((name, "暂不支持的节点协议：\(raw["type"] ?? "unknown")"))
                 }
             } catch let e as Error {
                 errors.append((name, "\(e)"))
@@ -100,7 +102,7 @@ public enum ClashConfigParser {
         }
 
         // 把 Clash 字段名映射到 ProxyProtocol。
-        // 其他 Clash 特有协议（vmess-snell, ssr, http, socks5...）暂不支持，跳过。
+        // 其他Clash协议暂不支持；convert会记录错误，避免把非空订阅误当合法空。
         let proto: ProxyProtocol
         switch typeStr {
         case "trojan":            proto = .trojan
@@ -108,7 +110,7 @@ public enum ClashConfigParser {
         case "vmess":             proto = .vmess
         case "vless":             proto = .vless
         case "hysteria2", "hy2":  proto = .hysteria2
-        default:                  return nil   // 不支持的类型不报错，静默跳过
+        default:                  return nil   // convert记录unsupported条目
         }
 
         var node = Node(name: name, protocolType: proto, host: server, port: port)

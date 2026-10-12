@@ -28,11 +28,13 @@ public actor CloudVaultStore {
         /// 云端有文档但本机还没下载完（新装机 / 重装首启常见）。调用方应稍后重试，
         /// **绝不能**把这种状态当「云端没有文档」而用本地（可能是空的）数据覆盖上去。
         case notYetDownloaded
+        case conflict
 
         public var errorDescription: String? {
             switch self {
             case .unavailable: return L("iCloud 不可用（未登录或未开启 iCloud Drive）")
             case .notYetDownloaded: return L("iCloud 数据还在下载中，稍后再试")
+            case .conflict: return L("iCloud 配置已被其他设备更新，请先查看云端版本")
             }
         }
     }
@@ -73,6 +75,16 @@ public actor CloudVaultStore {
     }
 
     public func save(_ document: VaultDocument) throws {
+        try save(document, expectedHeader: nil, checkCurrentHeader: false)
+    }
+
+    /// 比对与替换在同一个协调写窗口内完成，防止loadHeader和save之间插入其他写入。
+    public func save(_ document: VaultDocument, expecting expectedHeader: VaultHeader?) throws {
+        try save(document, expectedHeader: expectedHeader, checkCurrentHeader: true)
+    }
+
+    private func save(_ document: VaultDocument, expectedHeader: VaultHeader?, checkCurrentHeader: Bool) throws {
+        try Task.checkCancellation()
         guard let url = documentURL() else { throw StoreError.unavailable }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -84,6 +96,16 @@ public actor CloudVaultStore {
             writingItemAt: url, options: .forReplacing, error: &coordinationError
         ) { actualURL in
             do {
+                if checkCurrentHeader {
+                    let fm = FileManager.default
+                    let placeholder = actualURL.deletingLastPathComponent().appendingPathComponent(".\(actualURL.lastPathComponent).icloud")
+                    if !fm.fileExists(atPath: actualURL.path), fm.fileExists(atPath: placeholder.path) {
+                        throw StoreError.notYetDownloaded
+                    }
+                    let currentHeader: VaultHeader? = fm.fileExists(atPath: actualURL.path)
+                        ? try VaultDocument.decodeHeader(from: Data(contentsOf: actualURL)) : nil
+                    guard currentHeader == expectedHeader else { throw StoreError.conflict }
+                }
                 try data.write(to: actualURL, options: .atomic)
             } catch {
                 writeError = error
@@ -237,6 +259,8 @@ public actor CloudVaultStore {
             // 文件不存在时部分系统会报 NSFileNoSuchFileError —— 等同「没有文档」
             if error.domain == NSCocoaErrorDomain,
                error.code == NSFileReadNoSuchFileError || error.code == NSFileNoSuchFileError {
+                let placeholder = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).icloud")
+                if fm.fileExists(atPath: placeholder.path) { throw StoreError.notYetDownloaded }
                 return nil
             }
             throw error

@@ -210,7 +210,7 @@ final class ClashConfigParserTests: XCTestCase {
         XCTAssertEqual(n.parameters["down"], "500 Mbps")
     }
 
-    func testParseUnsupportedTypeSkippedSilently() throws {
+    func testParseUnsupportedTypeReportsErrorAndKeepsSupportedNodes() throws {
         let yaml = """
         proxies:
           - name: SnellNode
@@ -227,7 +227,8 @@ final class ClashConfigParserTests: XCTestCase {
         let (nodes, errors) = try ClashConfigParser.parse(yaml)
         XCTAssertEqual(nodes.count, 1)
         XCTAssertEqual(nodes[0].name, "Good")
-        XCTAssertTrue(errors.isEmpty, "未知 type 静默跳过，不算错误")
+        XCTAssertEqual(errors.count, 1, "不支持条目必须留痕，非空订阅不能被误识别为合法空")
+        XCTAssertEqual(errors.first?.name, "SnellNode")
     }
 
     func testParseInvalidEntryCollectsError() throws {

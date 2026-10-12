@@ -191,7 +191,7 @@ public struct NodesView: View {
     private func runBatchMeasure() async {
         isMeasuring = true
         // 与 measureAllNodes 的待测集合同口径（非排除节点）
-        measureTotal = state.nodes.filter { !$0.isExcluded }.count
+        measureTotal = state.nodes.filter { !$0.isExcluded && $0.protocolType.supportsTCPProbe }.count
         await state.measureAllNodes()
         isMeasuring = false
     }

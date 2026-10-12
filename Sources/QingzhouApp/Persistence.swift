@@ -102,17 +102,23 @@ public final class Persistence: @unchecked Sendable {
 
     public func saveSnapshot(_ snapshot: Snapshot) throws {
         try save(snapshot, name: "state")
+        // 最新成功快照独立保留：主文件损坏时仍能恢复用户配置。
+        try save(snapshot, name: "state-last-good")
     }
 
     /// 异步版本：序列化 + 写盘都在 utility QoS 的串行队列里跑，主线程立即返回。
     /// AppState.persist() 用这个，避免点「订阅刷新」时主线程卡 50–100ms。
-    public func saveSnapshotAsync(_ snapshot: Snapshot) {
+    public func saveSnapshotAsync(
+        _ snapshot: Snapshot,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void = { _ in }
+    ) {
         let captured = snapshot   // value copy, snapshot is all `var` POD
         saveQueue.async { [self] in
             do {
-                try save(captured, name: "state")
+                try saveSnapshot(captured)
+                completion(.success(()))
             } catch {
-                // 落盘失败：日志已经在 AppState 那边处理；这里静默重试不靠谱，跳过
+                completion(.failure(error))
             }
         }
     }
@@ -124,6 +130,8 @@ public final class Persistence: @unchecked Sendable {
     }
 
     public func loadSnapshot() -> Snapshot {
-        load(Snapshot.self, name: "state") ?? Snapshot()
+        load(Snapshot.self, name: "state")
+            ?? load(Snapshot.self, name: "state-last-good")
+            ?? Snapshot()
     }
 }

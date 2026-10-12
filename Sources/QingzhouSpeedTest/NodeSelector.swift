@@ -43,7 +43,8 @@ public actor NodeSelector {
     ) async -> [Node] {
         // 先把要测的节点压成 (索引, URL) 二元组 —— probe URL 算出来不可用的直接跳过。
         let work: [(Int, URL)] = nodes.enumerated().compactMap { (idx, node) in
-            guard !node.isExcluded, let url = nodeProbeURL(node) else { return nil }
+            guard !node.isExcluded, node.protocolType.supportsTCPProbe,
+                  let url = nodeProbeURL(node) else { return nil }
             return (idx, url)
         }
         logger?.info(
@@ -66,6 +67,7 @@ public actor NodeSelector {
             var collected: [(Int, LatencyResult)] = []
             // 每完成一个就补一个，直到 iter 耗尽且 group 排空
             while let (idx, result) = await group.next() {
+                if Task.isCancelled { group.cancelAll(); break }
                 collected.append((idx, result))
                 // 测完一个立刻回调 UI（用 node id 定位，不依赖 index，调用方可能在重排）
                 if let onResult {
@@ -81,6 +83,10 @@ public actor NodeSelector {
         }
 
         var updated = nodes
+        for i in updated.indices where !updated[i].protocolType.supportsTCPProbe {
+            updated[i].lastLatencyMs = nil
+            updated[i].lastTestedAt = nil
+        }
         let now = Date()
         for (idx, result) in measurements {
             updated[idx].lastLatencyMs = result.latencyMs
@@ -107,6 +113,7 @@ public actor NodeSelector {
         var successes: [Int] = []
         var lastError: String?
         for _ in 0..<burstCount {
+            if Task.isCancelled { break }
             let result = await prober.probe(url, timeout: timeout)
             if let ms = result.latencyMs {
                 successes.append(ms)

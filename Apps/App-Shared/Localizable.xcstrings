@@ -1,6 +1,98 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "配置保存失败，请检查设备剩余空间": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configuration could not be saved. Check available device storage."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定儲存失敗，請檢查裝置剩餘空間"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定を保存できませんでした。空き容量を確認してください。"
+          }
+        }
+      }
+    },
+    "订阅中的节点均无法解析或暂不支持，已保留原有节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No supported nodes could be parsed. Existing nodes were preserved."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "訂閱中的節點均無法解析或暫不支援，已保留原有節點"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "対応ノードを解析できませんでした。既存のノードは保持されます。"
+          }
+        }
+      }
+    },
+    "订阅服务器返回 HTTP %lld，已保留原有节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscription server returned HTTP %lld. Existing nodes were preserved."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "訂閱伺服器回傳 HTTP %lld，已保留原有節點"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "購読サーバーが HTTP %lld を返しました。既存のノードは保持されます。"
+          }
+        }
+      }
+    },
+    "iCloud 配置已被其他设备更新，请先查看云端版本": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another device updated the iCloud configuration. Review the cloud version first."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud 設定已被其他裝置更新，請先查看雲端版本"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別のデバイスがiCloudの設定を更新しました。クラウドのバージョンを確認してください。"
+          }
+        }
+      }
+    },
     "阻断 QUIC": {
       "extractionState": "manual",
       "localizations": {

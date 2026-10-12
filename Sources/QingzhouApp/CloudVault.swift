@@ -117,6 +117,16 @@ public struct VaultHeader: Codable, Sendable, Equatable {
 }
 
 /// 一个可恢复的云端版本：主 vault 文档（`backupFileName == nil`）或 backups/ 里的历史版本。
+public enum VaultReplacementContext: Equatable, Sendable {
+    case absent
+    case existing(VaultHeader)
+
+    public var header: VaultHeader? {
+        if case .existing(let value) = self { return value }
+        return nil
+    }
+}
+
 public struct VaultRestoreCandidate: Equatable, Sendable, Identifiable {
     public var header: VaultHeader
     /// nil = 云端主文档；非 nil = `Documents/backups/` 下的历史版本文件名。
@@ -125,13 +135,17 @@ public struct VaultRestoreCandidate: Equatable, Sendable, Identifiable {
     /// message 在呈现瞬间就定格，事后补算刷不进去。读不到云端全文（下载中 / 解码失败）
     /// 时为 nil，确认弹窗降级为只显示云端计数。
     public var diffSummary: String?
+    /// 版本列表显示时看到的主文档；确认后不能读取新header来扩大覆盖授权。
+    public var replacementContext: VaultReplacementContext?
 
     public var id: String { backupFileName ?? "main" }
 
-    public init(header: VaultHeader, backupFileName: String? = nil, diffSummary: String? = nil) {
+    public init(header: VaultHeader, backupFileName: String? = nil, diffSummary: String? = nil,
+                replacementContext: VaultReplacementContext? = nil) {
         self.header = header
         self.backupFileName = backupFileName
         self.diffSummary = diffSummary
+        self.replacementContext = replacementContext
     }
 }
 
@@ -272,21 +286,32 @@ public struct VaultDiff: Equatable, Sendable {
         let l = VaultSnapshotNormalizer.normalized(local)
         let c = VaultSnapshotNormalizer.normalized(cloud)
 
-        // 节点按身份指纹配对（与 restoreFromCloud 的瞬态回填同一配对方式）；
-        // 指纹撞车（同协议同地址同凭据的重复节点）取第一个 —— 计数按唯一指纹算，够用。
+        // 先按稳定 id 配对，参数编辑仍算修改；不同设备重新导入时再按完整配置身份配对。
+        // 完全重复的配置取第一个，计数按唯一指纹算。
         let localNodes = Dictionary(
             l.nodes.map { ($0.identityFingerprint, $0) }, uniquingKeysWith: { first, _ in first })
         let cloudNodes = Dictionary(
             c.nodes.map { ($0.identityFingerprint, $0) }, uniquingKeysWith: { first, _ in first })
+        let localNodesById = Dictionary(
+            localNodes.map { ($0.value.id, ($0.key, $0.value)) },
+            uniquingKeysWith: { first, _ in first })
+        var localRemaining = localNodes
+        var pairedCloud = Set<String>()
         var nodesAdded = 0, nodesModified = 0
         for (fingerprint, cloudNode) in cloudNodes {
-            guard let localNode = localNodes[fingerprint] else {
+            guard let (localFingerprint, localNode) = localNodesById[cloudNode.id],
+                  localRemaining.removeValue(forKey: localFingerprint) != nil else { continue }
+            pairedCloud.insert(fingerprint)
+            if comparableNode(cloudNode) != comparableNode(localNode) { nodesModified += 1 }
+        }
+        for (fingerprint, cloudNode) in cloudNodes where !pairedCloud.contains(fingerprint) {
+            guard let localNode = localRemaining.removeValue(forKey: fingerprint) else {
                 nodesAdded += 1
                 continue
             }
             if comparableNode(cloudNode) != comparableNode(localNode) { nodesModified += 1 }
         }
-        let nodesRemoved = localNodes.keys.filter { cloudNodes[$0] == nil }.count
+        let nodesRemoved = localRemaining.count
 
         // 订阅按 url 配对（url 即身份；名字 / 计数变化不算 —— 恢复不会丢订阅本身）
         let localSubURLs = Set(l.subscriptions.map(\.url))

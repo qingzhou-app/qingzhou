@@ -76,8 +76,18 @@ public struct Node: Identifiable, Codable, Sendable, Hashable {
 }
 
 extension Node {
-    /// 节点身份指纹：协议 + host + port + 凭据。用于订阅刷新时去重 / 保留测速结果。
+    /// 完整连接身份。名称与倍率不属于连接身份，传输路径/SNI/Reality/加密设置则属于。
     public var identityFingerprint: String {
+        var configuration: [String: Any] = ["parameters": parameters.filter { $0.key != "rate" }]
+        if let cipher { configuration["cipher"] = cipher }
+        if let alterId { configuration["alterId"] = alterId }
+        let data = try? JSONSerialization.data(withJSONObject: configuration, options: [.sortedKeys])
+        let suffix = data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return "v2:\(legacyIdentityFingerprint)#\(suffix)"
+    }
+
+    /// 只供同模块迁移旧测量历史，不能再作为去重键。
+    var legacyIdentityFingerprint: String {
         let credential = password ?? uuid ?? ""
         return "\(protocolType.rawValue)://\(credential)@\(host):\(port)"
     }

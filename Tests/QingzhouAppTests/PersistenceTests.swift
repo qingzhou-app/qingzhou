@@ -3,6 +3,30 @@ import QingzhouCore
 @testable import QingzhouApp
 
 final class PersistenceTests: XCTestCase {
+    func testCorruptPrimaryRecoversLastSuccessfulSnapshot() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let persistence = Persistence(directory: directory)
+        let node = Node(name: "preserved", protocolType: .trojan, host: "example.com", port: 443)
+        let snapshot = Persistence.Snapshot(nodes: [node])
+        try persistence.saveSnapshot(snapshot)
+        try Data("corrupt".utf8).write(to: directory.appendingPathComponent("state.json"))
+        XCTAssertEqual(persistence.loadSnapshot().nodes, [node])
+    }
+
+    func testAsyncSnapshotSaveReportsFailure() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let persistence = Persistence(directory: directory)
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("state.json"), withIntermediateDirectories: true)
+        let succeeded: Bool = await withCheckedContinuation { continuation in
+            persistence.saveSnapshotAsync(Persistence.Snapshot()) { result in
+                if case .success = result { continuation.resume(returning: true) }
+                else { continuation.resume(returning: false) }
+            }
+        }
+        XCTAssertFalse(succeeded, "保存失败不能静默报告成功")
+    }
     var tmpDir: URL!
     var persistence: Persistence!
 

@@ -16,6 +16,8 @@ LIBXRAY_REPO="https://github.com/XTLS/libXray.git"
 # libXray 锁定的上游 commit —— 升级 xray-core 时通常要一起动（binding 与 core API 配对）。
 # 2026-07-07 升级批：73bb811（含 Invoke 响应模型对齐 #132）。
 LIBXRAY_REF="73bb811"
+# 与已验证Go工具链配套，避免@latest让同一源码重建时拉入不同的binding生成器。
+MOBILE_REF="v0.0.0-20260611195102-4dd8f1dbf5d2"
 
 # 1) 确保 libXray repo clone 好了，并锁到指定 commit（浅 clone 不更新会悄悄停在老版本）
 if [ ! -d "$LIBXRAY_DIR/.git" ]; then
@@ -23,7 +25,9 @@ if [ ! -d "$LIBXRAY_DIR/.git" ]; then
   git clone "$LIBXRAY_REPO" "$LIBXRAY_DIR"
 fi
 echo "==> Pinning libXray to $LIBXRAY_REF"
-git -C "$LIBXRAY_DIR" fetch --depth 200 origin main
+if ! git -C "$LIBXRAY_DIR" cat-file -e "$LIBXRAY_REF^{commit}" 2>/dev/null; then
+  git -C "$LIBXRAY_DIR" fetch --depth 200 origin main
+fi
 # 上一轮构建留下的生成物（go.mod/go.sum）和拷入的补丁文件会挡住 checkout——
 # 全部丢弃即可，它们每轮都会重新生成/重新拷贝。
 git -C "$LIBXRAY_DIR" reset --hard -q
@@ -48,11 +52,9 @@ GOBIN_DIR="$(go env GOBIN)"
 export PATH="$GOBIN_DIR:$PATH"
 
 # 3) gomobile（libXray 用 Apple 官方 gomobile，不是 sing-box 的 sagernet/gomobile 分支）
-if ! command -v gomobile >/dev/null; then
-  echo "==> Installing gomobile + gobind (into $GOBIN_DIR)"
-  go install golang.org/x/mobile/cmd/gomobile@latest
-  go install golang.org/x/mobile/cmd/gobind@latest
-fi
+echo "==> Installing pinned gomobile + gobind ($MOBILE_REF into $GOBIN_DIR)"
+go install "golang.org/x/mobile/cmd/gomobile@$MOBILE_REF"
+go install "golang.org/x/mobile/cmd/gobind@$MOBILE_REF"
 
 # 4) 可选 --clean
 if [ "${1:-}" = "--clean" ]; then
@@ -61,7 +63,8 @@ if [ "${1:-}" = "--clean" ]; then
   rm -rf "$LIBXRAY_DIR/LibXray.xcframework"
 fi
 
-# 5) 准备 Go env（手动跑 libXray 的 init_go_env + download_geo，省去走 python 入口）
+# 5) 准备Go env。geo数据是Apps/Tunnel-Shared/Resources的独立运行时资源，
+# 没有被go:embed进binding，编译framework不应依赖上游latest geo下载是否可达。
 # xray-core 必须在 tidy **之前**锁 commit：v26.* tag 不是合法 Go 模块版本（主版本 ≥2
 # 要 /vN 路径），tidy 自行解析会退回最新的 v1 tag（=旧版 v1.260327.0），而新 libXray
 # 已 import 新版才有的包（common/geodata），直接 tidy 必失败。
@@ -74,8 +77,7 @@ go get "github.com/xtls/xray-core@$XC_COMMIT"
 go mod tidy
 # go 1.26+ 的 gomobile 要求 golang.org/x/mobile 在模块依赖图里（tool directive），
 # 而本脚本每次重建 go.mod，必须显式加回去，否则 bind 直接报 missing dependency
-go get -tool golang.org/x/mobile/cmd/gobind
-go run download_geo/main.go
+go get -tool "golang.org/x/mobile/cmd/gobind@$MOBILE_REF"
 
 # 5.5) macOS 内存压制 patch —— 上游只给 iOS（//go:build ios）内置了
 # GOMEMLIMIT/GOGC/FreeOSMemory 压制，macOS slice 走 memory_other.go 的 no-op，
@@ -132,7 +134,8 @@ cp "$REPO_ROOT/scripts/patches/libxray/qingzhou_switch_wrapper.go" "$LIBXRAY_DIR
 echo "==> Running gomobile bind (this is the long step, 20-40min)"
 gomobile bind \
     -target=ios,iossimulator,macos \
-    -iosversion=15.0
+    -iosversion=17.0 \
+    -macosversion=14.0
 
 # 6) 把产物挪到本仓库
 SRC="$LIBXRAY_DIR/LibXray.xcframework"
@@ -150,11 +153,4 @@ mv "$SRC" "$DST"
 echo "==> Done. Size:"
 du -sh "$DST"
 
-cat <<EOF
-
-下一步：
-  1. 取消 Package.swift 里 XrayCore product + binaryTarget + target 的注释
-  2. swift build  → 应该看到 XrayCore 编译过
-  3. 在主 app 入口加  Text("xray \(XrayCore.version)")  验证 link 通了
-
-EOF
+echo "Next: swift test, then regenerate and build Apps/project.yml targets."

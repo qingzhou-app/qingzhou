@@ -21,7 +21,7 @@ enum FeatureFlags {
     ///
     /// **2026-07-11 下线**（用户「先下线吧」）：上架冲刺期,随包带一个 system extension 会增加
     /// App Store 审核负担,且激活它要用户在系统设置两段批准、体验偏重 —— 先关掉。功能完整保留在
-    /// 代码里,改回 `true` 即恢复。关闭后:设置入口、域名分析「应用」视角、来源回填全部消失;
+    /// 代码里；恢复时还须在project.yml重新嵌入Filter并恢复安装entitlement。关闭后:设置入口、域名分析「应用」视角、来源回填全部消失;
     /// 已激活过的老用户(目前只有开发机),macOS app 启动会自动 disable 遗留的 NEFilter
     /// (`deactivateRetiredContentFilterIfNeeded`),让扩展停止在后台过滤;system extension 的
     /// 注册残留良性(不再工作),想彻底移除去「系统设置 → 通用 → 登录项与扩展 → 网络扩展」。

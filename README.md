@@ -4,7 +4,7 @@
 
 > Cross-platform iOS / macOS network configuration utility, built on xray-core.
 
-[![Tests](https://img.shields.io/badge/tests-147%20passing-success)]()
+[![Tests](https://img.shields.io/badge/tests-SwiftPM-success)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-iOS%2017%2B%20%7C%20macOS%2014%2B-lightgrey)]()
 
@@ -22,7 +22,7 @@
 
 ## 隐私
 
-**零数据收集**。所有节点 / 订阅 / 规则只在你设备本地 (`Documents/VPN/state.json`),不上传任何服务器。
+**不向开发者收集用户数据**。配置保存在设备本地，并默认镜像到你的个人 iCloud Drive（可在设置关闭，包含节点凭据）；访问历史与测速历史不上配置镜像。
 不接第三方 SDK(Firebase / Analytics / Sentry 之类全部没有)。
 
 完整隐私政策见 [docs/PRIVACY.md](docs/PRIVACY.md) 或线上版 https://qingzhou-app.github.io/qingzhou/PRIVACY 。
@@ -75,7 +75,7 @@ open Apps/Qingzhou.xcodeproj
 ## 测试
 
 ```bash
-swift test  # 147 测试,通常 < 1 秒
+swift test  # 单测与本地集成测试；真实数据回放需另行提供输入
 ```
 
 ## 文档
