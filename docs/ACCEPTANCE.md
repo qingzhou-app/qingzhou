@@ -1,5 +1,17 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## build24 规则刷新与生命周期验收（2026-10-14）
+
+设备：iPhone 14 Pro，iOS 27.0，开发签名1.0(24)，设备版本查询确认。工程检查通过：888项测试（887通过、1项缺真实回放输入跳过、0失败），iOS/macOS主App及Tunnel/Widget编译通过，iOS签名校验通过。独立审查发现的在途重配竞争已由失败回归复现并修复。
+
+- [x] 启动后系统connected、主App运行态为true、扩展实际节点与选择匹配，规则模式一致。
+- [x] 仅结束主App PID后重开两次：同一Tunnel PID14526、同一实际激活ID、会话起点持续为2026-10-13T17:48:22Z；远程规则重新加载2205条但没有full重配/重启事件。
+- [x] 远程规则首次刷新按实际规则摘要比较：已有相同规则时不重启；第一次从无远程规则加载到新规则时仍重配。规则顺序/目标改变、旧扩展回退和在途请求交错另有自动化回归。
+- [x] 两轮停止/启动：停止采样终态均为disconnected/主App关闭/无实际配置，进程检查无Tunnel；启动终态均connected、实际节点和rule模式匹配。首次真正加载远程规则可有一次必要全量重配。
+- [ ] 小组件/Live Activity视觉一致性、手动换节点/切策略、Wi-Fi/蜂窝、多设备iCloud与最低OS仍需分别验收。
+
+证据：无凭据状态快照`/private/tmp/qingzhou-build24-recorded/`；两次仅主App重开`/private/tmp/qingzhou-targeted-reopen/report.json`与`/private/tmp/qingzhou-targeted-reopen-logs/report.json`。使用`devicectl launch --terminate-existing`的整包强制重开路径曾观测到扩展更换，不能直接用来判定仅主App重开失败；后续该项仅结束已核对的主App PID，保留扩展再launch。当前未据此改动内存或节点协议策略。
+
 ## build22 会话协调器首步提取（2026-10-13）
 
 实际配置采认状态由独立`TunnelSessionCoordinator`拥有，AppState委托采认、回执及心跳处理；VPN系统操作、异步启停和云同步编排仍在既有位置。

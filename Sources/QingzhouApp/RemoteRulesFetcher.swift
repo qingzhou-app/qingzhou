@@ -38,20 +38,31 @@ extension AppState {
         let fetcher = RemoteRulesFetcher(logger: logger)
         do {
             let rules = try await fetcher.fetch(url)
-            // 内容级比较（lineForm）：每次 fetch 都会生成新 UUID，直接比 [Rule] 永远"变了"，
-            // 会让每次定时刷新都重启隧道。只有规则内容真变了才热切换。
-            let changed = rules.map(\.lineForm) != remoteRules.map(\.lineForm)
-            remoteRules = rules
-            remoteRulesStatus = .success(at: Date(), count: rules.count)
-            if changed {
-                #if DEBUG
-                AcceptanceTrace.record(.remoteRulesChanged)
-                #endif
-                reapplyForRulesChange()
-            }
+            if applyFetchedRemoteRules(rules) { reapplyForRulesChange() }
         } catch {
             remoteRulesStatus = .failure(message: "\(error)")
             logger.error("Refresh remote rules failed: \(error)", category: "rules")
         }
+    }
+
+    /// 本进程刚启动时remoteRules为空，不能据此认定扩展中的规则也为空。
+    /// 先提交读取结果，再按实际配置摘要决定是否重配；旧扩展仍走内容变化的安全回退。
+    @discardableResult
+    func applyFetchedRemoteRules(_ rules: [Rule]) -> Bool {
+        let changed = rules.map(\.lineForm) != remoteRules.map(\.lineForm)
+        remoteRules = rules
+        remoteRulesStatus = .success(at: Date(), count: rules.count)
+        #if DEBUG
+        if changed { AcceptanceTrace.record(.remoteRulesChanged) }
+        #endif
+        guard isVPNRunning, settings.proxyMode == .rule else { return false }
+        // 在途请求可能已捕获本进程的旧规则；旧实例摘要不能证明它将应用的新配置。
+        // 保守排队full，当前轮完成后用新规则再收敛一次。
+        if isSwitchingTunnel, changed { return true }
+        if let applied = appliedTunnelConfiguration, applied.mode == .rule,
+           let digest = applied.rulesDigest {
+            return digest != AppliedTunnelConfiguration.digestRules(effectiveUserRules)
+        }
+        return changed
     }
 }

@@ -226,7 +226,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                     // 只在 startTunnel 路径武装 —— reconfigure（原地重配）不动定时，倒计时跨重配延续。
                     let applied = Self.appliedConfiguration(
                         nodeJSON: nodeJSON, mode: mode, blockQUIC: self.blockQUIC,
-                        requestID: (providerConfig?["requestID"] as? String).flatMap(UUID.init(uuidString:)))
+                        requestID: (providerConfig?["requestID"] as? String).flatMap(UUID.init(uuidString:)),
+                        rulesDigest: AppliedTunnelConfiguration.digestRules(userRules))
                     self.sessionInfo.withLock { current in
                         current = TunnelSessionInfo(startedAt: Date(), autoStopSeconds: autoStopSeconds,
                             appliedConfiguration: applied)
@@ -852,7 +853,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         tearDownBridge()
         bringUpXray(configJSON: xrayJSON) { [weak self] error in
             let applied = error == nil ? Self.appliedConfiguration(
-                nodeJSON: nodeJSON, mode: mode, blockQUIC: self?.blockQUIC ?? true) : nil
+                nodeJSON: nodeJSON, mode: mode, blockQUIC: self?.blockQUIC ?? true,
+                rulesDigest: AppliedTunnelConfiguration.digestRules(userRules)) : nil
             self?.sessionInfo.withLock { current in
                 guard var info = current else { return }
                 info.appliedConfiguration = applied
@@ -899,7 +901,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             sessionInfo.withLock { current in
                 guard var info = current, let old = info.appliedConfiguration else { return }
                 info.appliedConfiguration = Self.appliedConfiguration(
-                    nodeJSON: nodeJSON, mode: old.mode, blockQUIC: old.blockQUIC, requestID: requestID)
+                    nodeJSON: nodeJSON, mode: old.mode, blockQUIC: old.blockQUIC, requestID: requestID,
+                    rulesDigest: old.rulesDigest)
                 current = info
                 Self.writeSessionInfo(info)
             }
@@ -1006,13 +1009,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     private static func appliedConfiguration(nodeJSON: String, mode: ProxyMode,
-                                             blockQUIC: Bool, requestID: UUID? = nil) -> AppliedTunnelConfiguration? {
+                                             blockQUIC: Bool, requestID: UUID? = nil,
+                                             rulesDigest: String? = nil) -> AppliedTunnelConfiguration? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let data = nodeJSON.data(using: .utf8), let node = try? decoder.decode(Node.self, from: data) else {
             return nil  // 旧shareLink-only路径无法确定Node身份，明确保留未知。
         }
-        return AppliedTunnelConfiguration(node: node, mode: mode, blockQUIC: blockQUIC, requestID: requestID)
+        return AppliedTunnelConfiguration(node: node, mode: mode, blockQUIC: blockQUIC, requestID: requestID,
+            rulesDigest: rulesDigest)
     }
 
     override func handleAppMessage(_ messageData: Data, completionHandler: ((Data?) -> Void)?) {

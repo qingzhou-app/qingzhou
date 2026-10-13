@@ -2,10 +2,11 @@
 
 > 这是 commercial App Store VPN 产品的 6 个月 part-time 路线图。MVP 目标是 W9-10 上架。
 
-## 当前工程状态（2026-10-13，build22会话协调器首步提取）
+## 当前工程状态（2026-10-14，build24规则刷新与实际配置比对）
 
-- 版本源：`Apps/project.yml`，1.0(22)。内核已升级并锁xray-core v26.6.27 / libXray73bb811。
-- build22：会话采认、启动下限、requestID/回执及心跳否定状态提取到无IO的`TunnelSessionCoordinator`，保持build21行为和界面Observation通知；878项测试（877通过、1缺回放输入跳过）及双平台target编译通过。真机生命周期回归待解锁后继续，节点差异按用户要求搁置。
+- 版本源：`Apps/project.yml`，1.0(24)。内核已升级并锁xray-core v26.6.27 / libXray73bb811。
+- build24：扩展报告实际有序规则摘要，远程规则刷新按实际内容决定重配，避免主App刚重开时把本地空列表误当实际空规则；切换中收到变化会排队补应用。888项测试（887通过、1缺回放输入跳过）及双平台targets编译通过。build23新增显式参数启用的DEBUG无凭据验收记录，Release无此入口。
+- build22：会话采认、启动下限、requestID/回执及心跳否定状态提取到无IO的`TunnelSessionCoordinator`，保持build21行为和界面Observation通知。真机验收按build记录在`ACCEPTANCE.md`，节点差异按用户要求搁置。
 - build21：扩展成功应用后报告实际节点/模式，首页与实时活动/小组件读实际配置，带宽按配置版本归属；预检先于preferences更新，旧/无效回执不当成功。
 - build20修复：错误订阅保留数据/重复节点防崩、测速按身份回填、云读取与冲突保护、保存失败反馈与last-good恢复、统一评分黏性、Hysteria2不依赖TCP握手。
 - macOS来源App标注停用，Filter不再嵌入发行包；Widget/Shortcuts/Live Activity/Focus已有实现。
