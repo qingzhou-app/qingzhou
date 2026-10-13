@@ -43,7 +43,12 @@ extension AppState {
             let changed = rules.map(\.lineForm) != remoteRules.map(\.lineForm)
             remoteRules = rules
             remoteRulesStatus = .success(at: Date(), count: rules.count)
-            if changed { reapplyForRulesChange() }
+            if changed {
+                #if DEBUG
+                AcceptanceTrace.record(.remoteRulesChanged)
+                #endif
+                reapplyForRulesChange()
+            }
         } catch {
             remoteRulesStatus = .failure(message: "\(error)")
             logger.error("Refresh remote rules failed: \(error)", category: "rules")

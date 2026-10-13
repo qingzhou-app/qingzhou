@@ -1,5 +1,21 @@
 # iOS 真机调试日志抓取
 
+## 开发版验收快照（build23起）
+
+当syslog无法提供主App编排日志时，可在DEBUG开发版启动时带`--qz-acceptance-record`：
+
+```bash
+xcrun devicectl device process launch --device <设备ID> --terminate-existing \
+  com.sbraveyoung.qingzhou.ios --qz-acceptance-record
+```
+
+等待16秒后，使用CoreDevice的appDataContainer文件传输读取`Documents/Diagnostics/acceptance.json`。
+每次启动生成独立runID、16份状态采样和有界事件。记录包括系统VPN状态（NEVPNStatus rawValue）、
+实际激活/节点ID、选中节点ID与匹配结果、会话起点、规则计数和分类后的采认/重配事件。
+不含节点凭据、URL、域名、原始日志；独立事件通道不受用户日志级别过滤。
+记录仅在显式参数下运行15秒，Release不包含此入口，也不改变VPN/云同步配置。
+可与`--qz-start-vpn`或`--qz-stop-vpn`组合使用；launch成功不等于VPN验收通过，必须核对快照。
+
 > 用来诊断 #3 类问题：「打开 VPN 开关 → 系统设置看 VPN toggle 自动关闭」。
 > 这种症状是 `saveToPreferences` 成功但 Extension（`Qingzhou-Tunnel-iOS.appex`）启动失败 →
 > 系统标 connection failed → toggle 显示为 off。要看到具体错在哪，必须抓 Extension 那个进程的日志。

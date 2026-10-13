@@ -40,7 +40,8 @@ settings:
     # build 20 = 订阅/测速/云镜像数据保护 + 统一评分黏性 + Hysteria2代理可用性候选。
     # build 21 = 扩展确认实际节点/模式，避免选择与运行状态混用；预检先于preferences写入。
     # build 22 = 会话采认状态收进独立协调器，保持build21行为与Observation更新。
-    CURRENT_PROJECT_VERSION: "22"
+    # build 23 = DEBUG按参数记录无凭据真机验收快照，Release不包含诊断入口。
+    CURRENT_PROJECT_VERSION: "23"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 

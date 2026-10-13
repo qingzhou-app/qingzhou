@@ -1168,6 +1168,9 @@ public final class AppState {
         tunnelSession.adoptRunningSession()
         scheduleIPRefresh()
         logger.info("Adopted running tunnel from system (status: \(tunnelManager.status.description))", category: "tunnel")
+        #if DEBUG
+        AcceptanceTrace.record(.adopted)
+        #endif
     }
 
     /// 系统 VPN 状态变化的实时监听 token（NEVPNStatusDidChange）。
@@ -1269,6 +1272,9 @@ public final class AppState {
             isVPNRunning = true
             tunnelError = nil
             logger.info("Tunnel started for node \(node.name)", category: "tunnel")
+            #if DEBUG
+            AcceptanceTrace.record(.startSubmitted)
+            #endif
             if settings.autoStopSeconds > 0 {
                 showToast(L("已开启定时：\(AutoStopPresets.label(for: settings.autoStopSeconds))后自动断开"))
             }
@@ -1540,6 +1546,9 @@ public final class AppState {
         guard isVPNRunning,
               let node = currentNode,
               let shareLink = NodeEncoder.shareLink(node) else { return }
+        #if DEBUG
+        AcceptanceTrace.record(scope == .full ? .reapplyFullStarted : .reapplyNodeStarted)
+        #endif
         let mode = settings.proxyMode
         let rules = effectiveUserRules
         let autoStopSeconds = settings.autoStopSeconds
@@ -1598,6 +1607,9 @@ public final class AppState {
                 markAllConnectionsClosed()   // 旧 handler 已关，旧代理连接全部终止
                 verifyTunnelConnectivity()   // 新节点未必真可用，哨兵照跑
                 logger.info("In-place switched outbound to \(node.name) — tunnel kept alive", category: "tunnel")
+                #if DEBUG
+                AcceptanceTrace.record(.inPlaceSwitch)
+                #endif
                 return
             } catch {
                 let reason = (error as? LocalizedError)?.errorDescription ?? "\(error)"
@@ -1657,6 +1669,9 @@ public final class AppState {
             }
             verifyTunnelConnectivity()   // 热切换后同样要哨兵：配置合法 ≠ 节点真的可用
             logger.info("Clean-restart switched tunnel to \(node.name) / \(mode.rawValue)", category: "tunnel")
+            #if DEBUG
+            AcceptanceTrace.record(.cleanRestart)
+            #endif
         } catch {
             tunnelError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             logger.error("Hot-switch failed: \(tunnelError ?? "?")", category: "tunnel")
@@ -1732,6 +1747,9 @@ public final class AppState {
             }
             currentNodeId = best.id
             logger.info("Auto-selected \(best.name) [\(best.region)] (direct \(best.lastLatencyMs ?? -1)ms / proxied \(best.lastProxiedLatencyMs ?? -1)ms)", category: "app")
+            #if DEBUG
+            AcceptanceTrace.record(.autoSelected)
+            #endif
         } else {
             logger.warn("Auto-select found no viable node", category: "app")
         }
@@ -2709,6 +2727,9 @@ public final class AppState {
         guard let stats = AppGroupStorage.read(TunnelMemoryStats.self, from: "memory-stats") else { return }
         tunnelMemory = stats
         if stats.warningCount > loggedMemoryWarningCount {
+            #if DEBUG
+            AcceptanceTrace.record(.memoryWarning)
+            #endif
             // 主 App 不在场时扩展照常计数，这里回放漏掉的告警（合并成一条，别刷屏）
             let missed = stats.warningCount - loggedMemoryWarningCount
             loggedMemoryWarningCount = stats.warningCount
@@ -2772,6 +2793,9 @@ public final class AppState {
            session?.stoppedAt == nil,
            !loggedUnexpectedTunnelDeath {
             loggedUnexpectedTunnelDeath = true
+            #if DEBUG
+            AcceptanceTrace.record(.unexpectedDisconnect)
+            #endif
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let reason = await self.tunnelManager.lastDisconnectError()

@@ -23,8 +23,14 @@ struct VPNiOSApp: App {
                 .preferredColorScheme(colorScheme(for: state.settings.theme))
                 .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
                 .task {
+                    #if DEBUG
+                    if CommandLine.arguments.contains("--qz-acceptance-record") { AcceptanceTrace.begin() }
+                    #endif
                     state.startSchedulers()
                     #if DEBUG
+                    if CommandLine.arguments.contains("--qz-acceptance-record") {
+                        Task { await AcceptanceRecorder.record(state) }
+                    }
                     // 远程验收钩子（仅 DEBUG）：让开发机能用
                     // `devicectl device process launch ... --qz-start-vpn` 驱动真机启停，
                     // 配合截图 / syslog 实现无人值守的真机回归。Release 构建不编译进来。
