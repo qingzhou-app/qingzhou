@@ -42,7 +42,8 @@ settings:
     # build 22 = 会话采认状态收进独立协调器，保持build21行为与Observation更新。
     # build 23 = DEBUG按参数记录无凭据真机验收快照，Release不包含诊断入口。
     # build 24 = 按实际规则摘要决定刷新是否重配，避免重开App重复重启同内容隧道。
-    CURRENT_PROJECT_VERSION: "24"
+    # build 25 = 云恢复呈现状态提取，读取轮次防止关闭重开/重试的迟到结果覆盖。
+    CURRENT_PROJECT_VERSION: "25"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 

@@ -1,4 +1,5 @@
 import XCTest
+import Observation
 import QingzhouCore
 import QingzhouProtocols
 import QingzhouLogging
@@ -862,6 +863,65 @@ final class AppStateCloudVaultTests: XCTestCase {
         let state = makeState(store: makeStore())
         await state.requestManualCloudRestore()
         XCTAssertEqual(state.cloudVersionLoad, .failed("iCloud 上没有找到备份"))
+    }
+
+    func testRestorePresentationStillNotifiesViewsAfterExtraction() async throws {
+        let state = makeState(store: makeStore())
+        let opened = XCTestExpectation(description: "view observes presented list")
+        withObservationTracking {
+            _ = state.isCloudVersionSheetPresented
+            _ = state.cloudVersionLoad
+        } onChange: { opened.fulfill() }
+        await state.requestManualCloudRestore()
+        XCTAssertEqual(XCTWaiter.wait(for: [opened], timeout: 0.1), .completed)
+        XCTAssertTrue(state.isCloudVersionSheetPresented)
+
+        let closed = XCTestExpectation(description: "view observes dismissed list")
+        withObservationTracking {
+            _ = state.isCloudVersionSheetPresented
+            _ = state.cloudVersionLoad
+        } onChange: { closed.fulfill() }
+        state.dismissCloudVersionOptions()
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 0.1), .completed)
+        XCTAssertFalse(state.isCloudVersionSheetPresented)
+        XCTAssertNil(state.cloudVersionLoad)
+    }
+
+    func testVersionReloadDoesNotNotifySheetPresentationObserver() async throws {
+        let state = makeState(store: makeStore())
+        await state.requestManualCloudRestore()
+        XCTAssertTrue(state.isCloudVersionSheetPresented)
+        let unchanged = XCTestExpectation(description: "loading must not invalidate sheet presentation")
+        unchanged.isInverted = true
+        withObservationTracking {
+            _ = state.isCloudVersionSheetPresented
+        } onChange: { unchanged.fulfill() }
+        await state.loadCloudVersionOptions() // failed -> loading -> failed；sheet Bool 应完全独立
+        XCTAssertEqual(XCTWaiter.wait(for: [unchanged], timeout: 0.01), .completed)
+        XCTAssertTrue(state.isCloudVersionSheetPresented)
+    }
+
+    func testRestoreOfferStillNotifiesViewsAfterExtraction() async throws {
+        let store = makeStore()
+        try await store.save(VaultDocument(revision: 1, modifiedAt: Date(), deviceName: "test",
+            snapshot: Persistence.Snapshot()))
+        let state = makeState(store: store)
+        await state.requestManualCloudRestore()
+        let chosen = try XCTUnwrap(state.cloudVersionOptions?.first)
+        state.chooseCloudRestoreCandidate(chosen)
+        XCTAssertNil(state.cloudRestoreOffer)
+
+        let offered = XCTestExpectation(description: "view observes confirmation offer")
+        withObservationTracking { _ = state.cloudRestoreOffer } onChange: { offered.fulfill() }
+        state.presentPendingCloudRestoreOffer()
+        XCTAssertEqual(XCTWaiter.wait(for: [offered], timeout: 0.1), .completed)
+        XCTAssertEqual(state.cloudRestoreOffer, chosen)
+
+        let cleared = XCTestExpectation(description: "view observes confirmation dismissal")
+        withObservationTracking { _ = state.cloudRestoreOffer } onChange: { cleared.fulfill() }
+        state.declineCloudRestore()
+        XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 0.1), .completed)
+        XCTAssertNil(state.cloudRestoreOffer)
     }
 
     /// 用户在读取完成前就关掉了 sheet → 迟到的结果必须被丢弃，不能把 sheet 复活。
