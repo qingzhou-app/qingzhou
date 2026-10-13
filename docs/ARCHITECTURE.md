@@ -76,6 +76,7 @@
 ### QingzhouApp
 - **职责**：SwiftUI 视图层 + `AppState` 协调器。
 - `AppState` 用 `@Observable` 宏（iOS 17 / macOS 14 起的现代 Observation 框架）；`@MainActor` 标记，避免后台线程改 UI 状态。
+- `TunnelSessionCoordinator`（build22）拥有实际配置、预期requestID/切换回执、被流量心跳否定的配置与启动时间下限。它是无IO的值类型，由`AppState`持有；界面选择仍在`AppState`，VPN系统操作仍由`VPNTunnelManager`执行。只满足系统连接态、时间下限、请求/回执及心跳证据的扩展会话才能被采认；停止清理确认状态，主App重开可采认仍在运行的会话。这是协调器拆分的第一步，异步启停、节点择优和云同步编排仍待后续迁移。
 - 视图按业务划分：`HomeView` / `NodesView` / `SubscriptionsView` / `RulesView` / `ConnectionsView` / `LogsView` / `SettingsView`，外加 macOS 专属的 `StatusBarMenu`。
 - 跨平台靠 `#if os(iOS)` / `#if os(macOS)`，主要分歧只在 `RootView`（iOS 用 TabView，macOS 用 NavigationSplitView）和 SettingsView 里的「系统代理」「开机自启」选项。
 

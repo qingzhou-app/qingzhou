@@ -41,10 +41,8 @@ public final class AppState {
     }
     private var selectionIntentGeneration: UInt64 = 0
     /// 扩展确认的实际配置；当前选择只是用户请求，不能用于推断数据面的节点。
-    public private(set) var appliedTunnelConfiguration: AppliedTunnelConfiguration?
-    private var expectedAppliedConfigurationID: UUID?
-    private var expectedTunnelRequestID: UUID?
-    private var contradictedConfigurationIDs: Set<UUID> = []
+    public var appliedTunnelConfiguration: AppliedTunnelConfiguration? { tunnelSession.appliedConfiguration }
+    private var tunnelSession = TunnelSessionCoordinator()
     public var runningNode: Node? {
         guard let appliedTunnelConfiguration else { return nil }
         return nodes.first { appliedTunnelConfiguration.matches($0) }
@@ -111,10 +109,7 @@ public final class AppState {
     public var isVPNRunning: Bool = false {
         didSet {
             if !isVPNRunning {
-                appliedTunnelConfiguration = nil
-                expectedAppliedConfigurationID = nil
-                expectedTunnelRequestID = nil
-                contradictedConfigurationIDs.removeAll()
+                tunnelSession.clearAppliedState()
             }
             if oldValue != isVPNRunning { WidgetRefresher.reload() }
         }
@@ -138,7 +133,7 @@ public final class AppState {
     /// 本进程内最近一次提交隧道启动的时刻。用来过滤 App Group 里**上一次会话**的残留
     /// 标记文件：start 提交后到扩展写新标记之间有 1–3 秒窗口，旧文件的 startedAt 会让
     /// 「已连接时长」瞬间显示成几小时。只采纳不早于本次启动的 startedAt。
-    private var lastTunnelStartAt: Date?
+    private var lastTunnelStartAt: Date? { tunnelSession.startedAtFloor }
     /// 灵动岛 / 锁屏实时活动管家（E.19）。跨平台门面，macOS 上所有方法 no-op。
     /// 由 startTunnel 起、trafficPollingLoop 每秒推进、stopTunnel 结束。
     private let liveActivity = LiveActivityController()
@@ -1170,7 +1165,7 @@ public final class AppState {
         isVPNRunning = true
         // 会话起点 / 定时截止由轮询从 App Group 会话标记回填。本进程没有 start 记录，
         // 放宽 lastTunnelStartAt 下限：标记 stoppedAt == nil 且系统状态确为连接，标记可信。
-        lastTunnelStartAt = .distantPast
+        tunnelSession.adoptRunningSession()
         scheduleIPRefresh()
         logger.info("Adopted running tunnel from system (status: \(tunnelManager.status.description))", category: "tunnel")
     }
@@ -1211,7 +1206,7 @@ public final class AppState {
         guard !isSwitchingTunnel else { return }
         if Self.isTunnelActive(status), !isVPNRunning {
             isVPNRunning = true
-            if lastTunnelStartAt == nil { lastTunnelStartAt = .distantPast }
+            if lastTunnelStartAt == nil { tunnelSession.adoptRunningSession() }
             scheduleIPRefresh()
             logger.info("VPN status synced from system: running (\(status.description))", category: "tunnel")
         } else if isVPNRunning, status == .disconnected || status == .invalid {
@@ -1270,10 +1265,8 @@ public final class AppState {
                 description: L("轻舟 · \(node.name)")
             )
             try await tunnelManager.start()
-            expectedAppliedConfigurationID = nil
-            expectedTunnelRequestID = tunnelManager.configuredRequestID
+            tunnelSession.startSubmitted(at: Date(), requestID: tunnelManager.configuredRequestID)
             isVPNRunning = true
-            lastTunnelStartAt = Date()   // 之后只认不早于此刻的会话标记（滤掉上次会话残留）
             tunnelError = nil
             logger.info("Tunnel started for node \(node.name)", category: "tunnel")
             if settings.autoStopSeconds > 0 {
@@ -1599,7 +1592,7 @@ public final class AppState {
                 )
                 let confirmedID = try await tunnelManager.switchNodeInPlace(node: node, shareLink: shareLink)
                 recordAppliedAcknowledgement(confirmedID)
-                expectedTunnelRequestID = tunnelManager.configuredRequestID
+                tunnelSession.expectRequest(tunnelManager.configuredRequestID)
                 syncAppliedConfiguration(session: AppGroupStorage.read(
                     TunnelSessionInfo.self, from: "tunnel-session"), status: tunnelManager.status)
                 markAllConnectionsClosed()   // 旧 handler 已关，旧代理连接全部终止
@@ -1641,9 +1634,7 @@ public final class AppState {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             try await tunnelManager.start()
-            expectedAppliedConfigurationID = nil
-            expectedTunnelRequestID = tunnelManager.configuredRequestID
-            lastTunnelStartAt = Date()   // 新会话：时长从新会话标记重新计（滤掉旧标记残留）
+            tunnelSession.startSubmitted(at: Date(), requestID: tunnelManager.configuredRequestID)
             // start() 只等"启动请求提交成功"，不等隧道真连上 —— 到这里就收窗口的话，
             // 开关会在 xray 还没就绪时就滑回"开"（规则模式加载 geo 那几秒尤其明显）。
             // 继续轮询到 .connected 再结束"切换中"，动画的结束沿才真正跟着真实状态走。
@@ -2606,13 +2597,7 @@ public final class AppState {
     /// 顺手做**被动带宽观测**：把当前节点跑出的下行速率峰值记到该节点上（零额外流量）。
     public func ingestTrafficStats(_ stats: TrafficStats) {
         trafficHistory.record(stats)
-        if abs(stats.sampledAt.timeIntervalSinceNow) <= 3, let id = stats.configurationID {
-            contradictedConfigurationIDs.remove(id) // 新心跳可再次证实此前暂时未知的配置。
-            if let applied = appliedTunnelConfiguration, id != applied.id {
-                contradictedConfigurationIDs.insert(applied.id)
-                appliedTunnelConfiguration = nil
-            }
-        }
+        tunnelSession.ingestHeartbeat(stats)
         recordObservedBandwidth(stats)
     }
 
@@ -2802,32 +2787,12 @@ public final class AppState {
 
     /// 会话是扩展的提交点，系统已连接才采认；启动窗口中拒绝上次会话的残留。
     func syncAppliedConfiguration(session: TunnelSessionInfo?, status: NEVPNStatus) {
-        guard status == .connected || status == .reasserting,
-              let session, session.stoppedAt == nil,
-              session.startedAt >= (lastTunnelStartAt ?? .distantPast).addingTimeInterval(-1) else {
-            appliedTunnelConfiguration = nil
-            return
-        }
-        if let expectedAppliedConfigurationID,
-           session.appliedConfiguration?.id != expectedAppliedConfigurationID {
-            appliedTunnelConfiguration = nil
-            return
-        }
-        if let expectedTunnelRequestID,
-           session.appliedConfiguration?.requestID != expectedTunnelRequestID {
-            appliedTunnelConfiguration = nil
-            return
-        }
-        if let id = session.appliedConfiguration?.id, contradictedConfigurationIDs.contains(id) {
-            appliedTunnelConfiguration = nil
-            return
-        }
-        appliedTunnelConfiguration = session.appliedConfiguration
+        tunnelSession.update(session: session, status: status)
     }
 
     /// 回执与共享文件独立，写文件失败时不能继续采认旧会话为实际配置。
     func recordAppliedAcknowledgement(_ id: UUID?) {
-        expectedAppliedConfigurationID = id
+        tunnelSession.recordAcknowledgement(id)
     }
 }
 

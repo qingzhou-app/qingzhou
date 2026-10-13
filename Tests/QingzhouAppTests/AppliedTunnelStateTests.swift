@@ -1,5 +1,6 @@
 import XCTest
 import NetworkExtension
+import Observation
 import QingzhouCore
 @testable import QingzhouApp
 
@@ -121,5 +122,30 @@ final class AppliedTunnelStateTests: XCTestCase {
         XCTAssertNil(state.appliedTunnelConfiguration)
         state.syncAppliedConfiguration(session: session, status: .connected)
         XCTAssertNil(state.appliedTunnelConfiguration, "同一旧会话不能在下一轮重新采认")
+    }
+
+    func testAppliedConfigurationStillNotifiesViewsAfterCoordinatorExtraction() {
+        let state = makeState()
+        let node = Node(name: "A", protocolType: .trojan, host: "a.example", port: 443, password: "pw")
+        let applied = AppliedTunnelConfiguration(node: node, mode: .global, blockQUIC: true)
+        let confirmed = XCTestExpectation(description: "view observes confirmed configuration")
+        withObservationTracking {
+            _ = state.appliedTunnelConfiguration
+        } onChange: {
+            confirmed.fulfill()
+        }
+        state.syncAppliedConfiguration(session: TunnelSessionInfo(startedAt: Date(), autoStopSeconds: 0,
+            appliedConfiguration: applied), status: .connected)
+        XCTAssertEqual(XCTWaiter.wait(for: [confirmed], timeout: 0.1), .completed)
+
+        let contradicted = XCTestExpectation(description: "view observes unknown configuration")
+        withObservationTracking {
+            _ = state.appliedTunnelConfiguration
+        } onChange: {
+            contradicted.fulfill()
+        }
+        state.ingestTrafficStats(TrafficStats(configurationID: UUID()))
+        XCTAssertNil(state.appliedTunnelConfiguration)
+        XCTAssertEqual(XCTWaiter.wait(for: [contradicted], timeout: 0.1), .completed)
     }
 }
