@@ -37,12 +37,52 @@ final class AppliedTunnelStateTests: XCTestCase {
         let applied = AppliedTunnelConfiguration(node: running, mode: .global, blockQUIC: true)
         state.syncAppliedConfiguration(session: TunnelSessionInfo(
             startedAt: Date(), autoStopSeconds: 0, appliedConfiguration: applied), status: .connected)
-        state.ingestTrafficStats(TrafficStats(downloadSpeedBps: 500_000, configurationID: applied.id))
+        let start = Date()
+        for second in stride(from: 0, through: 122, by: 2) {
+            let at = start.addingTimeInterval(Double(second))
+            state.ingestXrayOutboundStats(.init(outbounds: ["proxy": .init(downlinkBytes: Int64(second) * 500_000)],
+                sampledAt: at, configurationID: applied.id), now: at)
+        }
         XCTAssertEqual(state.currentNodeId, selected.id)
         XCTAssertEqual(state.runningNode?.id, running.id)
         XCTAssertEqual(state.nodes[0].observedPeakDownBps, 500_000)
         XCTAssertNil(state.nodes[1].observedPeakDownBps)
         state.persistence.waitForPendingWritesForTesting()
+    }
+
+    func testTUNTrafficAloneCannotProveProxyBandwidth() {
+        let state = makeState()
+        let node = Node(name: "running", protocolType: .trojan, host: "a.example", port: 443, password: "pw")
+        state.nodes = [node]; state.isVPNRunning = true
+        let applied = AppliedTunnelConfiguration(node: node, mode: .global, blockQUIC: true)
+        let start = Date()
+        state.syncAppliedConfiguration(session: .init(startedAt: start, autoStopSeconds: 0, appliedConfiguration: applied), status: .connected)
+        for minute in 0..<3 {
+            let at = start.addingTimeInterval(Double(minute * 60))
+            state.ingestTrafficStats(.init(downloadSpeedBps: 90_000_000, sampledAt: at, configurationID: applied.id))
+        }
+        XCTAssertNil(state.recentBandwidth(for: node, now: start.addingTimeInterval(120)), "Global mode still has direct LAN traffic")
+    }
+
+    func testOnlyProxyCountersCreditBandwidthInBothModesAndIdleWindowExpires() {
+        let state = makeState()
+        let node = Node(name: "running", protocolType: .trojan, host: "a.example", port: 443, password: "pw")
+        state.nodes = [node]; state.isVPNRunning = true
+        let start = Date()
+        for mode: ProxyMode in [.rule, .global] {
+            let applied = AppliedTunnelConfiguration(node: node, mode: mode, blockQUIC: true)
+            state.syncAppliedConfiguration(session: TunnelSessionInfo(
+                startedAt: start, autoStopSeconds: 0, appliedConfiguration: applied), status: .connected)
+            for second in stride(from: 0, through: 122, by: 2) {
+                let at = start.addingTimeInterval(Double(second))
+                state.ingestXrayOutboundStats(.init(outbounds: ["proxy": .init(downlinkBytes: Int64(second) * 2_000_000),
+                    "direct": .init(downlinkBytes: Int64(second) * 90_000_000)], sampledAt: at, configurationID: applied.id), now: at)
+            }
+            XCTAssertEqual(state.recentBandwidth(for: node, now: start.addingTimeInterval(122)), 2_000_000)
+        }
+        XCTAssertNil(state.recentBandwidth(for: node, now: start.addingTimeInterval(32 * 60)))
+        state.measurementNetworkDidChange(at: start.addingTimeInterval(123))
+        XCTAssertNil(state.recentBandwidth(for: node, now: start.addingTimeInterval(124)))
     }
 
     func testEditingRunningNodeDoesNotCreditDifferentConnectionWithSameID() {

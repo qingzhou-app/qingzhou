@@ -2,7 +2,7 @@ import XCTest
 @testable import QingzhouCore
 
 /// SelectionReplay：离线回放对比 harness —— 同一份测量序列回放两个策略：
-/// A「纯 Ping 最低」（竞品基线，Clash url-test 式）vs B「多维打分 + 分数黏性」
+/// A「纯 Ping 最低」（纯 TCP 基线，并非竞品实现）vs B「多维打分 + 分数黏性」
 /// （**直接调 NodeScorer**，黏性参数镜像 AppState 常量：领先 ≥8 分连 2 轮）。
 /// 产出 ReplayReport：有效延迟均值/中位数 → 提速%、倍率×单位流量 → 省流量%、
 /// 切换次数对比、每轮明细 + Markdown 渲染。

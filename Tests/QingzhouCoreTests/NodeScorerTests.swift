@@ -24,7 +24,7 @@ final class NodeScorerTests: XCTestCase {
     }
 
     private func sample(latency: Int?, proxied: Int? = nil, loss: Double? = nil) -> NodeMetricSample {
-        NodeMetricSample(at: Date(timeIntervalSince1970: 0), latencyMs: latency,
+        NodeMetricSample(at: Date(), latencyMs: latency,
                          proxiedMs: proxied, lossFraction: loss)
     }
 
@@ -83,7 +83,7 @@ final class NodeScorerTests: XCTestCase {
             NodeScorer.score(input(direct: 100, proxied: 100, proxiedAt: stale), now: now).latency.score,
             77.5)
         // ≤24h 仍新鲜：正常混合
-        let fresh = now.addingTimeInterval(-3600)
+        let fresh = now
         XCTAssertEqual(
             NodeScorer.score(input(direct: 100, proxied: 100, proxiedAt: fresh), now: now).latency.score,
             82.75, accuracy: 0.0001)

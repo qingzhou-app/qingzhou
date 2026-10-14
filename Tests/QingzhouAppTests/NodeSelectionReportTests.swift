@@ -42,8 +42,8 @@ final class NodeSelectionReportTests: XCTestCase {
         let fast = node("fast", host: "fast.example"), stable = node("stable", host: "stable.example")
         state.nodes = [fast, stable]
         for i in 0..<10 {
-            state.nodeMetricsHistory.recordDirect(fingerprint: fast.identityFingerprint, latencyMs: i % 2 == 0 ? 60 : nil)
-            state.nodeMetricsHistory.recordDirect(fingerprint: stable.identityFingerprint, latencyMs: 90)
+            state.nodeMetricsHistory.recordDirect(fingerprint: fast.identityFingerprint, latencyMs: i % 2 == 0 ? 60 : nil, networkID: state.measurementNetworkID)
+            state.nodeMetricsHistory.recordDirect(fingerprint: stable.identityFingerprint, latencyMs: 90, networkID: state.measurementNetworkID)
         }
         await state.autoSelectBestNode()
         let report = try XCTUnwrap(state.lastSelectionReport)

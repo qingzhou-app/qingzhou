@@ -46,13 +46,13 @@ final class NodeScoringSelectionTests: XCTestCase {
     /// 给节点灌 count 条恒定延迟的历史；interleaveFailures 时一半样本是失败（成功率 0.5）。
     private func seedHistory(_ state: AppState, node: Node, count: Int,
                              latencyMs: Int, interleaveFailures: Bool = false) {
-        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let base = Date().addingTimeInterval(-Double(count))
         for i in 0..<count {
             let failed = interleaveFailures && i % 2 == 1
             state.nodeMetricsHistory.recordDirect(
                 fingerprint: node.identityFingerprint,
                 latencyMs: failed ? nil : latencyMs,
-                at: base.addingTimeInterval(Double(i))
+                at: base.addingTimeInterval(Double(i)), networkID: state.measurementNetworkID
             )
         }
     }
@@ -225,7 +225,7 @@ final class NodeScoringSelectionTests: XCTestCase {
         var n = node("N", host: "a.com", latency: 100)
         // 新鲜经代理值（1h 前）：延迟维 = 0.7×85(proxied 100) + 0.3×77.5(direct 130) = 82.75
         n.lastProxiedLatencyMs = 100
-        n.lastProxiedTestedAt = Date().addingTimeInterval(-3600)
+        n.lastProxiedTestedAt = Date()
         XCTAssertEqual(state.scoreForAutoSelect(n).latency.score, 82.75, accuracy: 0.01)
         // 陈旧经代理值（25h 前）：不参与，退回直连×1.3 → 77.5
         n.lastProxiedTestedAt = Date().addingTimeInterval(-25 * 3600)

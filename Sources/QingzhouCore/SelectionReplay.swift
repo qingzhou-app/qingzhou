@@ -49,10 +49,12 @@ public enum SelectionReplay {
 
     /// 一轮 = 一个时间点上各节点的测量（key = `NodeSpec.id`）。
     public struct Round: Sendable, Equatable {
+        public var networkID: UUID?
         public var at: Date
         public var observations: [String: Observation]
 
-        public init(at: Date, observations: [String: Observation]) {
+        public init(at: Date, observations: [String: Observation], networkID: UUID? = nil) {
+            self.networkID = networkID
             self.at = at
             self.observations = observations
         }
@@ -193,23 +195,30 @@ public enum SelectionReplay {
         for (fp, ring) in history.samples {
             for s in ring { flat.append((fp, s)) }
         }
-        flat.sort { $0.sample.at < $1.sample.at }
+        // ISO8601 持久化可能丢失亚秒；同秒按上下文稳定分组，避免 A/B/A/B 虚构缺测轮。
+        flat.sort {
+            if $0.sample.at != $1.sample.at { return $0.sample.at < $1.sample.at }
+            let a = $0.sample.networkID?.uuidString ?? ""
+            let b = $1.sample.networkID?.uuidString ?? ""
+            return a != b ? a < b : $0.fp < $1.fp
+        }
 
         var result: [Round] = []
+        var clusterNetwork: UUID?
         var clusterStart: Date?
         var current: [String: Observation] = [:]
         func flush() {
             if let start = clusterStart, !current.isEmpty {
-                result.append(Round(at: start, observations: current))
+                result.append(Round(at: start, observations: current, networkID: clusterNetwork))
             }
             current = [:]
             clusterStart = nil
         }
         for (fp, s) in flat {
-            if let start = clusterStart, s.at.timeIntervalSince(start) > window {
+            if let start = clusterStart, (s.at.timeIntervalSince(start) > window || s.networkID != clusterNetwork) {
                 flush()
             }
-            if clusterStart == nil { clusterStart = s.at }
+            if clusterStart == nil { clusterStart = s.at; clusterNetwork = s.networkID }
             // 同一簇里该节点已有样本 → 直连/丢包保留最早一条；proxiedMs 补首个非 nil
             if var existing = current[fp] {
                 if existing.proxiedMs == nil, let p = s.proxiedMs {
@@ -289,7 +298,14 @@ public enum SelectionReplay {
             return (Double(base), false, false)
         }
 
+        var previousNetwork: UUID?
         for (index, round) in rounds.enumerated() {
+            if round.networkID != previousNetwork {
+                history = NodeMetricsHistory()
+                lastProxied.removeAll()
+                hysteresis.reset()
+            }
+            previousNetwork = round.networkID
             // 1. 先把本轮所有观测落史（镜像线上：测速回调先记样本，再挑最优）。
             for spec in nodes {
                 guard let ob = round.observations[spec.id] else { continue }

@@ -24,6 +24,19 @@ final class ProxyAvailabilityIntegrationTests: XCTestCase {
     }
     private func node(_ name: String) -> Node { Node(name: name, protocolType: .trojan, host: name + ".example", port: 443, password: "pw") }
 
+    func testLargePoolHasBoundedAutomaticProxyCostAndNoAliasDuplication() async {
+        var calls: [String] = []
+        let app = make(Proxy { n, _ in calls.append(n.identityFingerprint); return 50 })
+        app.nodes = (0..<40).map { node("N\($0)") }
+        var alias = app.nodes[0]; alias.id = UUID(); app.nodes.append(alias)
+        app.currentNodeId = alias.id
+        await app.autoSelectBestNode(origin: .scheduled)
+        XCTAssertLessThanOrEqual(calls.count, 6)
+        XCTAssertEqual(Set(calls).count, calls.count)
+        XCTAssertEqual(app.currentNodeId, alias.id)
+        app.persistence.waitForPendingWritesForTesting()
+    }
+
     func testScheduledRecoveryBypassesScoreWaitOnlyAfterConfirmedFailure() async throws {
         let a = node("A"), b = node("B")
         let app = make(Proxy { n, _ in

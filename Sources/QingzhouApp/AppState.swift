@@ -235,6 +235,12 @@ public final class AppState {
     private var proxyMeasurementGeneration: [UUID: UUID] = [:]
     /// 会话/设置变化和手动重测使自动轮次及旧回执失效。
     private var proxyProbeContext: UInt64 = 0
+    private(set) var measurementNetworkID = UUID()
+    private var measurementNetworkStartedAt = Date()
+    private let measurementNetworkObserver = MeasurementNetworkObserver()
+    private var proxyBandwidthBaseline: XrayOutboundStats?
+    private var nodeProbePlanner = NodeProbePlanner()
+    private var bandwidthWindows: [String: RecentBandwidth] = [:]
     /// 完整版 geo 数据的下载/版本管理（主备源 + sha256 校验）。测试可注入假下载器。
     public let geoData: GeoDataManager
     /// App Store 版本查询器（App 内更新提醒用）。测试可注入假实现跳过真实出网。
@@ -360,6 +366,7 @@ public final class AppState {
         metrics.migrateLegacyIdentities(for: snapshot.nodes)
         metrics.prune(keeping: Set(snapshot.nodes.map(\.identityFingerprint)))
         self.nodeMetricsHistory = metrics
+        measurementNetworkDidChange()
         logger.info(
             "AppState restored: \(subscriptions.count) subs, \(nodes.count) nodes, \(customRules.count) custom rules",
             category: "app"
@@ -613,16 +620,16 @@ public final class AppState {
     /// 应用已确认云快照；任务顺序/读取校验由 CloudSyncCoordinator 管理。
     func applyCloudSnapshot(_ document: VaultDocument) -> Task<Bool, Never> {
         var snapshot = document.snapshot
-        let localNodeTransients = Dictionary(
-            nodes.map { ($0.identityFingerprint, (latency: $0.lastLatencyMs, testedAt: $0.lastTestedAt)) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let localNodes = Dictionary(nodes.map { ($0.identityFingerprint, $0) }, uniquingKeysWith: { first, _ in first })
         for i in snapshot.nodes.indices {
-            if snapshot.nodes[i].lastLatencyMs == nil,
-               let local = localNodeTransients[snapshot.nodes[i].identityFingerprint] {
-                snapshot.nodes[i].lastLatencyMs = local.latency
-                snapshot.nodes[i].lastTestedAt = local.testedAt
-            }
+            // 云端含旧版本瞬态值也不信任；只按完整身份接回本机当前网络的观测。
+            let local = localNodes[snapshot.nodes[i].identityFingerprint]
+            snapshot.nodes[i].lastLatencyMs = local?.lastLatencyMs
+            snapshot.nodes[i].lastTestedAt = local?.lastTestedAt
+            snapshot.nodes[i].lastProxiedLatencyMs = local?.lastProxiedLatencyMs
+            snapshot.nodes[i].lastProxiedTestedAt = local?.lastProxiedTestedAt
+            snapshot.nodes[i].observedPeakDownBps = local?.observedPeakDownBps
+            snapshot.nodes[i].observedBandwidthAt = local?.observedBandwidthAt
         }
         let localSubTransients = Dictionary(
             subscriptions.map { ($0.url, (updatedAt: $0.lastUpdatedAt, used: $0.usedBytes)) },
@@ -866,6 +873,21 @@ public final class AppState {
         } else {
             nodes.append(node)
         }
+    }
+
+    public func updateNode(_ edited: Node) {
+        guard let index = nodes.firstIndex(where: { $0.id == edited.id }) else { return }
+        let live = nodes[index]
+        let sameConnection = live.identityFingerprint == edited.identityFingerprint
+        var updated = edited
+        updated.lastLatencyMs = sameConnection ? live.lastLatencyMs : nil
+        updated.lastTestedAt = sameConnection ? live.lastTestedAt : nil
+        updated.lastProxiedLatencyMs = sameConnection ? live.lastProxiedLatencyMs : nil
+        updated.lastProxiedTestedAt = sameConnection ? live.lastProxiedTestedAt : nil
+        updated.observedPeakDownBps = sameConnection ? live.observedPeakDownBps : nil
+        updated.observedBandwidthAt = sameConnection ? live.observedBandwidthAt : nil
+        nodes[index] = updated
+        persist()
     }
 
     public func removeNode(_ node: Node) {
@@ -1434,6 +1456,7 @@ public final class AppState {
     public func autoSelectBestNode(origin: AutoSelectOrigin = .manual) async {
         guard !nodes.isEmpty, directMeasurementID == nil, !Task.isCancelled else { return }
         let roundID = UUID()
+        let networkAtStart = measurementNetworkID
         let evidence = SelectionMeasurementEvidence()
         directMeasurementID = roundID
         let selectionAtStart = currentNodeId
@@ -1448,7 +1471,7 @@ public final class AppState {
         measuringNodeIds = Set(nodes.filter { !$0.isExcluded && $0.protocolType.supportsTCPProbe }.map(\.id))
         defer { if directMeasurementID == roundID { directMeasurementID = nil; measuringNodeIds = [] } }
         _ = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
-            guard let self, !Task.isCancelled, self.directMeasurementID == roundID else { return }
+            guard let self, !Task.isCancelled, self.directMeasurementID == roundID, self.measurementNetworkID == networkAtStart else { return }
             if result.latencyMs != nil { evidence.directSucceeded += 1 } else { evidence.directFailed += 1 }
             self.measuringNodeIds.remove(nodeID)
             if let i = self.nodes.firstIndex(where: { $0.id == nodeID && $0.identityFingerprint == fingerprints[nodeID] }) {
@@ -1462,6 +1485,10 @@ public final class AppState {
         }
         guard !Task.isCancelled else {
             recordSelectionReport(id: roundID, origin: origin, reason: .cancelled, evidence: evidence)
+            return
+        }
+        guard measurementNetworkID == networkAtStart else {
+            recordSelectionReport(id: roundID, origin: origin, reason: .networkChanged, evidence: evidence)
             return
         }
         // 用户在测量期间另选节点时，尊重这个更新的意图，不再提交旧的择优请求。
@@ -1486,6 +1513,10 @@ public final class AppState {
             recordSelectionReport(id: roundID, origin: origin,
                 reason: Task.isCancelled ? .cancelled : .selectionChanged, evidence: evidence)
             persist(); return
+        }
+        guard measurementNetworkID == networkAtStart else {
+            recordSelectionReport(id: roundID, origin: origin, reason: .networkChanged, evidence: evidence)
+            return
         }
         if evidence.proxy.keptCurrentSelection {
             resetScoreStreak()
@@ -1547,8 +1578,8 @@ public final class AppState {
     private func captureSelectionCandidate(_ node: Node, score: NodeScorer.Score? = nil) -> NodeSelectionReport.Candidate {
         .init(id: node.id, name: node.name, region: node.region, directLatencyMs: node.lastLatencyMs,
             score: score ?? scoreForAutoSelect(node),
-            stabilitySampleCount: nodeMetricsHistory.samples(for: node.identityFingerprint).count,
-            hasBandwidthObservation: node.observedPeakDownBps != nil)
+            stabilitySampleCount: NodeScorer.recentHistory(currentNetworkHistory(for: node)).count,
+            hasBandwidthObservation: recentBandwidth(for: node) != nil)
     }
 
     private func captureRanking(_ best: (node: Node, score: NodeScorer.Score), preferredRegion: String?,
@@ -1583,8 +1614,6 @@ public final class AppState {
 
     /// 直连延迟的「绿色」阈值（毫秒）—— 节点列表 chip 配色与经代理精选候选池共用同一口径。
     static let directGreenThresholdMs = 200
-    /// 没有绿色候选时的退化候选数（取直连最快的前几个，别让精选完全没得跑）。
-    private static let proxiedRefineFallbackCount = 3
 
     /// 经代理精选轮次计数（进程内，不持久化）—— 域名画像探测目标的 round-robin 推进用：
     /// 每次启用 Top-3 域名轮换的精选轮 +1，跨 3 轮覆盖 Top-3。重启归零无妨（只需推进）。
@@ -1601,19 +1630,18 @@ public final class AppState {
             let inPref = viable.filter { $0.region == pref }
             if !inPref.isEmpty { pool = inPref; usedPreferredRegion = true }
         }
-        var candidates = pool.filter { !$0.protocolType.supportsTCPProbe || ($0.lastLatencyMs ?? .max) < Self.directGreenThresholdMs }
-            .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
-        if candidates.isEmpty {
-            candidates = Array(pool.sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
-                .prefix(Self.proxiedRefineFallbackCount))
-        }
-        // 当前节点即便不在绿色/优先地区池，也要复核；只作健康对照，不绕过地区选择。
-        if let current = currentNode, !isEffectivelyExcluded(current), !candidates.contains(where: { $0.id == current.id }) {
-            candidates.insert(current, at: 0)
-        }
-        let skipped = candidates.filter { origin == .scheduled && $0.id != currentNodeId
+        let skipped = pool.filter { origin == .scheduled && $0.id != currentNodeId
             && nodeProbeCooldown.contains($0.identityFingerprint) }
-        candidates.removeAll { n in skipped.contains(where: { $0.id == n.id }) }
+        pool.removeAll { n in skipped.contains(where: { $0.id == n.id }) }
+        // 不再用 TCP <200ms 硬筛；高握手延迟或没有 TCP 的 UDP 节点也能获得探索机会。
+        let ranked = pool.map { (node: $0, score: scoreForAutoSelect($0).total) }.sorted {
+            if $0.score != $1.score { return $0.score > $1.score }
+            if $0.node.name != $1.node.name { return $0.node.name < $1.node.name }
+            return $0.node.id.uuidString < $1.node.id.uuidString
+        }.map(\.node)
+        let incumbent = currentNode.flatMap { isEffectivelyExcluded($0) ? nil : $0 }
+        let plan = nodeProbePlanner.plan(ranked: ranked, incumbent: incumbent)
+        let candidates = plan.candidates
         let roundTarget = settings.proxiedTestTarget.isEmpty
             ? ProxiedProbePlanner.probeTarget(from: domainHistory, roundIndex: proxiedProbeRound) : nil
         if roundTarget != nil { proxiedProbeRound &+= 1 }
@@ -1630,7 +1658,9 @@ public final class AppState {
                 } },
             probe: { node, target in await self.probeProxiedLatency(node, targetOverride: target) })
         evidence.proxy = round.evidence
-        evidence.proxy.coolingDownCount = skipped.count
+        evidence.proxy.coolingDownCount = Set(skipped.map(\.identityFingerprint)).count
+        evidence.proxy.candidateCount = candidates.count
+        evidence.proxy.explorationCount = plan.explorationCount
         let validFailures = round.confirmedFailures.filter { fingerprint in
             nodes.contains { $0.identityFingerprint == fingerprint && !isEffectivelyExcluded($0) }
         }
@@ -1645,8 +1675,8 @@ public final class AppState {
             latency: { node in measured.first { $0.node.id == node.id }?.ms ?? .max },
             score: { node in NodeScorer.score(.init(directLatencyMs: node.lastLatencyMs,
                 proxiedLatencyMs: measured.first { $0.node.id == node.id }?.ms,
-                history: nodeMetricsHistory.samples(for: node.identityFingerprint),
-                peakDownBps: node.observedPeakDownBps, rate: node.rateForComparison),
+                history: currentNetworkHistory(for: node),
+                peakDownBps: recentBandwidth(for: node), rate: node.rateForComparison),
                 preferLowerRate: settings.preferLowerRate, weights: NodeScorer.weights(for: settings.scoringProfile)) }
         ) {
             return captureRanking(best, preferredRegion: preferredRegion, usedPreferredRegion: usedPreferredRegion)
@@ -1696,17 +1726,15 @@ public final class AppState {
         }
     }
 
-    /// 直连轮的节点总分。经代理延迟**带时间戳**喂进打分：NodeScorer 的 24h 新鲜度门槛
-    /// 把陈旧值挡在延迟维之外 —— 「各节点 lastProxiedLatencyMs 新鲜度参差不公平」的
-    /// 老顾虑由门槛统一解决，新鲜的经代理值（0.7 权重）与直连（0.3）按分数混合。
+    /// 同网络历史和近期带宽；代理权重 / 稳定性置信度按时间衰减，24h 后退出。
     func scoreForAutoSelect(_ node: Node) -> NodeScorer.Score {
         NodeScorer.score(
             NodeScorer.Input(
                 directLatencyMs: node.lastLatencyMs,
                 proxiedLatencyMs: node.lastProxiedLatencyMs,
                 proxiedTestedAt: node.lastProxiedTestedAt,
-                history: nodeMetricsHistory.samples(for: node.identityFingerprint),
-                peakDownBps: node.observedPeakDownBps,
+                history: currentNetworkHistory(for: node),
+                peakDownBps: recentBandwidth(for: node),
                 rate: node.rateForComparison
             ),
             preferLowerRate: settings.preferLowerRate,
@@ -1721,7 +1749,7 @@ public final class AppState {
         guard !nodeProbeCooldown.contains(node.identityFingerprint, now: now) else { return false }
         if node.protocolType.supportsTCPProbe { return node.lastLatencyMs != nil }
         guard node.lastProxiedLatencyMs != nil, let at = node.lastProxiedTestedAt else { return false }
-        return now.timeIntervalSince(at) <= NodeScorer.proxiedFreshnessWindow
+        return (0...NodeScorer.proxiedFreshnessWindow).contains(now.timeIntervalSince(at))
     }
 
     /// 手动请求立即采用综合分数；自动请求使用与回放同一份分数黏性。
@@ -1740,9 +1768,35 @@ public final class AppState {
 
     private func resetScoreStreak() { selectionHysteresis.reset() }
 
+    /// 路径事件是新的测量上下文，不能推断它仍是上次的 Wi-Fi。
+    func measurementNetworkDidChange(at now: Date = Date()) {
+        measurementNetworkID = UUID()
+        measurementNetworkStartedAt = now
+        proxyProbeContext &+= 1
+        nodeProbeCooldown.reset()
+        resetScoreStreak()
+        bandwidthWindows.removeAll()
+        proxyBandwidthBaseline = nil
+        nodeProbePlanner = NodeProbePlanner()
+        for i in nodes.indices {
+            nodes[i].lastLatencyMs = nil; nodes[i].lastTestedAt = nil
+            nodes[i].lastProxiedLatencyMs = nil; nodes[i].lastProxiedTestedAt = nil
+            nodes[i].observedPeakDownBps = nil; nodes[i].observedBandwidthAt = nil
+        }
+    }
+
+    private func currentNetworkHistory(for node: Node) -> [NodeMetricSample] {
+        nodeMetricsHistory.samples(for: node.identityFingerprint, networkID: measurementNetworkID)
+    }
+
+    public func recentBandwidth(for node: Node, now: Date = Date()) -> Int64? {
+        bandwidthWindows[node.identityFingerprint]?.estimate(at: now)
+    }
+
     public func measureAllNodes() async {
         guard directMeasurementID == nil, !Task.isCancelled else { return }
         let roundID = UUID()
+        let networkAtStart = measurementNetworkID
         directMeasurementID = roundID
         for i in nodes.indices where !nodes[i].protocolType.supportsTCPProbe {
             nodes[i].lastLatencyMs = nil; nodes[i].lastTestedAt = nil
@@ -1754,7 +1808,7 @@ public final class AppState {
         defer { if directMeasurementID == roundID { directMeasurementID = nil; measuringNodeIds = [] } }
         // 渐进式：每测完一个节点立刻刷新它那一行的延迟 + 摘掉它的 loading，不用干等全部测完。
         _ = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
-            guard let self, !Task.isCancelled, self.directMeasurementID == roundID else { return }
+            guard let self, !Task.isCancelled, self.directMeasurementID == roundID, self.measurementNetworkID == networkAtStart else { return }
             self.measuringNodeIds.remove(nodeID)
             if let i = self.nodes.firstIndex(where: { $0.id == nodeID && $0.identityFingerprint == fingerprints[nodeID] }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
@@ -2092,6 +2146,7 @@ public final class AppState {
         // 伪造的连接态，iCloud 检查可能弹恢复框），见 ScreenshotDemoMode。
         if ScreenshotDemoMode.isActive { return }
         stopSchedulers()
+        measurementNetworkObserver.start { [weak self] in self?.measurementNetworkDidChange() }
         wireFailoverNotificationDelegate()   // 故障提醒：挂通知点击回调（幂等）
         #if os(macOS)
         // 「打开 App 自动连」监听器随 app 启动就位（之后由 settings 副作用保持同步）
@@ -2127,6 +2182,7 @@ public final class AppState {
     }
 
     public func stopSchedulers() {
+        measurementNetworkObserver.stop()
         stopObservingVPNStatus()
         schedulerTask?.cancel()
         schedulerTask = nil
@@ -2385,14 +2441,14 @@ public final class AppState {
     ) {
         nodeMetricsHistory.recordDirect(
             fingerprint: node.identityFingerprint, latencyMs: latencyMs,
-            lossFraction: lossFraction, at: date)
+            lossFraction: lossFraction, at: date, networkID: measurementNetworkID)
         nodeMetricsDirty = true
         flushNodeMetricsIfNeeded()
     }
 
     /// 记一次经代理实测（同轮窗口内并入直连样本，见 `NodeMetricsHistory.recordProxied`）。
     func recordNodeProxiedMeasurement(_ node: Node, proxiedMs: Int) {
-        nodeMetricsHistory.recordProxied(fingerprint: node.identityFingerprint, proxiedMs: proxiedMs)
+        nodeMetricsHistory.recordProxied(fingerprint: node.identityFingerprint, proxiedMs: proxiedMs, networkID: measurementNetworkID)
         nodeMetricsDirty = true
         flushNodeMetricsIfNeeded()
     }
@@ -2426,7 +2482,6 @@ public final class AppState {
 
     /// 被动带宽观测的记录下限（byte/s）：低于此的下行速率不算「跑出了带宽」，不更新峰值——
     /// 否则挂着不用时的零星小流量会把峰值定得毫无意义。100 KB/s ≈ 有真实下载在进行。
-    private static let bandwidthObserveFloorBps: Int64 = 100 * 1024
 
     /// Live Activity（灵动岛/锁屏）单一同步入口（E.19）。幂等：
     /// - 设置关 / VPN 没在跑 / 无当前节点 → 结束任何在显示的活动；
@@ -2452,26 +2507,53 @@ public final class AppState {
     }
 
     /// appex 经 App Group 上报的真实 `TrafficStats` 喂进波形窗口。UI 观察 `trafficHistory` 自动重绘。
-    /// 顺手做**被动带宽观测**：把当前节点跑出的下行速率峰值记到该节点上（零额外流量）。
+    /// 下载评分单独由 ingestXrayOutboundStats 的可归属 proxy 计数驱动。
     public func ingestTrafficStats(_ stats: TrafficStats) {
         trafficHistory.record(stats)
         tunnelSession.ingestHeartbeat(stats)
-        recordObservedBandwidth(stats)
     }
 
-    /// 把当前节点跑出的下行速率并入它的观测峰值。只在有明显下载（≥ floor）且刷新了峰值时
-    /// 才落盘 —— 峰值只增不减、更新很稀疏，不会每秒刷盘。
-    private func recordObservedBandwidth(_ stats: TrafficStats) {
-        let downBps = stats.downloadSpeedBps
+    /// 只用扩展可归属的 proxy outbound 字节差分；TUN / direct 下载绝不参与。
+    public func ingestXrayOutboundStats(_ stats: XrayOutboundStats, now: Date = Date()) {
+        outboundStats = stats
         guard isVPNRunning, !isSwitchingTunnel,
-              downBps >= Self.bandwidthObserveFloorBps,
+              stats.sampledAt >= measurementNetworkStartedAt,
+              (0...5).contains(now.timeIntervalSince(stats.sampledAt)),
               let applied = appliedTunnelConfiguration, applied.mode != .direct,
               stats.configurationID == applied.id,
-              let idx = nodes.firstIndex(where: { applied.matches($0) }) else { return }
-        if downBps > (nodes[idx].observedPeakDownBps ?? 0) {
-            nodes[idx].observedPeakDownBps = downBps
-            nodes[idx].observedBandwidthAt = Date()
-            persist()
+              let idx = nodes.firstIndex(where: { applied.matches($0) }) else {
+            proxyBandwidthBaseline = nil
+            return
+        }
+        let previous = proxyBandwidthBaseline
+        // App 每秒读取同一个 2秒快照，重复读不能变成新样本或覆盖基线。
+        if let previous, stats.sampledAt == previous.sampledAt { return }
+        proxyBandwidthBaseline = stats
+        guard let previous, previous.configurationID == stats.configurationID,
+              previous.sampledAt >= measurementNetworkStartedAt else { return }
+        let elapsed = stats.sampledAt.timeIntervalSince(previous.sampledAt)
+        guard elapsed > 0, elapsed <= 5,
+              previous.proxy.downlinkBytes >= 0, stats.proxy.downlinkBytes >= previous.proxy.downlinkBytes else { return }
+        let speed = Double(stats.proxy.downlinkBytes - previous.proxy.downlinkBytes) / elapsed
+        guard speed.isFinite, speed < Double(Int64.max) else { return }
+        let downBps = Int64(speed)
+        let fingerprint = nodes[idx].identityFingerprint
+        bandwidthWindows = bandwidthWindows.filter { entry in nodes.contains { $0.identityFingerprint == entry.key } }
+        bandwidthWindows[fingerprint, default: RecentBandwidth()].record(bytesPerSecond: downBps, at: stats.sampledAt)
+        let estimate = recentBandwidth(for: nodes[idx], now: now)
+        nodes[idx].observedPeakDownBps = estimate
+        if estimate == nil { nodes[idx].observedBandwidthAt = nil }
+        else if downBps >= RecentBandwidth.activeFloorBps { nodes[idx].observedBandwidthAt = stats.sampledAt }
+    }
+
+    /// 即使已停 VPN，也让界面上的过期观测退回未知；不触发持久化 / 云同步。
+    private func expireBandwidthObservations() {
+        let now = Date()
+        for i in nodes.indices where nodes[i].observedPeakDownBps != nil {
+            if recentBandwidth(for: nodes[i], now: now) == nil {
+                nodes[i].observedPeakDownBps = nil
+                nodes[i].observedBandwidthAt = nil
+            }
         }
     }
 
@@ -2496,6 +2578,7 @@ public final class AppState {
                 WidgetRefresher.reload()
                 logger.debug("NEVPNStatus → \(status.description)，已触发小组件刷新", category: "widget")
             }
+            expireBandwidthObservations()
             syncAutoStopState()   // 定时关闭：刷新倒计时 + 识别「扩展已按定时自停」
             syncTunnelMemory()    // 扩展内存观测：读快照 + 新增告警转写进主 App 日志
             // "traffic-stats" 必须与 XrayCore.TunnelAppGroup.trafficStatsName 一致（两模块互不依赖）
@@ -2518,7 +2601,7 @@ public final class AppState {
             // "xray-stats" 与 XrayCore.TunnelAppGroup.xrayStatsName 一致（两模块互不依赖）。
             if let xs = AppGroupStorage.read(XrayOutboundStats.self, from: "xray-stats"),
                abs(xs.sampledAt.timeIntervalSinceNow) <= 5 {
-                outboundStats = xs
+                ingestXrayOutboundStats(xs)
             } else if outboundStats != nil {
                 outboundStats = nil
             }

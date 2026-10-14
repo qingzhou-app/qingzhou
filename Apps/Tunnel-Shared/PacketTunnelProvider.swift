@@ -103,7 +103,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// - isSwitching：切换窗口内所有信号会虚假触发（stop→start 计数跳变），硬 guard 跳过喂样本（F24）。
     /// - needsBaselineReset：切换成功后置位，statsQueue 下个 tick 消费 → detector.resetBaseline()（F5/F7）。
     /// - nodeName：当前节点名（健康信号 + 通知用），随 start/reconfigure/switch 更新。
-    private struct HealthControl { var isSwitching = false; var needsBaselineReset = false; var nodeName = "node" }
+    private struct HealthControl { var isSwitching = false; var needsBaselineReset = false; var nodeName = "node"; var bandwidthConfigurationID: UUID? }
     private let healthControl = OSAllocatedUnfairLock(initialState: HealthControl())
 
     /// 「经代理延迟」（pingNode）/「配置预检」（testNode）专用串行队列。
@@ -231,6 +231,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                     self.sessionInfo.withLock { current in
                         current = TunnelSessionInfo(startedAt: Date(), autoStopSeconds: autoStopSeconds,
                             appliedConfiguration: applied)
+                        // 热切换后旧连接可能继续使用同名 proxy counter，不能将它们算给新节点。
+                        self.healthControl.withLock { $0.bandwidthConfigurationID = applied?.id }
                     }
                     self.armAutoStop(seconds: autoStopSeconds)
                 }
@@ -644,10 +646,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// 任何一步失败都静默跳过 —— 统计是增量观测，绝不影响 VPN 本体。
     private func reportXrayOutboundStats(at now: Date) {
         guard let port = metricsPort else { return }
+        let attributionBefore = bandwidthAttribution()
         guard let expvar = try? XrayCore.queryStats(metricsPort: port) else { return }
         let parsed = XrayCore.parseOutboundStats(expvar)
         guard !parsed.isEmpty else { return }
-        var stats = XrayOutboundStats(sampledAt: now)
+        let attributionAfter = bandwidthAttribution()
+        var stats = XrayOutboundStats(sampledAt: Date(),
+            configurationID: attributionBefore == attributionAfter ? attributionAfter : nil)
         for (tag, c) in parsed {
             stats.outbounds[tag] = XrayOutboundStats.Counter(uplinkBytes: c.uplink, downlinkBytes: c.downlink)
         }
@@ -659,6 +664,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         // 健康触发的故障切换：喂 proxy per-outbound 计数进纯逻辑判死器。长驻循环里套
         // autoreleasepool（NE 50MB 预算，别让 encode 的临时对象堆积到下一个 runloop）。
         autoreleasepool { feedNodeHealth(proxy: stats.proxy, at: now) }
+    }
+
+    /// 查询前后均需处在初始配置；换过出口后直到新扩展会话都不再给带宽打归属。
+    private func bandwidthAttribution() -> UUID? {
+        let health = healthControl
+        return sessionInfo.withLock { info in
+            let currentID = info?.appliedConfiguration?.id
+            return health.withLock { control in
+                guard !control.isSwitching, let id = currentID,
+                      id == control.bandwidthConfigurationID else { return nil }
+                return id
+            }
+        }
     }
 
     /// 把 proxy 累计计数喂进 NodeHealthDetector，确认 .suspect 时写 App Group 信号 + 发通知。

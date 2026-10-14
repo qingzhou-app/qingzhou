@@ -37,6 +37,13 @@ public struct NodeDetailView: View {
         .formStyle(.grouped)
         .navigationTitle(draft.name.isEmpty ? L("节点详情") : draft.name)
         .onAppear { scoreBreakdown = state.scoreForAutoSelect(draft) }
+        .onChange(of: state.measurementNetworkID) {
+            if let live = state.nodes.first(where: { $0.id == draft.id }) {
+                draft.lastLatencyMs = live.lastLatencyMs; draft.lastTestedAt = live.lastTestedAt
+                draft.lastProxiedLatencyMs = live.lastProxiedLatencyMs; draft.lastProxiedTestedAt = live.lastProxiedTestedAt
+                scoreBreakdown = state.scoreForAutoSelect(live)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") { save() }
@@ -231,12 +238,12 @@ public struct NodeDetailView: View {
             if let pt = draft.lastProxiedTestedAt {
                 LabeledContent("最近经代理测速", value: pt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)))
             }
-            if let bps = draft.observedPeakDownBps {
-                LabeledContent("实测峰值带宽", value: "↓ " + ByteFormatter.speed(bps))
+            if let bps = state.recentBandwidth(for: draft) {
+                LabeledContent("近期下载观测", value: "↓ " + ByteFormatter.speed(bps))
                 if let bt = draft.observedBandwidthAt {
                     LabeledContent("观测于", value: bt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)))
                 }
-                Text("你正常上网时观测到的真实峰值下行速率（未额外消耗流量）。反映带宽，与延迟互补。")
+                Text("近 30 分钟可归属到此节点的代理下载观测，至少覆盖 3 个分钟，过滤孤立尖峰。未额外下载，不能视为线路最大带宽。")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Button {
@@ -284,12 +291,7 @@ public struct NodeDetailView: View {
     }
 
     private func save() {
-        if let idx = state.nodes.firstIndex(where: { $0.id == draft.id }) {
-            // 直接替换：保留 lastLatencyMs/lastTestedAt/subscriptionId 等
-            state.nodes[idx] = draft
-            state.logger.info("Edited node \(draft.name)", category: "app")
-            state.persist()
-        }
+        state.updateNode(draft)
         dismiss()
     }
 }

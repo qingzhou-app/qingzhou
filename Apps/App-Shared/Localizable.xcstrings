@@ -1,6 +1,50 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "网络路径已变化，本轮旧测量已作废": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The network path changed; previous measurements from this round were discarded"
+          }
+        }
+      }
+    },
+    "近期下载观测": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recent download observation"
+          }
+        }
+      }
+    },
+    "本轮精选 %lld 个候选，含轮换探索 %lld 个；最多 6 个候选及 2 次复核": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shortlisted %1$lld candidates, including %2$lld rotating candidates; up to 6 candidates and 2 confirmation probes"
+          }
+        }
+      }
+    },
+    "近 30 分钟可归属到此节点的代理下载观测，至少覆盖 3 个分钟，过滤孤立尖峰。未额外下载，不能视为线路最大带宽。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy downloads attributable to this node in the last 30 minutes, covering at least 3 minutes and filtering isolated spikes. No extra downloads; this is not the maximum link capacity."
+          }
+        }
+      }
+    },
     "全链路可用性未确认，保持原选择": {
       "extractionState": "manual",
       "localizations": {

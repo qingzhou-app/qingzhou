@@ -1,5 +1,23 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## build29 统一安装与验收（2026-10-15，等待设备重新连接）
+
+合并build26–29：云同步任务协调、择优解释、全链路可用性保护、网络路径会话隔离、测量时效、近期代理下载观测及6候选/2复核预算。工程验收：新增30项回归，995项测试（994通过、1缺真实回放输入跳过、0失败），iOS/macOS主App及Tunnel/Widget通过。只读复审2项Important、1项Minor均由实际失败回归复现并修复，复审无剩余问题。
+
+开发签名1.0(29)与App/Tunnel/Widget的目标设备、有效期、App Group校验通过。最终包保存在`/private/tmp/qingzhou-build29-device/Build/Products/Debug-iphoneos/Qingzhou-iOS.app`。无线覆盖安装上传中断（AFC Write error 30），随后设备不再被libimobiledevice发现；CoreDevice通道仍报RemotePairingError4。未取得InstallComplete或设备版本29证明，最后确认安装版本仍25。已请求用户解锁并保持同一Wi-Fi，或接USB。此处不能标安装/真机验收通过。
+
+设备连通后由agent继续覆盖安装、独立查版本、尝试启动与DEBUG只读运行记录。用户统一验收：
+
+- [ ] **新扩展与基础连接**：确认1.0(29)，关开一次VPN，用先前已知正常节点访问常用网站，首页实际节点/模式和流量正常。
+- [ ] **择优与说明**：VPN开启，在节点页点择优，展开“最近一次择优”；最多6候选+2复核，选择说明与实际连接一致。失败不能冒充出口已验证。数据不足显示中性分，UDP不按TCP失败淘汰。
+- [ ] **切换网络**：测速期间从Wi-Fi切到蜂窝，再切回；旧结果不能覆盖新网络，重测后才有新值。系统无法感知的底层漫游不在静态保证内。
+- [ ] **云恢复呈现**：设置→iCloud→立即恢复，检查版本列表能打开、关闭后重开、失败后重试；加载结束不自己关闭，取消不改本地配置。实际恢复另按所选备份确认。
+- [ ] **近期下载观测**：使用同一初始隧道节点，正常代理下载跨至少3个活跃分钟后查看详情；直连下载不贡献，30分钟无有效样本回到未知。热切换后计数归属不明，暂不新增带宽观测，重启隧道后重新积累。
+
+小屏/动态字体/VoiceOver、真实能耗与线路性能仍需实际体验。此前“部分节点不能正常上网”的差异诊断仍按用户要求搁置，不由本次工程检查推断已解决。
+
+证据：`/private/tmp/qingzhou-build29-verify-final.log`、`/private/tmp/qingzhou-build29-device.log`、`/private/tmp/qingzhou-build29-install-wireless.log`、`/private/tmp/qingzhou-build29-install-coredevice.log`。
+
 ## build28 可用性保护（2026-10-15，未安装/未真机验收）
 
 本轮增加代理失败阶段、双目标有界复核与5分钟进程内冷却。全链路未确认保持原选择，当前节点双失败且有测通替代时允许即时恢复；成功复测和会话变化清除冷却。UI显示真实请求、复核、条件不足与冷却计数。工程检查：新增29项回归，965项测试（964通过、1缺真实回放输入跳过、0失败），iOS/macOS主App与Tunnel/Widget编译成功。独立只读复审无剩余Critical/Important/Minor。尚未开发签名或安装，手机最后确认仍25；这些结果不能代表真机效果。

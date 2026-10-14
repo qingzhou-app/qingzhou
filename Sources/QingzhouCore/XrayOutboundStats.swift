@@ -28,10 +28,13 @@ public struct XrayOutboundStats: Codable, Sendable, Equatable {
     /// tag（"proxy" / "direct" / "reject" / "dns-out"…）→ 累计计数。
     public var outbounds: [String: Counter]
     public var sampledAt: Date
+    /// 可证明计数只属于此节点配置时才提供；旧扩展 / 热切换后为 nil。
+    public var configurationID: UUID?
 
-    public init(outbounds: [String: Counter] = [:], sampledAt: Date = Date()) {
+    public init(outbounds: [String: Counter] = [:], sampledAt: Date = Date(), configurationID: UUID? = nil) {
         self.outbounds = outbounds
         self.sampledAt = sampledAt
+        self.configurationID = configurationID
     }
 
     public var proxy: Counter { outbounds["proxy"] ?? Counter() }

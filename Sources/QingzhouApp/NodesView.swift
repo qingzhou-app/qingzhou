@@ -404,7 +404,7 @@ private struct NodeRow: View {
                     Text("\(node.protocolType.rawValue.uppercased()) · \(node.host):\(node.port)")
                         .font(.caption.monospaced()).foregroundStyle(.secondary)
                     // 被动观测的实测峰值下行带宽（用过才有）—— 零额外流量，反映真实带宽
-                    if let bps = node.observedPeakDownBps {
+                    if let bps = state.recentBandwidth(for: node) {
                         Text("· ↓ \(ByteFormatter.speed(bps))")
                             .font(.caption.monospaced()).foregroundStyle(.blue)
                     }

@@ -60,6 +60,7 @@ struct NodeSelectionReportView: View {
         case .vpnUnavailable: Text("VPN 未运行，未进行代理精选；直连握手成功不代表出口可上网")
         case .switchInProgress: Text("VPN 正在切换，未进行代理精选")
         case .completed, .interrupted:
+            Text("本轮精选 \(report.proxy.candidateCount) 个候选，含轮换探索 \(report.proxy.explorationCount) 个；最多 6 个候选及 2 次复核")
             Text("本轮代理探测 \(report.proxy.attempted) 次：成功 \(report.proxy.succeeded) 次、失败 \(report.proxy.failed) 次")
             if report.proxy.state == .interrupted { Text("代理精选中途停止") }
             if report.proxy.keptCurrentSelection { Text("未取得可用的精选结果，本轮保持原选择；出口可用性尚未确认") }

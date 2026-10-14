@@ -7,7 +7,7 @@ public struct NodeSelectionReport: Sendable, Identifiable {
     public enum Reason: Sendable, Equatable {
         case highestScore, alreadyBest, insufficientLead
         case confirmingLead(completed: Int, required: Int)
-        case noEligibleMeasurement, selectionChanged, candidateChanged, cancelled, proxyUnverified, availabilityRecovery
+        case networkChanged, noEligibleMeasurement, selectionChanged, candidateChanged, cancelled, proxyUnverified, availabilityRecovery
     }
     public struct Candidate: Sendable {
         public let id: UUID
@@ -21,6 +21,8 @@ public struct NodeSelectionReport: Sendable, Identifiable {
     public struct ProxyEvidence: Sendable {
         public enum State: Sendable { case notRequested, vpnUnavailable, switchInProgress, completed, interrupted }
         public var state: State = .notRequested
+        public var candidateCount = 0
+        public var explorationCount = 0
         public var succeeded = 0
         public var failed = 0
         public var attempted: Int { succeeded + failed }
@@ -73,6 +75,7 @@ public struct NodeSelectionReport: Sendable, Identifiable {
         case .noEligibleMeasurement: L("本轮没有合格的测量候选，未选择新节点")
         case .selectionChanged: L("测量期间选择已变化，未覆盖你的选择")
         case .candidateChanged: L("候选配置已变化，本轮未采用旧结果")
+        case .networkChanged: L("网络路径已变化，本轮旧测量已作废")
         case .cancelled: L("本轮择优已取消")
         case .proxyUnverified: L("全链路可用性未确认，保持原选择")
         case .availabilityRecovery: L("当前节点双目标复核失败，已选择本轮测通的节点")

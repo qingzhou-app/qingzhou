@@ -6,6 +6,8 @@ import Foundation
 /// 就靠失败样本算，只记成功会把「时好时坏」的烂节点洗白成满分。
 /// `proxiedMs` 是同轮经代理精选实测的全链路延迟（没轮到 / 失败为 nil）。
 public struct NodeMetricSample: Codable, Sendable, Equatable {
+    /// 本地随机路径会话标识；nil 为旧格式，仅保留供历史回放。
+    public var networkID: UUID?
     public var at: Date
     public var latencyMs: Int?
     public var proxiedMs: Int?
@@ -14,7 +16,8 @@ public struct NodeMetricSample: Codable, Sendable, Equatable {
     /// 无此字段照常解码（Codable 可选）。
     public var lossFraction: Double?
 
-    public init(at: Date, latencyMs: Int? = nil, proxiedMs: Int? = nil, lossFraction: Double? = nil) {
+    public init(at: Date, latencyMs: Int? = nil, proxiedMs: Int? = nil, lossFraction: Double? = nil, networkID: UUID? = nil) {
+        self.networkID = networkID
         self.at = at
         self.latencyMs = latencyMs
         self.proxiedMs = proxiedMs
@@ -59,22 +62,28 @@ public struct NodeMetricsHistory: Codable, Sendable, Equatable {
         samples[fingerprint] ?? []
     }
 
+    /// 当前网络的严格子集；旧格式及其他网络不会混入实时评分。
+    public func samples(for fingerprint: String, networkID: UUID) -> [NodeMetricSample] {
+        samples(for: fingerprint).filter { $0.networkID == networkID }
+    }
+
     /// 记一条直连测量（成功失败都记，见 `NodeMetricSample.latencyMs` 注释）。
     /// `lossFraction` 是本轮 burst 的丢包率（失败/总次数），非 burst 来源传 nil。
     public mutating func recordDirect(
-        fingerprint: String, latencyMs: Int?, lossFraction: Double? = nil, at: Date = Date()
+        fingerprint: String, latencyMs: Int?, lossFraction: Double? = nil, at: Date = Date(), networkID: UUID? = nil
     ) {
-        append(NodeMetricSample(at: at, latencyMs: latencyMs, lossFraction: lossFraction), for: fingerprint)
+        append(NodeMetricSample(at: at, latencyMs: latencyMs, lossFraction: lossFraction, networkID: networkID), for: fingerprint)
     }
 
     /// 记一次经代理实测：同轮窗口内并入最近一条样本，否则作为独立样本追加。
-    public mutating func recordProxied(fingerprint: String, proxiedMs: Int, at: Date = Date()) {
+    public mutating func recordProxied(fingerprint: String, proxiedMs: Int, at: Date = Date(), networkID: UUID? = nil) {
         if var ring = samples[fingerprint], let last = ring.last,
+           last.networkID == networkID, at.timeIntervalSince(last.at) >= 0,
            at.timeIntervalSince(last.at) <= Self.sameRoundWindow {
             ring[ring.count - 1].proxiedMs = proxiedMs
             samples[fingerprint] = ring
         } else {
-            append(NodeMetricSample(at: at, proxiedMs: proxiedMs), for: fingerprint)
+            append(NodeMetricSample(at: at, proxiedMs: proxiedMs, networkID: networkID), for: fingerprint)
         }
     }
 
