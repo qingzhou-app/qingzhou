@@ -1,5 +1,15 @@
 import Foundation
 
+/// 云配置 IO 边界；异步接口允许协调器测试精确控制读取/写入的交错。
+public protocol CloudVaultAccess: Sendable {
+    func isAvailable() async -> Bool
+    func loadHeader() async throws -> VaultHeader?
+    func loadDocument() async throws -> VaultDocument?
+    func loadBackupDocument(fileName: String) async throws -> VaultDocument?
+    func listBackups() async -> [CloudVaultStore.BackupEntry]
+    func save(_ document: VaultDocument, expecting expectedHeader: VaultHeader?) async throws
+}
+
 /// iCloud Drive 文档容器的读写层（`VaultDocument` 的 IO）。
 ///
 /// - 文件放在容器的 `Documents/` 子目录 —— 配合 Info.plist 的 `NSUbiquitousContainers`
@@ -10,7 +20,7 @@ import Foundation
 /// - `containerProvider` 可注入：测试里指向临时目录即可全流程验证，不需要真 iCloud。
 /// - `FileManager.url(forUbiquityContainerIdentifier:)` 官方要求别在主线程调（首次可能
 ///   要建容器目录，慢）；本类型是 actor，天然在后台执行。
-public actor CloudVaultStore {
+public actor CloudVaultStore: CloudVaultAccess {
     /// iCloud 容器 id —— 必须与 project.yml 里两个主 App target 的
     /// `com.apple.developer.ubiquity-container-identifiers` 一致。
     public static let containerIdentifier = "iCloud.com.sbraveyoung.qingzhou"
@@ -96,6 +106,7 @@ public actor CloudVaultStore {
             writingItemAt: url, options: .forReplacing, error: &coordinationError
         ) { actualURL in
             do {
+                try Task.checkCancellation()
                 if checkCurrentHeader {
                     let fm = FileManager.default
                     let placeholder = actualURL.deletingLastPathComponent().appendingPathComponent(".\(actualURL.lastPathComponent).icloud")
@@ -106,6 +117,7 @@ public actor CloudVaultStore {
                         ? try VaultDocument.decodeHeader(from: Data(contentsOf: actualURL)) : nil
                     guard currentHeader == expectedHeader else { throw StoreError.conflict }
                 }
+                try Task.checkCancellation()
                 try data.write(to: actualURL, options: .atomic)
             } catch {
                 writeError = error

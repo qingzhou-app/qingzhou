@@ -1114,8 +1114,8 @@ final class AppStateCloudVaultTests: XCTestCase {
         try await store.save(VaultDocument(
             revision: 9, modifiedAt: Date(), deviceName: "other", snapshot: cloudSnapshot))
 
-        await state.restoreFromCloud(candidate: VaultRestoreCandidate(
-            header: VaultHeader(schemaVersion: 1, revision: 9, modifiedAt: Date(), deviceName: "other")))
+        let confirmedHeader = try await store.loadHeader()
+        await state.restoreFromCloud(candidate: VaultRestoreCandidate(header: try XCTUnwrap(confirmedHeader)))
 
         XCTAssertEqual(state.customRules.count, 1, "云端的实质变化要恢复进来")
         XCTAssertEqual(state.nodes[0].lastLatencyMs, 55, "非排除节点：恢复后自动重测，拿到新鲜延迟")

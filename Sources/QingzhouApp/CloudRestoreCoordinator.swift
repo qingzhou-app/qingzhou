@@ -57,4 +57,11 @@ final class CloudRestoreCoordinator {
         versionLoadID = nil
         // 点选后 SwiftUI binding 也可能调用关闭；保留 pending 直到 onDismiss 接棒。
     }
+
+    /// 同步关闭后，列表结果、暂存候选和确认提示都不能迟到复活。
+    func cancelAll() {
+        dismissVersions()
+        pendingCandidate = nil
+        offer = nil
+    }
 }

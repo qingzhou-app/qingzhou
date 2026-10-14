@@ -43,7 +43,8 @@ settings:
     # build 23 = DEBUG按参数记录无凭据真机验收快照，Release不包含诊断入口。
     # build 24 = 按实际规则摘要决定刷新是否重配，避免重开App重复重启同内容隧道。
     # build 25 = 云恢复呈现状态提取，读取轮次防止关闭重开/重试的迟到结果覆盖。
-    CURRENT_PROJECT_VERSION: "25"
+    # build 26 = 云同步任务协调器，轮次/取消/写入屏障及恢复保存成功后回推。
+    CURRENT_PROJECT_VERSION: "26"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 

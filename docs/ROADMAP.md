@@ -2,10 +2,11 @@
 
 > 这是 commercial App Store VPN 产品的 6 个月 part-time 路线图。MVP 目标是 W9-10 上架。
 
-## 当前工程状态（2026-10-14，build25云恢复呈现边界）
+## 当前工程状态（2026-10-14，build26云异步任务协调）
 
-- 版本源：`Apps/project.yml`，1.0(25)。内核已升级并锁xray-core v26.6.27 / libXray73bb811。用户恢复部署授权后，iPhone14Pro已通过无线开发版安装更新到1.0(25)，UI验收待用户执行。
-- build25：无IO的`CloudRestoreCoordinator`管理版本列表/确认交接及读取轮次，避免关闭重开、连续重试时旧结果覆盖新列表；新增6项交错测试和3项Observation通知/隔离回归。897项测试（896通过、1缺回放输入跳过）及双平台targets编译通过。云镜像IO、恢复应用与启动编排仍待后续迁移；本批已无线安装并核对1.0(25)，UI/VPN及多设备验收尚未完成。
+- 版本源：`Apps/project.yml`，1.0(26)。内核已升级并锁xray-core v26.6.27 / libXray73bb811。本机build26编译通过，尚未开发签名或安装；iPhone14Pro最后确认1.0(25)，云恢复交互验收按用户要求暂缓。
+- build26：`CloudSyncCoordinator`提取启动检查/下载重试/镜像/恢复的任务顺序与轮次，关闭同步阻止迟到状态，恢复等待旧写入结束；云写入固定绑定本地保存成功的快照，备份失败及恢复读取期间本地编辑中止覆盖。新增20项可控交错/Observation回归；917项测试（916通过、1缺回放输入跳过、0失败）及双平台主App/Tunnel/Widget编译通过。云存储条件保存、恢复呈现与AppState的VPN/测速适配边界保留。
+- build25：无IO的`CloudRestoreCoordinator`管理版本列表/确认交接及读取轮次，避免关闭重开、连续重试时旧结果覆盖新列表；新增6项交错测试和3项Observation通知/隔离回归。897项测试（896通过、1缺回放输入跳过）及双平台targets编译通过。该批尚未迁移云任务编排，build26另行完成；本批已无线安装并核对1.0(25)，UI/VPN及多设备验收尚未完成。
 - build24：扩展报告实际有序规则摘要，远程规则刷新按实际内容决定重配，避免主App刚重开时把本地空列表误当实际空规则；切换中收到变化会排队补应用。888项测试（887通过、1缺回放输入跳过）及双平台targets编译通过。build23新增显式参数启用的DEBUG无凭据验收记录，Release无此入口。
 - build22：会话采认、启动下限、requestID/回执及心跳否定状态提取到无IO的`TunnelSessionCoordinator`，保持build21行为和界面Observation通知。真机验收按build记录在`ACCEPTANCE.md`，节点差异按用户要求搁置。
 - build21：扩展成功应用后报告实际节点/模式，首页与实时活动/小组件读实际配置，带宽按配置版本归属；预检先于preferences更新，旧/无效回执不当成功。
