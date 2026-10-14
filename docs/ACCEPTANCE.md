@@ -1,10 +1,12 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
-## build25 云恢复呈现边界（2026-10-14，本机验证）
+## build25 云恢复呈现边界（2026-10-14，已安装待用户验收）
 
 `CloudRestoreCoordinator`提取版本列表、待交接候选和确认提示的状态；读取结果仅接受当前轮次，关闭重开/连续重试后的旧结果丢弃。恢复所选候选及覆盖上下文原样保留，云镜像和恢复IO没有迁移。
 
 工程检查：897项测试（896通过、1缺真实回放输入跳过、0失败），iOS/macOS主App及Tunnel/Widget编译通过；新增6项状态交错测试和3项Observation通知/隔离回归。用户推迟安装，今晚未查询或操作手机，最后已确认安装版本仍为build24。本机编译不能代替以下验收。
+
+安装追加记录：用户恢复部署授权后，iPhone14Pro无线开发版安装成功，installation_proxy返回InstallComplete/Complete，独立应用列表查询确认1.0(25)。覆盖安装，未卸载旧App或执行云恢复。CoreDevice无线远程调试通道仍报RemotePairingError4；安装成功不能据此标启动、VPN或以下UI交互通过。证据：`/private/tmp/qingzhou-build25-install-wireless-developer.log`与`/private/tmp/qingzhou-build25-installed-wireless-final.plist`。
 
 - [ ] 安装build25后，立即恢复按钮及时呈现列表，加载成功/失败不自动关闭列表。
 - [ ] 加载中关闭并重新打开、失败后重试，列表显示本轮结果，不被旧结果或旧错误覆盖。
