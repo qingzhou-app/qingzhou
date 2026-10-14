@@ -29,6 +29,7 @@ public struct NodesView: View {
     public var body: some View {
         List {
             controlsSection
+            if let report = state.lastSelectionReport { NodeSelectionReportView(report: report) }
             ForEach(filtered) { node in
                 NodeRow(
                     state: state,
@@ -77,15 +78,13 @@ public struct NodesView: View {
                 Button {
                     Task {
                         isAutoSelecting = true
-                        let before = state.currentNodeId
+                        let previousReportID = state.lastSelectionReport?.id
                         await state.autoSelectBestNode()
                         isAutoSelecting = false
-                        if state.currentNodeId == before, before != nil {
-                            autoSelectMessage = L("未找到比当前节点更快的")
-                        } else if let n = state.currentNode {
-                            autoSelectMessage = L("已选: \(n.name)") + (n.lastLatencyMs.map { L(" (\($0) ms)") } ?? "")
+                        if let report = state.lastSelectionReport, report.id != previousReportID {
+                            autoSelectMessage = report.summary
                         } else {
-                            autoSelectMessage = L("所有节点测速失败，未做切换")
+                            autoSelectMessage = L("未开始新一轮择优，已有测速任务或没有节点")
                         }
                         // 4 秒后自动消失
                         try? await Task.sleep(for: .seconds(4))
@@ -99,7 +98,7 @@ public struct NodesView: View {
                     }
                 }
                 .disabled(state.nodes.isEmpty || isMeasuring || isAutoSelecting)
-                .help("先测速再选延迟最低的节点为当前节点")
+                .help("先测速，再按地区偏好与综合评分选择节点")
             }
             ToolbarItem {
                 Menu {
@@ -151,7 +150,7 @@ public struct NodesView: View {
             Button("知道了", role: .cancel) {}
         } message: {
             // 单字面量 + 显式 \n\n（多行 """ 的续行符会让 key 难以在字符串目录里精确复现）
-            Text("普通测速（无图标的数字）是设备直接对节点服务器握手一次，只说明「节点离你近不近、活着没」——密码错误的节点它也照样显示很快。\n\n经代理延迟（带 ⋱ 图标）是 VPN 运行时，让 xray 携带完整协议真实通过该节点访问一次 google.com，测出的是你实际用它上网的端到端耗时——协议握手、节点转发、出口线路质量全部包含。数值天然比直连大，但它才是真实体感：直连快、经代理慢 = 节点出口绕路；直连快、经代理失败 = 节点不可用（如凭据错误）。")
+            Text("普通测速是设备对节点服务器发起 TCP 握手，只说明到服务器的路径能否建立连接，不能验证代理凭据和出口。每轮做三次，取成功样本中位数。\n\n经代理延迟是在 VPN 运行时携带完整协议，通过该节点访问探测站点的耗时，包含握手和出口路径。默认目标是 Cloudflare，也可使用设置的目标或常用域名。UDP 节点使用代理实测，不做 TCP 握手。\n\n代理探测失败可能来自节点、目标站点、当前网络或扩展资源限制。单次失败不能判定节点永久失效，也不能证明所有网站都无法访问。")
         }
         .sheet(isPresented: $showAdd) { addSheet }
         .sheet(item: $qrShareNode) { node in qrShareSheet(node) }

@@ -14179,6 +14179,457 @@
           }
         }
       }
+    },
+    "最近一次择优": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last selection decision"
+          }
+        }
+      }
+    },
+    "已选择：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected: %@"
+          }
+        }
+      }
+    },
+    "未选择新节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No new node selected"
+          }
+        }
+      }
+    },
+    "保持当前节点：综合评分仍为本轮最优": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keeping the current node: best overall score this round"
+          }
+        }
+      }
+    },
+    "保持当前节点：候选领先不足，避免频繁切换": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keeping the current node: score advantage is too small"
+          }
+        }
+      }
+    },
+    "保持当前节点：候选连续领先 %lld/%lld 轮": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keeping the current node: candidate led for %lld/%lld rounds"
+          }
+        }
+      }
+    },
+    "本轮没有合格的测量候选，未选择新节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No eligible measured candidate this round; no new node selected"
+          }
+        }
+      }
+    },
+    "测量期间选择已变化，未覆盖你的选择": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your selection changed during testing; it was preserved"
+          }
+        }
+      }
+    },
+    "候选配置已变化，本轮未采用旧结果": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The candidate configuration changed; old results were discarded"
+          }
+        }
+      }
+    },
+    "本轮择优已取消": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This selection round was cancelled"
+          }
+        }
+      }
+    },
+    "触发方式：手动或配置恢复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trigger: manual action or configuration restore"
+          }
+        }
+      }
+    },
+    "触发方式：自动调度": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trigger: automatic schedule"
+          }
+        }
+      }
+    },
+    "优先地区：%@，本轮已采用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preferred region: %@, used this round"
+          }
+        }
+      }
+    },
+    "优先地区：%@，无合格候选，使用其他地区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preferred region: %@, no eligible candidate; using another region"
+          }
+        }
+      }
+    },
+    "有效排除 %lld 个节点；本轮直连握手成功 %lld 个、失败 %lld 个": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nodes excluded; direct handshakes succeeded for %lld nodes and failed for %lld this round"
+          }
+        }
+      }
+    },
+    "%lld 个 UDP 节点缺少新鲜代理测量，未用 TCP 失败判定它们不可用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld UDP nodes lack fresh proxy measurements; they were not marked unavailable by TCP tests"
+          }
+        }
+      }
+    },
+    "自动切换需综合分领先至少 %lld 分，并连续 %lld 轮满足；当前节点无有效测量时不等待。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic switching requires a lead of at least %lld points for %lld consecutive rounds. No wait applies when the current node has no valid measurement."
+          }
+        }
+      }
+    },
+    "这是当轮选择记录。VPN 实际使用的节点以首页连接状态为准。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is the decision from that round. The Home connection status shows the node actually used by the VPN."
+          }
+        }
+      }
+    },
+    "择优偏好：%@，倍率参与评分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selection profile: %@, usage multiplier included"
+          }
+        }
+      }
+    },
+    "择优偏好：%@，倍率不参与评分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selection profile: %@, usage multiplier excluded"
+          }
+        }
+      }
+    },
+    "本轮未进行代理精选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No proxy refinement this round"
+          }
+        }
+      }
+    },
+    "VPN 未运行，未进行代理精选；直连握手成功不代表出口可上网": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN was not running; proxy refinement was skipped. A successful direct handshake does not verify Internet access through the exit."
+          }
+        }
+      }
+    },
+    "VPN 正在切换，未进行代理精选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN was switching; proxy refinement was skipped"
+          }
+        }
+      }
+    },
+    "本轮代理探测 %lld 次：成功 %lld 次、失败 %lld 次": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy probes this round: %lld attempts, %lld successes, %lld failures"
+          }
+        }
+      }
+    },
+    "代理精选中途停止": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy refinement stopped before completion"
+          }
+        }
+      }
+    },
+    "未取得可用的精选结果，本轮保留初选结果；出口可用性尚未确认": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No usable refinement result; the initial selection was kept. Exit connectivity is unconfirmed."
+          }
+        }
+      }
+    },
+    "探测失败可能来自节点、目标站点、网络或扩展资源限制，不能据此认定节点永久失效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probe failures can come from the node, target site, network, or extension resource limits. They do not establish permanent node failure."
+          }
+        }
+      }
+    },
+    "当时选择": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selection at that time"
+          }
+        }
+      }
+    },
+    "本轮候选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Candidate this round"
+          }
+        }
+      }
+    },
+    "%@：%@ · 综合评分 %lld 分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: %@ · overall score %lld"
+          }
+        }
+      }
+    },
+    "延迟 %lld · 稳定性 %lld · 带宽 %lld · 成本 %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Latency %lld · stability %lld · bandwidth %lld · cost %lld"
+          }
+        }
+      }
+    },
+    "稳定性样本不足，使用中性分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insufficient stability samples; neutral score used"
+          }
+        }
+      }
+    },
+    "尚无被动带宽观测，使用中性分": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No passive bandwidth observation; neutral score used"
+          }
+        }
+      }
+    },
+    "未开始新一轮择优，已有测速任务或没有节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No new selection round started: a measurement is already running or there are no nodes"
+          }
+        }
+      }
+    },
+    "先测速，再按地区偏好与综合评分选择节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Measure first, then select by region preference and overall score"
+          }
+        }
+      }
+    },
+    "评分参考": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Score reference"
+          }
+        }
+      }
+    },
+    "这里是当前详情数据的评分参考；最近一次实际择优的结果与保持原因请看节点页。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This score is based on the detail data shown here. See the Nodes page for the last actual selection and reasons for keeping a node."
+          }
+        }
+      }
+    },
+    "普通测速是设备对节点服务器发起 TCP 握手，只说明到服务器的路径能否建立连接，不能验证代理凭据和出口。每轮做三次，取成功样本中位数。\n\n经代理延迟是在 VPN 运行时携带完整协议，通过该节点访问探测站点的耗时，包含握手和出口路径。默认目标是 Cloudflare，也可使用设置的目标或常用域名。UDP 节点使用代理实测，不做 TCP 握手。\n\n代理探测失败可能来自节点、目标站点、当前网络或扩展资源限制。单次失败不能判定节点永久失效，也不能证明所有网站都无法访问。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct testing performs three TCP handshakes with the node server and takes the median of successful samples. It verifies the path to the server, not proxy credentials or exit connectivity.\n\nProxy latency measures a request through the node while the VPN is running, including handshakes and the exit path. The default target is Cloudflare; configured targets or frequently used domains may also be used. UDP nodes use proxy probes, not TCP handshakes.\n\nA failure can come from the node, target site, current network, or extension resource limits. One failure does not establish permanent failure or inability to reach every website."
+          }
+        }
+      }
+    },
+    "经代理精选完成：实测 %lld 个候选，本轮 %lld 个探测失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy refinement finished: %lld candidates tested, %lld probe failures this round"
+          }
+        }
+      }
+    },
+    "经代理精选未取得可用结果：探测 %lld 次，本轮保留初选结果": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No usable proxy refinement result after %lld probes; keeping the initial selection this round"
+          }
+        }
+      }
+    },
+    "这里显示的评分偏好与节点分数用于本轮保持判断；地区记录反映候选筛选时的设置。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The profile and node scores describe this round’s keep decision. The region record reflects the settings used to filter candidates."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

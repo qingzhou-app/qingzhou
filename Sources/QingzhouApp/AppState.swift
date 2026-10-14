@@ -1402,9 +1402,12 @@ public final class AppState {
     /// 添加订阅、云恢复都是用户主动动作，一轮采用综合评分结果。
     public enum AutoSelectOrigin: Sendable { case manual, scheduled }
 
+    public private(set) var lastSelectionReport: NodeSelectionReport?
+
     public func autoSelectBestNode(origin: AutoSelectOrigin = .manual) async {
         guard !nodes.isEmpty, directMeasurementID == nil, !Task.isCancelled else { return }
         let roundID = UUID()
+        let evidence = SelectionMeasurementEvidence()
         directMeasurementID = roundID
         let selectionAtStart = currentNodeId
         let intentAtStart = selectionIntentGeneration
@@ -1418,6 +1421,7 @@ public final class AppState {
         defer { if directMeasurementID == roundID { directMeasurementID = nil; measuringNodeIds = [] } }
         _ = await nodeSelector.measure(nodes: nodes) { [weak self] nodeID, result in
             guard let self, !Task.isCancelled, self.directMeasurementID == roundID else { return }
+            if result.latencyMs != nil { evidence.directSucceeded += 1 } else { evidence.directFailed += 1 }
             self.measuringNodeIds.remove(nodeID)
             if let i = self.nodes.firstIndex(where: { $0.id == nodeID && $0.identityFingerprint == fingerprints[nodeID] }) {
                 self.nodes[i].lastLatencyMs = result.latencyMs
@@ -1428,41 +1432,82 @@ public final class AppState {
                     lossFraction: result.lossFraction, at: testedAt)
             }
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else {
+            recordSelectionReport(id: roundID, origin: origin, reason: .cancelled, evidence: evidence)
+            return
+        }
         // 用户在测量期间另选节点时，尊重这个更新的意图，不再提交旧的择优请求。
-        guard selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart else { persist(); return }
+        guard selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart else {
+            recordSelectionReport(id: roundID, origin: origin, reason: .selectionChanged, evidence: evidence)
+            persist(); return
+        }
         let previousId = currentNodeId
-        var candidate = pickBestRespectingRegions(from: nodes)
+        var ranking = rankRespectingRegions(from: nodes)
+        var candidate = ranking?.node
         if candidate == nil, isVPNRunning, !isSwitchingTunnel,
            nodes.contains(where: { !$0.protocolType.supportsTCPProbe && !isEffectivelyExcluded($0) }) {
             for node in nodes.filter({ !$0.protocolType.supportsTCPProbe && !isEffectivelyExcluded($0) }) {
-                if Task.isCancelled || !isVPNRunning || isSwitchingTunnel { break }
-                _ = await measureProxiedLatency(node, showToastOnError: false)
+                if Task.isCancelled || !isVPNRunning || isSwitchingTunnel {
+                    evidence.proxy.state = .interrupted
+                    break
+                }
+                evidence.recordProxy(await measureProxiedLatency(node, showToastOnError: false))
             }
-            candidate = pickBestRespectingRegions(from: nodes)
+            if Task.isCancelled || !isVPNRunning || isSwitchingTunnel { evidence.proxy.state = .interrupted }
+            ranking = rankRespectingRegions(from: nodes)
+            candidate = ranking?.node
+        }
+        guard !Task.isCancelled, selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart else {
+            recordSelectionReport(id: roundID, origin: origin,
+                reason: Task.isCancelled ? .cancelled : .selectionChanged, evidence: evidence)
+            persist(); return
         }
         if var best = candidate {
             // 经代理精选（VPN 在跑且开关开着）：直连绿色候选逐个真实走节点测，
             // 避开「直连快但出口绕路 / 已失效」的假好节点。VPN 没开时测不了，直接用直连结果。
             if settings.autoSelectUsesProxiedLatency, isVPNRunning, !isSwitchingTunnel {
-                best = await refineWithProxiedLatency(fallback: best)
+                if let initial = ranking {
+                    let refined = await refineWithProxiedLatency(fallback: initial, evidence: evidence)
+                    ranking = refined
+                    best = refined.node
+                }
             } else if settings.autoSelectUsesProxiedLatency {
+                evidence.proxy.state = evidence.proxy.attempted > 0 ? .interrupted
+                    : (isVPNRunning ? .switchInProgress : .vpnUnavailable)
                 // 静默跳过会让用户以为精选没跑（真机反馈过）—— 至少留下日志可查
                 logger.info("Proxied refine skipped — VPN not running", category: "app")
             }
-            guard !Task.isCancelled, selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart,
+            guard !Task.isCancelled, selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart else {
+                recordSelectionReport(id: roundID, origin: origin,
+                    reason: Task.isCancelled ? .cancelled : .selectionChanged, evidence: evidence)
+                persist(); return
+            }
+            guard
                   let liveBest = nodes.first(where: { $0.id == best.id && $0.identityFingerprint == best.identityFingerprint }),
-                  !isEffectivelyExcluded(liveBest) else { persist(); return }
+                  !isEffectivelyExcluded(liveBest) else {
+                recordSelectionReport(id: roundID, origin: origin, reason: .candidateChanged, evidence: evidence)
+                persist(); return
+            }
             best = liveBest
             if shouldHoldForScoreStickiness(origin: origin, challenger: best, incumbent: currentNode) {
+                let reason: NodeSelectionReport.Reason
+                switch selectionHysteresis.decision {
+                case .holdForStreak(let completed, let required): reason = .confirmingLead(completed: completed, required: required)
+                default: reason = .insufficientLead
+                }
+                recordSelectionReport(id: roundID, origin: origin, reason: reason, ranking: ranking,
+                    heldChallenger: best, evidence: evidence)
                 persist(); return
             }
             currentNodeId = best.id
+            recordSelectionReport(id: roundID, origin: origin,
+                reason: best.id == previousId ? .alreadyBest : .highestScore, ranking: ranking, evidence: evidence)
             logger.info("Auto-selected \(best.name) [\(best.region)] (direct \(best.lastLatencyMs ?? -1)ms / proxied \(best.lastProxiedLatencyMs ?? -1)ms)", category: "app")
             #if DEBUG
             AcceptanceTrace.record(.autoSelected)
             #endif
         } else {
+            recordSelectionReport(id: roundID, origin: origin, reason: .noEligibleMeasurement, evidence: evidence)
             logger.warn("Auto-select found no viable node", category: "app")
         }
         persist()
@@ -1471,6 +1516,52 @@ public final class AppState {
             resetScoreStreak()   // 换人了：旧的挑战者连续计数作废
             await reapplyRunningTunnel(scope: .nodeOnly)
         }
+    }
+
+    private struct SelectionRanking {
+        let node: Node
+        let candidate: NodeSelectionReport.Candidate
+        let profile: ScoringProfile
+        let prefersLowerRate: Bool
+        let preferredRegion: String?
+        let usedPreferredRegion: Bool
+    }
+
+    private func captureSelectionCandidate(_ node: Node, score: NodeScorer.Score? = nil) -> NodeSelectionReport.Candidate {
+        .init(id: node.id, name: node.name, region: node.region, directLatencyMs: node.lastLatencyMs,
+            score: score ?? scoreForAutoSelect(node),
+            stabilitySampleCount: nodeMetricsHistory.samples(for: node.identityFingerprint).count,
+            hasBandwidthObservation: node.observedPeakDownBps != nil)
+    }
+
+    private func captureRanking(_ best: (node: Node, score: NodeScorer.Score), preferredRegion: String?,
+        usedPreferredRegion: Bool) -> SelectionRanking {
+        .init(node: best.node, candidate: captureSelectionCandidate(best.node, score: best.score),
+            profile: settings.scoringProfile, prefersLowerRate: settings.preferLowerRate,
+            preferredRegion: preferredRegion, usedPreferredRegion: usedPreferredRegion)
+    }
+
+    private func recordSelectionReport(id: UUID, origin: AutoSelectOrigin, reason: NodeSelectionReport.Reason,
+        ranking: SelectionRanking? = nil, heldChallenger: Node? = nil, evidence: SelectionMeasurementEvidence) {
+        if evidence.proxy.attempted == 0, evidence.proxy.state == .notRequested,
+           settings.autoSelectUsesProxiedLatency {
+            evidence.proxy.state = isVPNRunning ? (isSwitchingTunnel ? .switchInProgress : .notRequested) : .vpnUnavailable
+        }
+        let udpMissing = nodes.filter { !$0.protocolType.supportsTCPProbe && !isEffectivelyExcluded($0)
+            && !hasUsableSelectionMeasurement($0) }.count
+        lastSelectionReport = .init(id: id, completedAt: Date(), origin: origin, reason: reason,
+            selected: currentNode.map { node in
+                if heldChallenger == nil, let ranking, ranking.node.id == node.id { return ranking.candidate }
+                return captureSelectionCandidate(node)
+            },
+            challenger: heldChallenger.map { captureSelectionCandidate($0) } ?? ranking?.candidate,
+            profile: heldChallenger != nil ? settings.scoringProfile : (ranking?.profile ?? settings.scoringProfile),
+            prefersLowerRate: heldChallenger != nil ? settings.preferLowerRate : (ranking?.prefersLowerRate ?? settings.preferLowerRate),
+            preferredRegion: ranking?.preferredRegion,
+            usedPreferredRegion: ranking?.usedPreferredRegion ?? false,
+            excludedCount: nodes.filter(isEffectivelyExcluded).count,
+            directSucceeded: evidence.directSucceeded, directFailed: evidence.directFailed,
+            unmeasuredUDPCount: udpMissing, proxy: evidence.proxy)
     }
 
     /// 直连延迟的「绿色」阈值（毫秒）—— 节点列表 chip 配色与经代理精选候选池共用同一口径。
@@ -1488,14 +1579,16 @@ public final class AppState {
     ///
     /// 直连延迟只反映「设备→节点」的距离：出口绕路的节点直连照样漂亮、密码错的节点
     /// 直连也测不出来。逐个真实走节点测全链路延迟（串行 —— 扩展 50MB 内存约束），
-    /// 选最低者；**测不通的候选直接淘汰**（失效节点进不了当前节点）。
-    /// 全部失败 → 退回直连最优，并 toast 说明（不能无声回退，用户会以为精选没跑）。
-    private func refineWithProxiedLatency(fallback: Node) async -> Node {
+    /// 按综合分选择本轮测通的候选。全部失败则保留初选结果（可能包含历史代理分），
+    /// 明确说明出口未确认；一次探测失败不能定位为节点永久失效。
+    private func refineWithProxiedLatency(fallback: SelectionRanking, evidence: SelectionMeasurementEvidence) async -> SelectionRanking {
         let viable = nodes.filter { !isEffectivelyExcluded($0) && ($0.lastLatencyMs != nil || !$0.protocolType.supportsTCPProbe) }
         var pool = viable
-        if let pref = settings.preferredRegion {
+        let preferredRegion = settings.preferredRegion
+        var usedPreferredRegion = false
+        if let pref = preferredRegion {
             let inPref = viable.filter { $0.region == pref }
-            if !inPref.isEmpty { pool = inPref }
+            if !inPref.isEmpty { pool = inPref; usedPreferredRegion = true }
         }
         var candidates = pool
             .filter { !$0.protocolType.supportsTCPProbe || ($0.lastLatencyMs ?? .max) < Self.directGreenThresholdMs }
@@ -1519,14 +1612,19 @@ public final class AppState {
         var measured: [(node: Node, ms: Int)] = []
         var failedCount = 0
         for candidate in candidates {
-            guard isVPNRunning, !isSwitchingTunnel else { break }   // 中途关了 VPN 就停
-            if let ms = await measureProxiedLatency(candidate, showToastOnError: false,
-                                                    targetOverride: roundTarget) {
+            guard isVPNRunning, !isSwitchingTunnel else {
+                evidence.proxy.state = .interrupted
+                break
+            }   // 中途关了 VPN 就停
+            let result = await measureProxiedLatency(candidate, showToastOnError: false, targetOverride: roundTarget)
+            evidence.recordProxy(result)
+            if let ms = result {
                 measured.append((candidate, ms))
             } else {
                 failedCount += 1
             }
         }
+        if !isVPNRunning || isSwitchingTunnel || Task.isCancelled { evidence.proxy.state = .interrupted }
         // 精选内核同样按总分选：延迟维用**当轮经代理实测值**（不带时间戳 = 新鲜，
         // 0.7 权重）与本轮直连（0.3）按分数混合，其余维度与直连轮同一口径。
         if let best = bestByScore(
@@ -1546,15 +1644,16 @@ public final class AppState {
                 )
             }
         ) {
-            let bestMs = measured.first { $0.node.id == best.id }?.ms ?? -1
-            logger.info("Proxied refine picked \(best.name) (\(bestMs)ms, rate \(best.rateForComparison)) from \(candidates.count) green candidates (\(failedCount) failed)", category: "app")
+            let bestMs = measured.first { $0.node.id == best.node.id }?.ms ?? -1
+            logger.info("Proxied refine picked \(best.node.name) (\(bestMs)ms, rate \(best.node.rateForComparison)) from \(candidates.count) green candidates (\(failedCount) failed)", category: "app")
             if failedCount > 0 {
-                showToast(L("经代理精选完成：实测 \(candidates.count) 个候选，避开 \(failedCount) 个不可用节点"))
+                showToast(L("经代理精选完成：实测 \(measured.count + failedCount) 个候选，本轮 \(failedCount) 个探测失败"))
             }
-            return best
+            return captureRanking(best, preferredRegion: preferredRegion, usedPreferredRegion: usedPreferredRegion)
         }
         logger.warn("Proxied refine: all \(candidates.count) candidates failed — falling back to direct best", category: "app")
-        showToast(L("经代理精选：\(candidates.count) 个候选实测均失败，本次按直连结果选择"))
+        evidence.proxy.fellBackToDirect = true
+        showToast(L("经代理精选未取得可用结果：探测 \(measured.count + failedCount) 次，本轮保留初选结果"))
         return fallback
     }
 
@@ -1566,13 +1665,13 @@ public final class AppState {
         _ candidates: [Node],
         latency: (Node) -> Int,
         score: (Node) -> NodeScorer.Score
-    ) -> Node? {
-        candidates.min { a, b in
-            let sa = score(a).total
-            let sb = score(b).total
-            if sa != sb { return sa > sb }
-            if latency(a) != latency(b) { return latency(a) < latency(b) }
-            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+    ) -> (node: Node, score: NodeScorer.Score)? {
+        // 同一次排序冻结每个输入的实际分数，不在异步探测结束后重新计算过去的排名。
+        let evaluated = candidates.map { (node: $0, score: score($0)) }
+        return evaluated.min { a, b in
+            if a.score.total != b.score.total { return a.score.total > b.score.total }
+            if latency(a.node) != latency(b.node) { return latency(a.node) < latency(b.node) }
+            return a.node.name.localizedStandardCompare(b.node.name) == .orderedAscending
         }
     }
 
@@ -1581,16 +1680,22 @@ public final class AppState {
     /// 2. 若设了优先地区且该地区有可用节点，从中选总分最高者
     /// 3. 否则全局选
     func pickBestRespectingRegions(from measured: [Node]) -> Node? {
+        rankRespectingRegions(from: measured)?.node
+    }
+
+    private func rankRespectingRegions(from measured: [Node]) -> SelectionRanking? {
         let viable = measured.filter { !isEffectivelyExcluded($0) && hasUsableSelectionMeasurement($0) }
         guard !viable.isEmpty else { return nil }
         let latency: (Node) -> Int = { $0.lastLatencyMs ?? .max }
         if let pref = settings.preferredRegion {
             let inPref = viable.filter { $0.region == pref }
             if let best = bestByScore(inPref, latency: latency, score: scoreForAutoSelect) {
-                return best
+                return captureRanking(best, preferredRegion: settings.preferredRegion, usedPreferredRegion: true)
             }
         }
-        return bestByScore(viable, latency: latency, score: scoreForAutoSelect)
+        return bestByScore(viable, latency: latency, score: scoreForAutoSelect).map {
+            captureRanking($0, preferredRegion: settings.preferredRegion, usedPreferredRegion: false)
+        }
     }
 
     /// 直连轮的节点总分。经代理延迟**带时间戳**喂进打分：NodeScorer 的 24h 新鲜度门槛

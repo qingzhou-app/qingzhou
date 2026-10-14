@@ -88,7 +88,9 @@ public struct NodeDetailView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         } header: {
-            Text("为什么选它")
+            Text("评分参考")
+        } footer: {
+            Text("这里是当前详情数据的评分参考；最近一次实际择优的结果与保持原因请看节点页。")
         }
     }
 
