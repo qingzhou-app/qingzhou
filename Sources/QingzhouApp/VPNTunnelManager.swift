@@ -12,7 +12,7 @@ import QingzhouLogging
 ///   推给 UI，UI 用 AsyncStream 订阅；
 /// - **MainActor**：所有读写都在主线程，避免 NEVPNManager 的 KVO 同步问题。
 @MainActor
-public final class VPNTunnelManager {
+public final class VPNTunnelManager: ProxiedLatencyProbing {
 
     public enum TunnelError: LocalizedError {
         case entitlementMissing
@@ -245,7 +245,7 @@ public final class VPNTunnelManager {
 
     /// 「经代理延迟」：让**运行中**的扩展给指定节点起临时 xray 实例、真实走该节点测一次
     /// HTTP 延迟（扩展 handleAppMessage "pingNode"）。返回毫秒数。
-    /// VPN 没开（拿不到会话）/ 扩展回错 / 超时都 throws —— 调用方降级为直连 TCP 测速。
+    /// VPN 没开 / 扩展回错 / 超时都 throws；失败不能当成 TCP 已验证出口。
     /// 超时给足 timeout+启动余量：临时实例启动 <1s + HTTP 最长 timeout 秒 + 串行排队缓冲。
     public func pingNode(node: Node, targetURL: String? = nil, timeoutSeconds: Int = 5) async throws -> Int {
         var command: [String: String] = [
@@ -258,14 +258,18 @@ public final class VPNTunnelManager {
         let reply = try await sendCommandForReply(
             command,
             timeoutSeconds: Double(timeoutSeconds) + 8,
-            timeoutLabel: L("经代理测速超时"), failureLabel: L("经代理测速失败")
+            timeoutLabel: L("经代理测速超时"), failureLabel: L("经代理测速失败"),
+            rejectionAsProbeError: true
         )
-        guard let ms = (reply["delayMs"] as? NSNumber)?.intValue else {
+        guard let number = reply["delayMs"] as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID(),
+              number.doubleValue.isFinite, number.doubleValue.rounded() == number.doubleValue,
+              (0..<10_000).contains(number.intValue) else {
             throw TunnelError.underlying(NSError(
                 domain: "qingzhou.tunnel", code: -3,
                 userInfo: [NSLocalizedDescriptionKey: L("扩展回执缺少 delayMs")]))
         }
-        return ms
+        return number.intValue
     }
 
     /// 配置预检：让**运行中**的扩展用与真实连接同款的 compose+xray 构建流程校验节点配置
@@ -325,7 +329,7 @@ public final class VPNTunnelManager {
         timeoutSeconds: Double,
         timeoutLabel: String,
         failureLabel: String,
-        rejectionAsConfigError: Bool = false
+        rejectionAsConfigError: Bool = false, rejectionAsProbeError: Bool = false
     ) async throws -> [String: Any] {
         guard let session = manager?.connection as? NETunnelProviderSession else {
             throw TunnelError.managerNotLoaded
@@ -351,12 +355,12 @@ public final class VPNTunnelManager {
             }
         }
         return try Self.decodeReply(reply, failureLabel: failureLabel,
-                                    rejectionAsConfigError: rejectionAsConfigError)
+                                    rejectionAsConfigError: rejectionAsConfigError, rejectionAsProbeError: rejectionAsProbeError)
     }
 
     /// 没有有效确认不能把换节点/预检当成成功；保持命令失败与明确配置拒绝的区分。
     nonisolated static func decodeReply(_ reply: Data?, failureLabel: String,
-                                        rejectionAsConfigError: Bool = false) throws -> [String: Any] {
+                                        rejectionAsConfigError: Bool = false, rejectionAsProbeError: Bool = false) throws -> [String: Any] {
         guard let reply,
               let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
               obj["ok"] is Bool else {
@@ -366,6 +370,10 @@ public final class VPNTunnelManager {
         // 扩展回执：{ok: false, error: ...} 表示执行失败，抛错让上层降级。
         if obj["ok"] as? Bool == false {
             let message = (obj["error"] as? String) ?? failureLabel
+            if rejectionAsProbeError {
+                let kind = (obj["failureKind"] as? String).flatMap(ProxyProbeFailure.init(rawValue:)) ?? .unavailable
+                throw ProxyProbeError(kind: kind, message: message)
+            }
             throw rejectionAsConfigError
                 ? TunnelError.configRejected(message)
                 : TunnelError.underlying(NSError(

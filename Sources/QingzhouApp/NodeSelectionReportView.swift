@@ -62,7 +62,12 @@ struct NodeSelectionReportView: View {
         case .completed, .interrupted:
             Text("本轮代理探测 \(report.proxy.attempted) 次：成功 \(report.proxy.succeeded) 次、失败 \(report.proxy.failed) 次")
             if report.proxy.state == .interrupted { Text("代理精选中途停止") }
-            if report.proxy.fellBackToDirect { Text("未取得可用的精选结果，本轮保留初选结果；出口可用性尚未确认") }
+            if report.proxy.keptCurrentSelection { Text("未取得可用的精选结果，本轮保持原选择；出口可用性尚未确认") }
+            if report.proxy.environmentFailures > 0 { Text("本轮有 \(report.proxy.environmentFailures) 次探测条件不足或被中断，未据此惩罚节点") }
+            if report.proxy.configurationFailures > 0 { Text("本轮有 \(report.proxy.configurationFailures) 次节点配置转换失败") }
+            if report.proxy.confirmationAttempts > 0 { Text("额外复核 \(report.proxy.confirmationAttempts) 次；双目标失败且有成功对照的节点 \(report.proxy.confirmedFailureCount) 个，暂缓自动选择 5 分钟，手动复测成功可立即恢复") }
+            if report.proxy.coolingDownCount > 0 { Text("本轮暂缓探测 \(report.proxy.coolingDownCount) 个冷却中的候选") }
+            if report.proxy.usedBackupTarget { Text("主目标未取得成功结果，本轮按同一备用目标的成功测量排名") }
             if report.proxy.failed > 0 { Text("探测失败可能来自节点、目标站点、网络或扩展资源限制，不能据此认定节点永久失效。") }
         }
     }

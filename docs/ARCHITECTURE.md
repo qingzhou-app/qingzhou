@@ -80,7 +80,8 @@
 - build24的实际配置还携带有序用户规则的SHA256摘要（忽略UUID/注释，保留first-match顺序）。主App远程规则刚加载时按这个摘要判断是否真正需要重配，不能拿刚启动的空内存列表推断实际规则。原地换节点继承旧摘要；规则/模式全量更新成功后才发布新摘要。旧扩展缺摘要时回退内容变化判断；切换中有变化则保守排队full，避免用旧实例摘要替在途请求作保证。
 - `CloudRestoreCoordinator`（build25）拥有恢复候选、独立的版本列表呈现开关/内容态、等待onDismiss的选择和读取轮次。它是主Actor上的无IO可观察对象，AppState通过只读投影委托呈现状态变更；各字段分别观察，加载/重试不触发独立sheet Bool的通知；关闭/点选使在途读取失效，重开与重试只能接受当前UUID的结果。历史版本候选携带的覆盖上下文原样交接，确认仍等待sheet关闭。build26另外提取云任务协调器，呈现边界仍保持独立。
 - `CloudSyncCoordinator`（build26）在主Actor拥有启动检查、下载重试、防抖镜像、恢复任务及逐字段同步状态。UUID轮次与同步开关epoch阻止迟到结果；显式恢复取消并等待旧操作（包括已进入提交的云写），后台镜像等待而不打断恢复。每次镜像固定使用对应本地保存成功的快照，恢复前备份失败中止，读取期间的本地编辑与所选云版本变更要求重新确认。`CloudVaultAccess`是可注入异步IO接口，`CloudVaultStore`仍负责协调读写、云头部比较与atomic条件保存；`AppState`仍负责应用快照、瞬态数据回填及VPN/测速适配。取消不能撤销已进入原子提交的系统写及其滚动备份维护，但旧任务不得发布新状态或同步进度。
-- `NodeSelectionReport`（build27）仅保留最近一轮进程内选择/保持证据，节点页按需展开。排序阶段冻结实际输入分数/地区，代理失败保留初选及其证据；连续轮门槛由`NodeSelectionHysteresis.decision`与原bool同一分支输出，保持判断用实际当时的偏好与分数。报告不进入Persistence.Snapshot或iCloud，也不声称选择已经被隧道应用。
+- `NodeSelectionReport`（build27）仅保留最近一轮进程内选择/保持证据，节点页按需展开。排序阶段冻结实际输入分数/地区，build27代理失败保留初选；build28保留原选择，初选仅供诊断；连续轮门槛由`NodeSelectionHysteresis.decision`与原bool同一分支输出，保持判断用实际当时的偏好与分数。报告不进入Persistence.Snapshot或iCloud，也不声称选择已经被隧道应用。
+- build28 `ProxySelectionRound`拥有串行主目标/至多2次备用复核和本轮成功集；`NodeProbeCooldown`是Core纯值类型，5分钟暂缓按完整身份管理。`ProxiedLatencyProbing`隔离扩展IO，`VPNTunnelManager`解析结构化错误，旧回执保守归为条件不足。AppState负责探测上下文/单次轮号、身份回填、当前有效候选核对与选择应用；不将临时失败直接映射成永久排除。
 - 视图按业务划分：`HomeView` / `NodesView` / `SubscriptionsView` / `RulesView` / `ConnectionsView` / `LogsView` / `SettingsView`，外加 macOS 专属的 `StatusBarMenu`。
 - 跨平台靠 `#if os(iOS)` / `#if os(macOS)`，主要分歧只在 `RootView`（iOS 用 TabView，macOS 用 NavigationSplitView）和 SettingsView 里的「系统代理」「开机自启」选项。
 

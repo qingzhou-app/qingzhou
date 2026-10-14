@@ -935,10 +935,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         if MemoryFootprint.platformLimitBytes > 0,
            let fp = MemoryFootprint.currentFootprint(),
            fp > 38 * 1024 * 1024 {
-            return .failure(NSError(
-                domain: "com.sbraveyoung.qingzhou.tunnel", code: 1005,
-                userInfo: [NSLocalizedDescriptionKey: "扩展内存余量不足（\(fp / 1024 / 1024)MB/50MB），暂缓经代理测速"]))
+            return .failure(ProxyProbeError(kind: .resourceLimited,
+                message: "扩展内存余量不足，暂缓经代理测速"))
         }
+        guard let target = URL(string: url), ["http", "https"].contains(target.scheme?.lowercased() ?? ""),
+              target.host != nil else {
+            return .failure(ProxyProbeError(kind: .invalidTarget, message: "探测目标无效"))
+        }
+        var stage = ProxyProbeFailure.invalidConfiguration
         do {
             guard let data = nodeJSON.data(using: .utf8) else {
                 throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1006,
@@ -948,6 +952,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             decoder.dateDecodingStrategy = .iso8601
             let node = try decoder.decode(Node.self, from: data)
             let outbound = try NodeConverter.toOutboundDict(node)
+            stage = .resourceLimited
             guard let port = try XrayCore.getFreePorts(1).first else {
                 throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1007,
                               userInfo: [NSLocalizedDescriptionKey: "拿不到空闲端口"])
@@ -969,6 +974,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             let configJSON = String(
                 data: try JSONSerialization.data(withJSONObject: config),
                 encoding: .utf8) ?? "{}"
+            // LibXray 目前未分拆启动/请求错误，不能进一步归因为凭据、出口或目标故障。
+            stage = .probeFailed
             let ms = try XrayCore.ping(
                 configJSON: configJSON,
                 socksPort: port,
@@ -978,7 +985,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             )
             return .success(ms)
         } catch {
-            return .failure(error)
+            return .failure(ProxyProbeError(kind: stage, message: error.localizedDescription))
         }
     }
 
@@ -1067,7 +1074,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         case "pingNode":
             // 「经代理延迟」：probeQueue 串行跑（阻塞最长 timeout 秒），回 {ok, delayMs}。
             let nodeJSON = obj["nodeJSON"] ?? ""
-            let url = obj["url"] ?? "https://www.google.com/generate_204"
+            let url = obj["url"] ?? ConnectivityProbe.defaultProxiedTarget
             let timeout = min(max(Int(obj["timeout"] ?? "") ?? 5, 1), 15)
             probeQueue.async { [weak self] in
                 guard let self else { completionHandler?(nil); return }
@@ -1076,7 +1083,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 case .success(let ms):
                     payload = ["ok": true, "delayMs": ms]
                 case .failure(let error):
-                    payload = ["ok": false, "error": error.localizedDescription]
+                    payload = ["ok": false, "error": error.localizedDescription,
+                               "failureKind": ((error as? ProxyProbeError)?.kind ?? .unavailable).rawValue]
                 }
                 completionHandler?(try? JSONSerialization.data(withJSONObject: payload))
             }

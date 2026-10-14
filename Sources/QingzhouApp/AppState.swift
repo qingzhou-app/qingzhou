@@ -90,7 +90,17 @@ public final class AppState {
     private let ipv6Prober = IPv6OnlyProber()
     /// 已排队探测过的域名（成败都算），防重复调度；上限同 prober 的会话上限。
     private var ipv6ProbeScheduled: Set<String> = []
-    public var settings: Settings = Settings()
+    public var settings: Settings = Settings() {
+        didSet {
+            if oldValue.autoSelectUsesProxiedLatency != settings.autoSelectUsesProxiedLatency
+                || oldValue.proxiedTestTarget != settings.proxiedTestTarget
+                || oldValue.preferredRegion != settings.preferredRegion
+                || oldValue.excludedRegions != settings.excludedRegions {
+                proxyProbeContext &+= 1
+                nodeProbeCooldown.reset()
+            }
+        }
+    }
     /// App 内「发现新版本」提示的数据源（非 nil 时 RootView 弹更新 alert）。
     /// App Store 版启动时静默查一次 iTunes Lookup API；未上架 / 失败 → 保持 nil，不打扰。
     public internal(set) var availableUpdate: AvailableUpdate?
@@ -111,14 +121,24 @@ public final class AppState {
             if !isVPNRunning {
                 tunnelSession.clearAppliedState()
             }
-            if oldValue != isVPNRunning { WidgetRefresher.reload() }
+            if oldValue != isVPNRunning {
+                proxyProbeContext &+= 1
+                nodeProbeCooldown.reset()
+                WidgetRefresher.reload()
+            }
         }
     }
     /// 热切换窗口标志：VPN 运行中切节点/模式触发全量重启（stop→start）期间为 true。
     /// UI 用它把开关滑到"关"、显示"切换中…"——跟真实断流窗口一致，不做假动画。
     /// 不翻转 isVPNRunning：那个承载"用户意图上 VPN 是开的"，被 reapply 入口 guard
     /// 和 NetworkInfoService（公网 IP 写哪栏）依赖。internal(set) 供 @testable 测试写入。
-    public internal(set) var isSwitchingTunnel: Bool = false
+    public internal(set) var isSwitchingTunnel: Bool = false {
+        didSet {
+            if oldValue != isSwitchingTunnel {
+                proxyProbeContext &+= 1
+            }
+        }
+    }
     /// VPN 启停最近一次错误（拿不到 entitlement / 配置失败等）。UI 用 alert 展示。
     public var tunnelError: String?
     /// 「定时关闭」的到点时刻（本次连接启用了定时才非 nil）。首页状态区据此画倒计时。
@@ -210,6 +230,11 @@ public final class AppState {
     public let speedTestRunner: SpeedTestRunner
     public let persistence: Persistence
     public let tunnelManager: VPNTunnelManager
+    private let proxiedProber: any ProxiedLatencyProbing
+    var nodeProbeCooldown = NodeProbeCooldown()
+    private var proxyMeasurementGeneration: [UUID: UUID] = [:]
+    /// 会话/设置变化和手动重测使自动轮次及旧回执失效。
+    private var proxyProbeContext: UInt64 = 0
     /// 完整版 geo 数据的下载/版本管理（主备源 + sha256 校验）。测试可注入假下载器。
     public let geoData: GeoDataManager
     /// App Store 版本查询器（App 内更新提醒用）。测试可注入假实现跳过真实出网。
@@ -296,6 +321,7 @@ public final class AppState {
         nodeSelector: NodeSelector? = nil,
         speedTestRunner: SpeedTestRunner? = nil,
         tunnelManager: VPNTunnelManager? = nil,
+        proxiedProber: (any ProxiedLatencyProbing)? = nil,
         cloudVault: (any CloudVaultAccess)? = nil,
         geoDataManager: GeoDataManager? = nil,
         updateFetcher: (any AppStoreVersionLookup)? = nil
@@ -306,6 +332,7 @@ public final class AppState {
         self.nodeSelector = nodeSelector ?? NodeSelector(logger: logger)
         self.speedTestRunner = speedTestRunner ?? SpeedTestRunner(logger: logger)
         self.tunnelManager = tunnelManager ?? VPNTunnelManager(logger: logger)
+        self.proxiedProber = proxiedProber ?? self.tunnelManager
         self.cloudVault = cloudVault ?? CloudVaultStore()
         self.geoData = geoDataManager ?? GeoDataManager()
         self.updateFetcher = updateFetcher ?? AppStoreUpdateFetcher(logger: logger)
@@ -1410,6 +1437,7 @@ public final class AppState {
         let evidence = SelectionMeasurementEvidence()
         directMeasurementID = roundID
         let selectionAtStart = currentNodeId
+        let probeContextAtStart = proxyProbeContext
         let intentAtStart = selectionIntentGeneration
         for i in nodes.indices where !nodes[i].protocolType.supportsTCPProbe {
             nodes[i].lastLatencyMs = nil; nodes[i].lastTestedAt = nil
@@ -1443,40 +1471,28 @@ public final class AppState {
         }
         let previousId = currentNodeId
         var ranking = rankRespectingRegions(from: nodes)
-        var candidate = ranking?.node
-        if candidate == nil, isVPNRunning, !isSwitchingTunnel,
-           nodes.contains(where: { !$0.protocolType.supportsTCPProbe && !isEffectivelyExcluded($0) }) {
-            for node in nodes.filter({ !$0.protocolType.supportsTCPProbe && !isEffectivelyExcluded($0) }) {
-                if Task.isCancelled || !isVPNRunning || isSwitchingTunnel {
-                    evidence.proxy.state = .interrupted
-                    break
-                }
-                evidence.recordProxy(await measureProxiedLatency(node, showToastOnError: false))
-            }
-            if Task.isCancelled || !isVPNRunning || isSwitchingTunnel { evidence.proxy.state = .interrupted }
-            ranking = rankRespectingRegions(from: nodes)
-            candidate = ranking?.node
+        let shouldProbe = settings.autoSelectUsesProxiedLatency || (ranking == nil && nodes.contains {
+            !$0.protocolType.supportsTCPProbe && !isEffectivelyExcluded($0)
+        })
+        var availabilityRecovery = false
+        if shouldProbe, isVPNRunning, !isSwitchingTunnel {
+            ranking = await refineWithProxiedLatency(initial: ranking, evidence: evidence,
+                intent: intentAtStart, selection: selectionAtStart, origin: origin, context: probeContextAtStart)
+            availabilityRecovery = currentNode.map { evidence.confirmedFailures.contains($0.identityFingerprint) } ?? false
+        } else if settings.autoSelectUsesProxiedLatency {
+            evidence.proxy.state = isVPNRunning ? .switchInProgress : .vpnUnavailable
         }
         guard !Task.isCancelled, selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart else {
             recordSelectionReport(id: roundID, origin: origin,
                 reason: Task.isCancelled ? .cancelled : .selectionChanged, evidence: evidence)
             persist(); return
         }
-        if var best = candidate {
-            // 经代理精选（VPN 在跑且开关开着）：直连绿色候选逐个真实走节点测，
-            // 避开「直连快但出口绕路 / 已失效」的假好节点。VPN 没开时测不了，直接用直连结果。
-            if settings.autoSelectUsesProxiedLatency, isVPNRunning, !isSwitchingTunnel {
-                if let initial = ranking {
-                    let refined = await refineWithProxiedLatency(fallback: initial, evidence: evidence)
-                    ranking = refined
-                    best = refined.node
-                }
-            } else if settings.autoSelectUsesProxiedLatency {
-                evidence.proxy.state = evidence.proxy.attempted > 0 ? .interrupted
-                    : (isVPNRunning ? .switchInProgress : .vpnUnavailable)
-                // 静默跳过会让用户以为精选没跑（真机反馈过）—— 至少留下日志可查
-                logger.info("Proxied refine skipped — VPN not running", category: "app")
-            }
+        if evidence.proxy.keptCurrentSelection {
+            resetScoreStreak()
+            recordSelectionReport(id: roundID, origin: origin, reason: .proxyUnverified, ranking: ranking, evidence: evidence)
+            persist(); return
+        }
+        if var best = ranking?.node {
             guard !Task.isCancelled, selectionIntentGeneration == intentAtStart, currentNodeId == selectionAtStart else {
                 recordSelectionReport(id: roundID, origin: origin,
                     reason: Task.isCancelled ? .cancelled : .selectionChanged, evidence: evidence)
@@ -1489,7 +1505,7 @@ public final class AppState {
                 persist(); return
             }
             best = liveBest
-            if shouldHoldForScoreStickiness(origin: origin, challenger: best, incumbent: currentNode) {
+            if !availabilityRecovery, shouldHoldForScoreStickiness(origin: origin, challenger: best, incumbent: currentNode) {
                 let reason: NodeSelectionReport.Reason
                 switch selectionHysteresis.decision {
                 case .holdForStreak(let completed, let required): reason = .confirmingLead(completed: completed, required: required)
@@ -1501,7 +1517,8 @@ public final class AppState {
             }
             currentNodeId = best.id
             recordSelectionReport(id: roundID, origin: origin,
-                reason: best.id == previousId ? .alreadyBest : .highestScore, ranking: ranking, evidence: evidence)
+                reason: availabilityRecovery ? .availabilityRecovery : (best.id == previousId ? .alreadyBest : .highestScore),
+                ranking: ranking, evidence: evidence)
             logger.info("Auto-selected \(best.name) [\(best.region)] (direct \(best.lastLatencyMs ?? -1)ms / proxied \(best.lastProxiedLatencyMs ?? -1)ms)", category: "app")
             #if DEBUG
             AcceptanceTrace.record(.autoSelected)
@@ -1573,15 +1590,9 @@ public final class AppState {
     /// 每次启用 Top-3 域名轮换的精选轮 +1，跨 3 轮覆盖 Top-3。重启归零无妨（只需推进）。
     private var proxiedProbeRound = 0
 
-    /// 用「经代理延迟」在**直连为绿色**的候选池里精选最优（用户口径：不限前 5，
-    /// 绿色列表全员参赛 —— 绿色说明到节点的线路健康，值得花时间实测出口质量；
-    /// 黄/红直连本身已说明线路差，不浪费实测名额）。
-    ///
-    /// 直连延迟只反映「设备→节点」的距离：出口绕路的节点直连照样漂亮、密码错的节点
-    /// 直连也测不出来。逐个真实走节点测全链路延迟（串行 —— 扩展 50MB 内存约束），
-    /// 按综合分选择本轮测通的候选。全部失败则保留初选结果（可能包含历史代理分），
-    /// 明确说明出口未确认；一次探测失败不能定位为节点永久失效。
-    private func refineWithProxiedLatency(fallback: SelectionRanking, evidence: SelectionMeasurementEvidence) async -> SelectionRanking {
+    /// 当轮成功才允许替换当前选择；代理探测不可用或中断时保留当前选择。
+    private func refineWithProxiedLatency(initial: SelectionRanking?, evidence: SelectionMeasurementEvidence,
+        intent: UInt64, selection: UUID?, origin: AutoSelectOrigin, context: UInt64) async -> SelectionRanking? {
         let viable = nodes.filter { !isEffectivelyExcluded($0) && ($0.lastLatencyMs != nil || !$0.protocolType.supportsTCPProbe) }
         var pool = viable
         let preferredRegion = settings.preferredRegion
@@ -1590,71 +1601,58 @@ public final class AppState {
             let inPref = viable.filter { $0.region == pref }
             if !inPref.isEmpty { pool = inPref; usedPreferredRegion = true }
         }
-        var candidates = pool
-            .filter { !$0.protocolType.supportsTCPProbe || ($0.lastLatencyMs ?? .max) < Self.directGreenThresholdMs }
+        var candidates = pool.filter { !$0.protocolType.supportsTCPProbe || ($0.lastLatencyMs ?? .max) < Self.directGreenThresholdMs }
             .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
         if candidates.isEmpty {
-            // 一个绿色都没有（网络差 / 节点普遍远）：退化取直连前几名，精选仍有意义
-            candidates = Array(pool
-                .sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
+            candidates = Array(pool.sorted { ($0.lastLatencyMs ?? .max) < ($1.lastLatencyMs ?? .max) }
                 .prefix(Self.proxiedRefineFallbackCount))
         }
-        // 本轮经代理探测目标：用户未指定固定目标时，改用「Top-3 代理域名」轮换
-        //（每轮换一个，成本与固定目标一致 —— 见 ProxiedProbePlanner），让经代理延迟反映
-        // 真实访问的站点而非 generate_204；数据不足或用户指定了固定目标 → 回退固定目标。
-        let roundTarget: String? = settings.proxiedTestTarget.isEmpty
-            ? ProxiedProbePlanner.probeTarget(from: domainHistory, roundIndex: proxiedProbeRound)
-            : nil
-        if let roundTarget {
-            proxiedProbeRound &+= 1
-            logger.info("Proxied refine probing against user top domain: \(roundTarget)", category: "app")
+        // 当前节点即便不在绿色/优先地区池，也要复核；只作健康对照，不绕过地区选择。
+        if let current = currentNode, !isEffectivelyExcluded(current), !candidates.contains(where: { $0.id == current.id }) {
+            candidates.insert(current, at: 0)
         }
-        var measured: [(node: Node, ms: Int)] = []
-        var failedCount = 0
-        for candidate in candidates {
-            guard isVPNRunning, !isSwitchingTunnel else {
-                evidence.proxy.state = .interrupted
-                break
-            }   // 中途关了 VPN 就停
-            let result = await measureProxiedLatency(candidate, showToastOnError: false, targetOverride: roundTarget)
-            evidence.recordProxy(result)
-            if let ms = result {
-                measured.append((candidate, ms))
-            } else {
-                failedCount += 1
-            }
+        let skipped = candidates.filter { origin == .scheduled && $0.id != currentNodeId
+            && nodeProbeCooldown.contains($0.identityFingerprint) }
+        candidates.removeAll { n in skipped.contains(where: { $0.id == n.id }) }
+        let roundTarget = settings.proxiedTestTarget.isEmpty
+            ? ProxiedProbePlanner.probeTarget(from: domainHistory, roundIndex: proxiedProbeRound) : nil
+        if roundTarget != nil { proxiedProbeRound &+= 1 }
+        let target = roundTarget ?? (settings.proxiedTestTarget.isEmpty ? ConnectivityProbe.defaultProxiedTarget : settings.proxiedTestTarget)
+        let candidateSnapshot = candidates
+        let round = await ProxySelectionRound.run(candidates: candidateSnapshot, incumbentID: currentNodeId,
+            initialID: initial?.node.id, target: target,
+            shouldContinue: { self.isVPNRunning && !self.isSwitchingTunnel
+                && self.selectionIntentGeneration == intent && self.currentNodeId == selection
+                && self.proxyProbeContext == context
+                && candidateSnapshot.allSatisfy { candidate in
+                    self.nodes.contains { $0.id == candidate.id && $0.identityFingerprint == candidate.identityFingerprint
+                        && !self.isEffectivelyExcluded($0) }
+                } },
+            probe: { node, target in await self.probeProxiedLatency(node, targetOverride: target) })
+        evidence.proxy = round.evidence
+        evidence.proxy.coolingDownCount = skipped.count
+        let validFailures = round.confirmedFailures.filter { fingerprint in
+            nodes.contains { $0.identityFingerprint == fingerprint && !isEffectivelyExcluded($0) }
         }
-        if !isVPNRunning || isSwitchingTunnel || Task.isCancelled { evidence.proxy.state = .interrupted }
-        // 精选内核同样按总分选：延迟维用**当轮经代理实测值**（不带时间戳 = 新鲜，
-        // 0.7 权重）与本轮直连（0.3）按分数混合，其余维度与直连轮同一口径。
-        if let best = bestByScore(
-            measured.map(\.node),
+        nodeProbeCooldown.confirm(validFailures)
+        evidence.confirmedFailures = validFailures
+        evidence.proxy.confirmedFailureCount = validFailures.count
+        let measured = round.measurements.filter { sample in
+            (!usedPreferredRegion || sample.node.region == preferredRegion) &&
+            nodes.contains { $0.id == sample.node.id && $0.identityFingerprint == sample.node.identityFingerprint && !isEffectivelyExcluded($0) }
+        }
+        if let best = bestByScore(measured.map(\.node),
             latency: { node in measured.first { $0.node.id == node.id }?.ms ?? .max },
-            score: { node in
-                NodeScorer.score(
-                    NodeScorer.Input(
-                        directLatencyMs: node.lastLatencyMs,
-                        proxiedLatencyMs: measured.first { $0.node.id == node.id }?.ms,
-                        history: nodeMetricsHistory.samples(for: node.identityFingerprint),
-                        peakDownBps: node.observedPeakDownBps,
-                        rate: node.rateForComparison
-                    ),
-                    preferLowerRate: settings.preferLowerRate,
-                    weights: NodeScorer.weights(for: settings.scoringProfile)
-                )
-            }
+            score: { node in NodeScorer.score(.init(directLatencyMs: node.lastLatencyMs,
+                proxiedLatencyMs: measured.first { $0.node.id == node.id }?.ms,
+                history: nodeMetricsHistory.samples(for: node.identityFingerprint),
+                peakDownBps: node.observedPeakDownBps, rate: node.rateForComparison),
+                preferLowerRate: settings.preferLowerRate, weights: NodeScorer.weights(for: settings.scoringProfile)) }
         ) {
-            let bestMs = measured.first { $0.node.id == best.node.id }?.ms ?? -1
-            logger.info("Proxied refine picked \(best.node.name) (\(bestMs)ms, rate \(best.node.rateForComparison)) from \(candidates.count) green candidates (\(failedCount) failed)", category: "app")
-            if failedCount > 0 {
-                showToast(L("经代理精选完成：实测 \(measured.count + failedCount) 个候选，本轮 \(failedCount) 个探测失败"))
-            }
             return captureRanking(best, preferredRegion: preferredRegion, usedPreferredRegion: usedPreferredRegion)
         }
-        logger.warn("Proxied refine: all \(candidates.count) candidates failed — falling back to direct best", category: "app")
-        evidence.proxy.fellBackToDirect = true
-        showToast(L("经代理精选未取得可用结果：探测 \(measured.count + failedCount) 次，本轮保留初选结果"))
-        return fallback
+        evidence.proxy.keptCurrentSelection = true
+        return initial // 只保留初选作为诊断候选；调用者禁止发布它。
     }
 
     /// 从候选里选 `NodeScorer` 总分最高者 —— 自动择优的内核。旧「延迟最低 + 接近时
@@ -1720,6 +1718,7 @@ public final class AppState {
     static let autoSwitchScoreStreakRounds = NodeSelectionHysteresis.defaultRounds
 
     func hasUsableSelectionMeasurement(_ node: Node, now: Date = Date()) -> Bool {
+        guard !nodeProbeCooldown.contains(node.identityFingerprint, now: now) else { return false }
         if node.protocolType.supportsTCPProbe { return node.lastLatencyMs != nil }
         guard node.lastProxiedLatencyMs != nil, let at = node.lastProxiedTestedAt else { return false }
         return now.timeIntervalSince(at) <= NodeScorer.proxiedFreshnessWindow
@@ -1784,36 +1783,60 @@ public final class AppState {
     public func measureProxiedLatency(
         _ node: Node, showToastOnError: Bool = true, targetOverride: String? = nil
     ) async -> Int? {
-        guard isVPNRunning else {
-            if showToastOnError { showToast(L("经代理测速需要 VPN 运行中（直连延迟请用普通测速）")) }
-            return nil
+        proxyProbeContext &+= 1
+        return await probeProxiedLatency(node, showToastOnError: showToastOnError, targetOverride: targetOverride).latency
+    }
+
+    private func probeProxiedLatency(_ node: Node, showToastOnError: Bool = false,
+        targetOverride: String? = nil) async -> ProxyProbeOutcome {
+        guard !Task.isCancelled else { return .failure(.cancelled) }
+        guard isVPNRunning, !isSwitchingTunnel else { return .failure(.unavailable) }
+        guard nodes.contains(where: { $0.id == node.id && $0.identityFingerprint == node.identityFingerprint }) else {
+            return .failure(.superseded)
         }
+        let generation = UUID()
+        let context = proxyProbeContext
+        proxyMeasurementGeneration[node.id] = generation
         proxiedMeasuringNodeIds.insert(node.id)
-        defer { proxiedMeasuringNodeIds.remove(node.id) }
+        defer {
+            if proxyMeasurementGeneration[node.id] == generation {
+                proxyMeasurementGeneration[node.id] = nil
+                proxiedMeasuringNodeIds.remove(node.id)
+            }
+        }
+        let outcome: ProxyProbeOutcome
         do {
             let target = targetOverride ?? settings.proxiedTestTarget
-            let ms = try await tunnelManager.pingNode(node: node, targetURL: target)
-            if let i = nodes.firstIndex(where: { $0.id == node.id }) {
-                nodes[i].lastProxiedLatencyMs = ms
-                nodes[i].lastProxiedTestedAt = Date()
-                // 经代理实测并入同轮直连样本（打分/稳定性的历史数据源）
-                recordNodeProxiedMeasurement(nodes[i], proxiedMs: ms)
-            }
-            persist()
-            return ms
+            let ms = try await proxiedProber.pingNode(node: node, targetURL: target, timeoutSeconds: 5)
+            outcome = (0..<10_000).contains(ms) ? .success(ms) : .failure(.unavailable)
         } catch {
-            // 失败也记录测试时间、清掉旧值 —— 「上次测出 80ms」挂在已坏节点上会误导。
-            if let i = nodes.firstIndex(where: { $0.id == node.id }) {
-                nodes[i].lastProxiedLatencyMs = nil
-                nodes[i].lastProxiedTestedAt = Date()
-            }
-            persist()
-            if showToastOnError {
-                showToast(L("经代理测速失败：\((error as? LocalizedError)?.errorDescription ?? "\(error)")"))
-            }
-            logger.warn("Proxied ping failed for \(node.name): \(error)", category: "tunnel")
-            return nil
+            if Task.isCancelled || error is CancellationError { return .failure(.cancelled) }
+            let kind = (error as? ProxyProbeError)?.kind ?? .unavailable
+            outcome = .failure(kind)
+            if showToastOnError { showToast(L("经代理测速失败：\(error.localizedDescription)")) }
+            // 不把内核原始错误或配置指纹写入择优日志。
+            logger.warn("Proxied probe did not complete: \(kind.rawValue)", category: "tunnel")
         }
+        guard !Task.isCancelled else { return .failure(.cancelled) }
+        guard isVPNRunning, !isSwitchingTunnel else { return .failure(.unavailable) }
+        guard proxyProbeContext == context, proxyMeasurementGeneration[node.id] == generation,
+              let i = nodes.firstIndex(where: { $0.id == node.id && $0.identityFingerprint == node.identityFingerprint }) else {
+            return .failure(.superseded)
+        }
+        switch outcome {
+        case .success(let ms):
+            nodes[i].lastProxiedLatencyMs = ms
+            nodes[i].lastProxiedTestedAt = Date()
+            recordNodeProxiedMeasurement(nodes[i], proxiedMs: ms)
+            nodeProbeCooldown.recover(node.identityFingerprint)
+            persist()
+        case .failure(.probeFailed), .failure(.invalidConfiguration):
+            nodes[i].lastProxiedLatencyMs = nil
+            nodes[i].lastProxiedTestedAt = Date()
+            persist()
+        case .failure: break // 资源、通信、取消不能覆盖节点测量。
+        }
+        return outcome
     }
 
     /// 批量测所有未排除节点的「经代理延迟」。**串行**逐个测 —— 扩展进程同一时刻只跑

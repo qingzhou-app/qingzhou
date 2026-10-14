@@ -24,8 +24,11 @@ final class NodeSelectionReportTests: XCTestCase {
             return LatencyResult(url: url, latencyMs: 40)
         }
     }
-    private func app(_ values: [String: Int] = [:]) -> AppState {
-        let state = AppState(persistence: Persistence(directory: directory), nodeSelector: NodeSelector(prober: Prober(values: values)))
+    private struct SuccessfulProxy: ProxiedLatencyProbing {
+        func pingNode(node: Node, targetURL: String?, timeoutSeconds: Int) async throws -> Int { 80 }
+    }
+    private func app(_ values: [String: Int] = [:], proxy: (any ProxiedLatencyProbing)? = nil) -> AppState {
+        let state = AppState(persistence: Persistence(directory: directory), nodeSelector: NodeSelector(prober: Prober(values: values)), proxiedProber: proxy)
         state.settings.iCloudSyncEnabled = false
         state.settings.autoSelectUsesProxiedLatency = false
         return state
@@ -149,7 +152,28 @@ final class NodeSelectionReportTests: XCTestCase {
         XCTAssertNil(app().lastSelectionReport, "重新加载后不拿旧报告冒充当前网络的解释")
     }
 
-    func testProxyFailuresRecordAttemptsAndUnverifiedDirectFallback() async throws {
+    func testUnverifiedRefinementMustNotReplaceCurrentSelection() async {
+        let state = app(["a.example": 20, "b.example": 180])
+        let a = node("A", host: "a.example"), b = node("B", host: "b.example")
+        state.nodes = [a, b]; state.currentNodeId = b.id
+        state.isVPNRunning = true; state.settings.autoSelectUsesProxiedLatency = true
+        await state.autoSelectBestNode()
+        XCTAssertEqual(state.currentNodeId, b.id, "全链路未确认时不能把TCP初选切上去")
+        state.persistence.waitForPendingWritesForTesting()
+    }
+
+    func testUnavailableExtensionDoesNotEraseSuccessfulProxyMeasurement() async {
+        let state = app()
+        var a = node("A", host: "a.example")
+        a.lastProxiedLatencyMs = 80; a.lastProxiedTestedAt = Date(timeIntervalSince1970: 100)
+        state.nodes = [a]; state.isVPNRunning = true
+        _ = await state.measureProxiedLatency(a, showToastOnError: false)
+        XCTAssertEqual(state.nodes[0].lastProxiedLatencyMs, 80)
+        XCTAssertEqual(state.nodes[0].lastProxiedTestedAt, a.lastProxiedTestedAt)
+        state.persistence.waitForPendingWritesForTesting()
+    }
+
+    func testUnavailableExtensionRecordsInterruptionAndKeepsSelection() async throws {
         let state = app(["a.example": 40, "b.example": 80])
         let a = node("A", host: "a.example"), b = node("B", host: "b.example")
         state.nodes = [a, b]; state.currentNodeId = a.id
@@ -157,11 +181,12 @@ final class NodeSelectionReportTests: XCTestCase {
         state.isVPNRunning = true // 未加载manager：pingNode明确失败，不访问真实网络/扩展。
         await state.autoSelectBestNode()
         let report = try XCTUnwrap(state.lastSelectionReport)
-        XCTAssertEqual(report.proxy.attempted, 2)
-        XCTAssertEqual(report.proxy.failed, 2)
+        XCTAssertEqual(report.proxy.attempted, 1)
+        XCTAssertEqual(report.proxy.failed, 1)
         XCTAssertEqual(report.proxy.succeeded, 0)
         XCTAssertTrue(report.proxy.fellBackToDirect)
-        XCTAssertEqual(report.reason, .alreadyBest)
+        XCTAssertEqual(report.reason, .proxyUnverified)
+        XCTAssertEqual(report.proxy.environmentFailures, 1)
         state.persistence.waitForPendingWritesForTesting()
     }
 
@@ -197,7 +222,7 @@ final class NodeSelectionReportTests: XCTestCase {
     }
 
     func testHoldReportUsesThePreferencesThatActuallyJudgedTheLead() async throws {
-        let state = app(["a.example": 90, "b.example": 100])
+        let state = app(["a.example": 90, "b.example": 100], proxy: SuccessfulProxy())
         let a = node("A", host: "a.example"), b = node("B", host: "b.example")
         state.nodes = [a, b]; state.currentNodeId = b.id; state.isVPNRunning = true
         state.settings.autoSelectUsesProxiedLatency = true

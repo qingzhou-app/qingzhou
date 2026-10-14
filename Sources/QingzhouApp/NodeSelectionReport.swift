@@ -7,7 +7,7 @@ public struct NodeSelectionReport: Sendable, Identifiable {
     public enum Reason: Sendable, Equatable {
         case highestScore, alreadyBest, insufficientLead
         case confirmingLead(completed: Int, required: Int)
-        case noEligibleMeasurement, selectionChanged, candidateChanged, cancelled
+        case noEligibleMeasurement, selectionChanged, candidateChanged, cancelled, proxyUnverified, availabilityRecovery
     }
     public struct Candidate: Sendable {
         public let id: UUID
@@ -24,7 +24,29 @@ public struct NodeSelectionReport: Sendable, Identifiable {
         public var succeeded = 0
         public var failed = 0
         public var attempted: Int { succeeded + failed }
-        public var fellBackToDirect = false
+        public var keptCurrentSelection = false
+        public var environmentFailures = 0
+        public var configurationFailures = 0
+        public var probeFailures = 0
+        public var confirmationAttempts = 0
+        public var coolingDownCount = 0
+        public var confirmedFailureCount = 0
+        public var usedBackupTarget = false
+        /// Compatibility for older consumers; never means TCP validation.
+        public var fellBackToDirect: Bool { keptCurrentSelection }
+        mutating func record(_ outcome: ProxyProbeOutcome) {
+            state = .completed
+            switch outcome {
+            case .success: succeeded += 1
+            case .failure(let kind):
+                failed += 1
+                switch kind {
+                case .probeFailed: probeFailures += 1
+                case .invalidConfiguration: configurationFailures += 1
+                default: environmentFailures += 1
+                }
+            }
+        }
     }
     public let id: UUID
     public let completedAt: Date
@@ -52,6 +74,8 @@ public struct NodeSelectionReport: Sendable, Identifiable {
         case .selectionChanged: L("测量期间选择已变化，未覆盖你的选择")
         case .candidateChanged: L("候选配置已变化，本轮未采用旧结果")
         case .cancelled: L("本轮择优已取消")
+        case .proxyUnverified: L("全链路可用性未确认，保持原选择")
+        case .availabilityRecovery: L("当前节点双目标复核失败，已选择本轮测通的节点")
         }
     }
 }
@@ -59,11 +83,8 @@ public struct NodeSelectionReport: Sendable, Identifiable {
 /// MainActor 回调与串行代理探测共享本轮计数；不把可变捕获变量带入 Sendable 闭包。
 @MainActor
 final class SelectionMeasurementEvidence {
+    var confirmedFailures: Set<String> = []
     var directSucceeded = 0
     var directFailed = 0
     var proxy = NodeSelectionReport.ProxyEvidence()
-    func recordProxy(_ latency: Int?) {
-        proxy.state = .completed
-        if latency != nil { proxy.succeeded += 1 } else { proxy.failed += 1 }
-    }
 }

@@ -45,7 +45,8 @@ settings:
     # build 25 = 云恢复呈现状态提取，读取轮次防止关闭重开/重试的迟到结果覆盖。
     # build 26 = 云同步任务协调器，轮次/取消/写入屏障及恢复保存成功后回推。
     # build 27 = 最近一次择优决策与本轮测量诊断，保持现有评分/切换策略。
-    CURRENT_PROJECT_VERSION: "27"
+    # build 28 = 全链路可用性保护、结构化探测失败及有界复核/临时冷却。
+    CURRENT_PROJECT_VERSION: "28"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 

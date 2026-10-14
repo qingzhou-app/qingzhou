@@ -66,6 +66,7 @@ final class NodeScoringSelectionTests: XCTestCase {
         seedHistory(state, node: fast, count: 10, latencyMs: 60, interleaveFailures: true)
         seedHistory(state, node: stable, count: 10, latencyMs: 90)
         state.settings.iCloudSyncEnabled = false
+        state.settings.autoSelectUsesProxiedLatency = false // 此用例只验证综合分，不触发真实扩展IO。
         state.nodes = [fast, stable]; state.currentNodeId = fast.id; state.isVPNRunning = true
         await state.autoSelectBestNode()
         XCTAssertEqual(state.currentNodeId, stable.id)

@@ -1,6 +1,94 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "全链路可用性未确认，保持原选择": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End-to-end availability is unconfirmed; keeping the existing selection"
+          }
+        }
+      }
+    },
+    "当前节点双目标复核失败，已选择本轮测通的节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The current node failed both checks; selected a node verified this round"
+          }
+        }
+      }
+    },
+    "未取得可用的精选结果，本轮保持原选择；出口可用性尚未确认": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No usable refinement result; keeping the existing selection. Exit availability is unconfirmed."
+          }
+        }
+      }
+    },
+    "本轮有 %lld 次探测条件不足或被中断，未据此惩罚节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld probes were unavailable or interrupted; no node penalty was applied for these results"
+          }
+        }
+      }
+    },
+    "本轮有 %lld 次节点配置转换失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld node configuration conversions failed this round"
+          }
+        }
+      }
+    },
+    "额外复核 %lld 次；双目标失败且有成功对照的节点 %lld 个，暂缓自动选择 5 分钟，手动复测成功可立即恢复": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld additional checks; %lld nodes failed both targets with a successful control. Automatic selection is paused for 5 minutes; a successful manual retest restores eligibility."
+          }
+        }
+      }
+    },
+    "本轮暂缓探测 %lld 个冷却中的候选": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skipped %lld candidates in cooldown this round"
+          }
+        }
+      }
+    },
+    "主目标未取得成功结果，本轮按同一备用目标的成功测量排名": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The primary target produced no successful results; ranking uses successful measurements to one shared backup target."
+          }
+        }
+      }
+    },
     "已选择": {
       "extractionState": "manual",
       "localizations": {
