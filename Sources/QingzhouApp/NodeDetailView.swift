@@ -60,7 +60,7 @@ public struct NodeDetailView: View {
             LabeledContent("协议", value: draft.protocolType.rawValue.uppercased())
             LabeledContent("ID", value: draft.id.uuidString)
                 .font(.caption2.monospaced())
-            LabeledContent("指纹", value: draft.identityFingerprint)
+            LabeledContent("指纹", value: AppliedTunnelConfiguration.digest(draft))
                 .font(.caption2.monospaced())
                 .lineLimit(1)
             if let subId = draft.subscriptionId,

@@ -1,6 +1,72 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "开启后按地区偏好与综合评分自动择优。正常切换需连续两轮领先；若希望保留手选节点，请关闭自动择优。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatically select by region preference and overall score. Normal switches require a lead in two consecutive rounds. Turn this off to keep your manual selection."
+          }
+        }
+      }
+    },
+    "VPN 运行中，每轮最多对 6 个候选做真实代理测量，并可额外复核 2 次；包含当前节点、可用 TCP 候选及 UDP 节点。未确认可用时保留当前选择。自动测速仍只测直连，关闭本开关会清空经代理延迟。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While the VPN is running, each round tests up to 6 candidates through their proxies, with up to 2 additional checks. Candidates include the current node, eligible TCP nodes, and UDP nodes. If availability is not confirmed, the current selection is kept. Automatic latency testing still measures direct connections only. Turning this off clears proxy latency measurements."
+          }
+        }
+      }
+    },
+    "按延迟、稳定性、近期下载观测与成本综合评分。速度优先更看重延迟；均衡兼顾四项；省流量更看重低倍率。改选下轮择优生效。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scores combine latency, stability, recent download observations, and cost. Speed favors latency, Balanced considers all four, and Saver favors lower traffic multipliers. Changes apply in the next selection round."
+          }
+        }
+      }
+    },
+    "无（按综合评分）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None (use overall score)"
+          }
+        }
+      }
+    },
+    "优先地区有符合条件的候选时，在该地区内按综合评分选择；否则在所有符合条件的候选中选择。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When the preferred region has eligible candidates, select within that region by overall score. Otherwise, select from all eligible candidates."
+          }
+        }
+      }
+    },
+    "%lld 个节点；开启后排除此地区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nodes; turn on to exclude this region"
+          }
+        }
+      }
+    },
     "自动测速每轮最多 24 组配置；复用近期结果 %lld 组，余下 %lld 组留待后续轮换": {
       "extractionState": "manual",
       "localizations": {

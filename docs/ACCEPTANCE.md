@@ -1,5 +1,43 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## 2026-10-15 agent 全面验收与 build31 修复（尚未全部通过）
+
+用户授权由 agent 执行验收。本轮先验收已安装 build30，修复实测发现的三处界面问题，再构建并安装 build31 到 Mac 和 iPhone。手机通过已配对无线服务安装，返回 InstallComplete，独立应用查询确认 1.0(31)；CoreDevice 远程启动仍失败，因此手机31的运行验收尚未完成。这里的真机结果、工程回归和未覆盖项目分别记录，不把构建通过等同完整体验通过。
+
+### 实测发现并修复
+
+- **详情指纹暴露凭据**：旧版直接展示 `Node.identityFingerprint`，其内部连接身份串包含密码/UUID。CUA 复现仅记录是否出现凭据格式，未输出或保存明文。build31 复用既有 SHA-256 身份摘要；安装后相同节点详情不再出现原始凭据串，出现 64 位十六进制摘要。内部身份键、保存格式及节点参数保持不变。
+- **择优说明过时**：设置仍描述“最快”“直连绿色节点”，与综合评分、UDP 候选和有界代理复核不符。已更新说明及英文；安装后核对 6 候选/2 复核、连续两轮、地区内综合评分等文字正确。
+- **地区开关无障碍名称不完整**：旧 AX 树只有“8 个节点”等数量，无法识别地区。已补地区名称与排除提示；新版中英文 AX 均包含地区、数量和当前开关状态。此项属于辅助功能语义检查，不能代替完整 VoiceOver 人工体验。
+
+### 本轮验收矩阵
+
+| 项目 | 实测/工程证据 | 当前结论 |
+|---|---|---|
+| 工程回归 | build31 全量 1017 项：1016 通过、1 缺真实历史回放输入跳过、0 失败；iOS/macOS App、Tunnel、Widget 全部构建通过 | 通过；未新增文案镜像单测，隐私绑定用旧/新安装界面对照复验 |
+| Mac 安装、启停与数据保留 | 已安装 1.0(31)，三进程来自 `/Applications/Qingzhou.app`；VPN Connected，实际节点匹配、rule 模式；最终节点配置、订阅、规则与全部设置均与验收前一致 | 通过；临时深色/英文/全局模式已恢复 |
+| 手机部署与基础运行 | build31 签名/设备覆盖/App Group 检查通过；无线安装完成，独立查询版本31。安装后远程启动报 CoreDevice/RemotePairing error4 | 安装通过；31运行未验证，不能沿用30的启停/重开结果 |
+| Mac 手动测速/择优 | 28 节点含 25 TCP、3 HY2；排除 1 个地区节点，报告覆盖 24 个 TCP。手动择优 4 候选，代理请求 6 次（2 成功、4 失败，含 2 次备用复核），实际切到 HY2 | 手动全量覆盖、UDP 候选与说明/实际状态一致通过；TCP 可用性另见诊断 |
+| Mac 定时预算/防抖 | 自动调度报告最多 24 组 TCP，本机合格 TCP 正好 24；3 个代理候选全部成功，候选领先超过8分但仅1/2轮，保持当前节点 | 本机定时与保持行为通过；大池轮换/5分钟复用仅工程回归覆盖 |
+| Mac HTTPS 连通与路径 | HY2 节点下 `curl --noproxy '*' --ipv4` 对 Google/YouTube HEAD 均200；FakeDNS映射与access log核对均 `tun-in -> proxy`，默认路由为轻舟utun | 这两次HTTPS请求通过；不等于完整浏览器/视频或全部线路通过 |
+| 节点与模式切换 | HY2切换后实际节点匹配；本次会话重启，不能当零断流证据。规则→全局→规则，实际模式逐次匹配 | 状态一致性通过；QUIC自动调整可要求重建会话，原地快路径未独立验收 |
+| iCloud版本界面 | 真实5版本列表打开、Escape取消、重开、选择当前版本后出现配置差异/确认提示，点击暂不恢复；节点/订阅/规则未被替换 | 呈现、确认和取消通过；未覆盖真实历史恢复、离线重试与多设备同时冲突 |
+| 近期下载观测 | 初始隧道会话中观测由未知变为约325KB/s，31重新连接后也积累到约330KB/s；没有额外大文件下载 | 积累与展示通过；直连排除、30分钟过期与热切换归属依靠工程测试，本轮未完整实测 |
+| 界面与辅助功能 | Mac深浅色、长说明换行、搜索、详情取消、报告展开、新中英说明与地区AX标签核对 | 所列部分通过；英文切换后边栏/页面标题仍中文，见剩余问题 |
+| 资源 | build30交互期间124秒60组采样：App CPU中位1.6%、RSS最高244.3MiB；Tunnel CPU中位2.25%、RSS最高90.5MiB，样本中包含测速负载 | 有界观测已记录，不能作为长期耗电/泄漏验收结论 |
+| Widget / 手机UI / 兼容性 | Mac通知中心读取因CUA超时未完成；iPhone镜像停在首次授权，未开启控制权限；仅有iOS26.5模拟器运行时 | 小组件视觉、手机网页/视频/Live Activity、Wi-Fi↔蜂窝、小屏/动态字体、最低iOS17/macOS14均未通过验收 |
+
+### 网络诊断与剩余问题
+
+1. **TCP差异仍未解决**：本次物理接口TCP测速24个均失败。系统解析原节点域名落在198.18/15池，无绑定socket可连接而物理接口连接超时。进一步诊断首次因“将私有节点域名发送到公共DNS”被自动审批拒绝，明确告知后用户授权这次DNS/TCP对照。获准执行结果：生产域名探针超时，阿里DNS返回的真实IPv4地址探针也超时。因此不能只归因FakeDNS，更不能据此判定全部节点失效。本轮没有修改DNS、路由或节点参数。
+2. **动态语言切换不完整**：Mac设置正文和新辅助功能标签可立即变英文，但边栏及当前页面标题仍中文。本轮已恢复简体中文；此一致性问题仍待修复，不标全语言体验通过。
+3. **工具与设备边界**：手机USB后来不再可见，CoreDevice握手超时；改走已配对无线服务完成31安装，但远程启动通道仍报配对连接失败。继续由agent验收需恢复设备控制通道（接数据线并解锁，或确认首次启用iPhone镜像；镜像权限尚未获准）。Mac通知中心的CUA调用虽设30秒超时，实际长时间未返回后失败；未以进程存在替代小组件视觉验收。
+
+证据（均为本机临时文件，私有配置备份不入Git）：`/private/tmp/qingzhou-build31-verify.log`、`/private/tmp/qingzhou-build31-swift-tests.log`、`/private/tmp/qingzhou-build31-macos-signed.log`、`/private/tmp/qingzhou-build31-device.log`、`/private/tmp/qingzhou-build31-macos-signing-check.json`、`/private/tmp/qingzhou-build31-signing-check.json`、`/private/tmp/qingzhou-build31-macos-install.json`、`/private/tmp/qingzhou-build31-macos-final-state.json`；本轮真机诊断在`/private/tmp/qingzhou-build30-full-acceptance/`（`mac-tun-web-check.json`、`mode-global.json`、`hot-switch-summary.json`、`mac-resource-samples.json`、`probe-diagnostic.log`）。Mac30回退包保存在`/private/tmp/qingzhou-macos-build30-backup/Qingzhou.app.saved`。
+
+手机31部署证据：`/private/tmp/qingzhou-build31-ios-wireless-install.log`（InstallComplete）、`/private/tmp/qingzhou-build31-ios-installed-version.json`（独立查询）、`/private/tmp/qingzhou-build31-ios-start-launch.log`（远程启动连接失败）。
+
+
 ## build30 统一安装与验收（2026-10-15，iOS/macOS已安装，基础运行通过）
 
 累计包含build26–29的改动，本批增加真实择优编排的合成事件回放、每轮24个TCP配置身份的自动预算、5分钟增量复用、别名共享测量与轮换探索记忆保护。手动测速/择优仍全量，正常领先仍按既有8分/2轮判断；没有新增短间隔后台探测。

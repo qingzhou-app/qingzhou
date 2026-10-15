@@ -43,7 +43,8 @@ public struct AppliedTunnelConfiguration: Codable, Sendable, Equatable {
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func digest(_ node: Node) -> String {
+    /// 可用于界面展示的连接身份摘要；原始 identityFingerprint 含凭据，不能直接展示。
+    public static func digest(_ node: Node) -> String {
         SHA256.hash(data: Data(node.identityFingerprint.utf8))
             .map { String(format: "%02x", $0) }.joined()
     }

@@ -212,14 +212,14 @@ public struct SettingsView: View {
                 Text("6 小时").tag(TimeInterval(6 * 60 * 60))
                 Text("24 小时").tag(TimeInterval(24 * 60 * 60))
             }
-            Text("开启后会主动把「当前节点」切到测速最快的那个 —— 如果你手选了节点不想被换，关掉这一项。")
+            Text("开启后按地区偏好与综合评分自动择优。正常切换需连续两轮领先；若希望保留手选节点，请关闭自动择优。")
                 .font(.caption2).foregroundStyle(.secondary)
 
             Toggle("择优用经代理延迟精选", isOn: Binding(
                 get: { state.settings.autoSelectUsesProxiedLatency },
                 set: { state.setAutoSelectUsesProxiedLatency($0) }
             ))
-            Text("VPN 运行中择优时，把直连结果为绿色的节点逐个真实走一遍代理再选（更准，多花些时间）：能避开「直连快但出口绕路或已失效」的假好节点。自动测速本身只测直连、不受此开关影响。关闭本开关会清空已测的经代理延迟。")
+            Text("VPN 运行中，每轮最多对 6 个候选做真实代理测量，并可额外复核 2 次；包含当前节点、可用 TCP 候选及 UDP 节点。未确认可用时保留当前选择。自动测速仍只测直连，关闭本开关会清空经代理延迟。")
                 .font(.caption2).foregroundStyle(.secondary)
 
             Picker("择优偏好", selection: state.setting(\.scoringProfile)) {
@@ -227,7 +227,7 @@ public struct SettingsView: View {
                 Text("均衡").tag(ScoringProfile.balanced)
                 Text("省流量").tag(ScoringProfile.saver)
             }
-            Text("自动择优给每个节点按「延迟 / 稳定性 / 带宽 / 成本」四维综合打分，这里选看重什么：速度优先＝只挑最快、几乎不看倍率；均衡＝默认，四维兼顾；省流量＝优先低倍率节点省流量。改选下轮择优即生效。")
+            Text("按延迟、稳定性、近期下载观测与成本综合评分。速度优先更看重延迟；均衡兼顾四项；省流量更看重低倍率。改选下轮择优生效。")
                 .font(.caption2).foregroundStyle(.secondary)
 
             Toggle("延迟接近时优先低倍率", isOn: state.setting(\.preferLowerRate))
@@ -304,12 +304,12 @@ public struct SettingsView: View {
             } else {
                 // 优先地区
                 Picker("优先地区", selection: state.setting(\.preferredRegion)) {
-                    Text("无（只比延迟）").tag(String?.none)
+                    Text("无（按综合评分）").tag(String?.none)
                     ForEach(regions, id: \.region) { item in
                         Text(L10n.lookup(item.region)).tag(String?.some(item.region))
                     }
                 }
-                Text("自动择优时，若优先地区有可用节点，从中选最快的；否则全局选最快。")
+                Text("优先地区有符合条件的候选时，在该地区内按综合评分选择；否则在所有符合条件的候选中选择。")
                     .font(.caption2).foregroundStyle(.secondary)
 
                 // 地区排除列表
@@ -321,6 +321,8 @@ public struct SettingsView: View {
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                     }
+                    .accessibilityLabel(Text(L10n.lookup(item.region)))
+                    .accessibilityHint(Text("\(item.count) 个节点；开启后排除此地区"))
                 }
                 Text("打开开关 = 排除该地区的所有节点（不参与自动择优、不会被自动选中）。例如排除「香港」以避开 Anthropic / OpenAI 等对香港 IP 的限制。")
                     .font(.caption2).foregroundStyle(.secondary)
