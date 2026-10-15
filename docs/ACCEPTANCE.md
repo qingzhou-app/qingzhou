@@ -1,14 +1,17 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
-## build30 统一安装与验收（2026-10-15，签名包就绪，尚未安装）
+## build30 统一安装与验收（2026-10-15，iOS/macOS已安装，基础运行通过）
 
 累计包含build26–29的改动，本批增加真实择优编排的合成事件回放、每轮24个TCP配置身份的自动预算、5分钟增量复用、别名共享测量与轮换探索记忆保护。手动测速/择优仍全量，正常领先仍按既有8分/2轮判断；没有新增短间隔后台探测。
 
 工程验收：新增22项回归，最终1017项测试（1016通过、1缺真实历史回放输入跳过、0失败），iOS/macOS主App及Tunnel/Widget编译成功，独立只读复审无剩余问题。内置六场景及外部JSON示例回放均通过；80节点、4轮间隔60秒的场景使用249次TCP握手，旧全量方式理论960次。这只是该场景请求数，不代表真实能耗或恢复速度。
 
-开发签名1.0(30)与App/Tunnel/Widget的目标设备、有效期、App Group及完整签名校验通过。最终包：`/private/tmp/qingzhou-build30-device/Build/Products/Debug-iphoneos/Qingzhou-iOS.app`。本批未查询或操作手机；最后确认已安装仍为25，build29此前上传中断的事实不变。待设备恢复连接后覆盖安装30、独立核对版本，再关开VPN让扩展更新。
+两端开发签名1.0(30)与App/Tunnel/Widget的目标设备、有效期、App Group及完整签名校验通过。iOS最终包：`/private/tmp/qingzhou-build30-device/Build/Products/Debug-iphoneos/Qingzhou-iOS.app`。手机重新接通后覆盖安装成功，独立设备应用查询确认由25更新到30；不再等待build29那次失败上传。
 
-- [ ] **基础连接**：确认1.0(30)，关开一次VPN，以已知正常节点访问常用网站；首页实际节点/模式、流量、Widget与Live Activity一致。
+- [x] **iOS安装与基础启停**：设备确认1.0(30)，旧VPN停止终态为disconnected；启动新隧道后16次采样终态connected、running=true、实际节点匹配选择、实际/请求均rule。主App、Tunnel与Widget均来自新安装目录。退出验收参数后正常重开主App，Tunnel PID21458保持。此项未测试手机浏览器/流媒体可用性。
+- [x] **macOS安装与基础运行**：`/Applications/Qingzhou.app`由19更新到30，正常退出旧App和VPN后替换，恢复原节点。首页版本30、实际节点匹配、流量持续更新；Google 585ms、YouTube 1833ms为本次App内连通性测试结果，不是性能基准。系统VPN Connected，主App/Tunnel/Widget均运行安装目录中的30。
+- [x] **macOS小组件版本**：清理5处旧开发目录中的同ID注册、重新注册安装路径扩展，实际Widget进程已改用`/Applications/Qingzhou.app`。未删除旧构建或小组件设置，视觉一致性仍待体验。旧19应用回退副本保留在`/private/tmp/qingzhou-macos-build19-backup/Qingzhou.app.saved`。
+- [ ] **剩余基础体验**：手机常用网站/视频、两端Widget及Live Activity视觉状态一致。Mac原有系统代理设置保留；本次网站测试不用于单独证明出口归属或全部流量路径。
 - [ ] **自动预算与手动全量**：前台运行并等到自动择优，查看“最近一次择优”的复用/暂缓说明；大池分轮覆盖。点手动测速/择优时仍遍历所有未排除的TCP配置；同配置别名结果一致。
 - [ ] **择优和失败保护**：选择说明与实际出口一致；全链路未确认保持原选择，资源/通信异常不批量标坏；当前节点双目标失败且有测通替代时恢复。小幅抖动不频繁切换，正常领先仍需独立两轮。
 - [ ] **网络切换**：测速期间Wi-Fi→蜂窝→Wi-Fi，旧路径结果不回填；新路径重新测量。系统未报告的底层漫游仍属已知边界。
@@ -19,6 +22,8 @@
 用户此前暂缓的“部分节点不能正常上网”差异诊断仍未解决，不因本批工程验证而勾通过。回放工具及指标边界见[事件回放说明](SELECTION-REPLAY.md)。
 
 证据：`/private/tmp/qingzhou-build30-verify.log`（原生构建与首轮全量）、`/private/tmp/qingzhou-build30-swift-tests-final.log`（回放指标补修后最终全量）、`/private/tmp/qingzhou-build30-device.log`、`/private/tmp/qingzhou-build30-signing-check.json`、`/private/tmp/qingzhou-build30-replay/report.md`。
+
+部署与运行证据：`/private/tmp/qingzhou-build30-ios-install.json`、`/private/tmp/qingzhou-build30-ios-installed-apps.json`、`/private/tmp/qingzhou-build30-ios-stop-state.json`、`/private/tmp/qingzhou-build30-ios-start-state.json`、`/private/tmp/qingzhou-build30-ios-normal-summary.json`；Mac见`/private/tmp/qingzhou-build30-macos-signing-check.json`、`/private/tmp/qingzhou-build30-macos-install.json`与`/private/tmp/qingzhou-build30-macos-running.json`。本轮仅部署及记录，无产品源码改动。
 
 ## build29 统一安装与验收（2026-10-15，等待设备重新连接）
 
