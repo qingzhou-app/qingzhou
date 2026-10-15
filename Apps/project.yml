@@ -47,7 +47,7 @@ settings:
     # build 27 = 最近一次择优决策与本轮测量诊断，保持现有评分/切换策略。
     # build 28 = 全链路可用性保护、结构化探测失败及有界复核/临时冷却。
     # build 29 = 网络路径会话与样本衰减、近期代理下载观测、6候选预算/轮换探索。
-    CURRENT_PROJECT_VERSION: "29"
+    CURRENT_PROJECT_VERSION: "30"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 

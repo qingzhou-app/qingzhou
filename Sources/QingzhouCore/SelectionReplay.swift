@@ -1,19 +1,10 @@
 import Foundation
 
-/// 离线回放对比 harness —— 量化「我们的多维打分择优」相对「竞品式纯 Ping 择优」的收益。
-///
-/// 用同一份每节点的测量历史序列，让两个策略逐轮各自选节点，产出结构化对比 `ReplayReport`
-/// （提速% / 省流量% / 少切换次数 + 每轮明细 + Markdown 报告）。竞品对比宣发数字的来源。
-///
-/// **两个策略**：
-/// - 策略 A「纯 Ping 最低」（竞品基线，Clash `url-test` 式）：每轮选**直连延迟最低**者，
-///   无黏性、说切就切；某轮该节点测不通就退回上轮选择（竞品行为：保持上次可用出口）。
-/// - 策略 B「多维打分」：**直接调 `NodeScorer`**（不重写打分逻辑 —— 回放结论才和线上一致）
-///   选总分最高者，叠加**分数黏性**（挑战者领先 ≥`scoreMargin` 分且连续 `scoreStreakRounds`
-///   轮才换）与倍率成本维。黏性参数镜像 `AppState.autoSwitchScoreMargin` / `…StreakRounds`。
-///
-/// 评分与切换黏性直接复用线上纯策略。回放不执行探针调度、网络切换或系统VPN生命周期；
-/// 给定测量序列的结果用于策略比较，不代表真实设备上的端到端收益保证。
+/// 纯评分离线回放：给定观测，比较最低直连TCP延迟与多维评分/黏性。
+/// 这是一个理想化基线，不代表任何竞品的URL-test或真实流量算法。
+/// 复用 NodeScorer / NodeSelectionHysteresis，但不执行候选预算、失败复核、冷却和VPN应用。
+/// 完整决策流程的场景回放见 Tests/QingzhouAppTests/SelectionScenarioReplay.swift。
+/// 有效延迟与倍率成本均为模型值，不是设备上的提速/省流量实测。
 public enum SelectionReplay {
 
     // MARK: - 输入
@@ -448,8 +439,10 @@ public extension SelectionReplay.ReplayReport {
 
         var md = ""
         md += "# 择优策略离线回放对比\n\n"
-        md += "> 三句话结论：**\(headline)**。\n"
-        md += "> 对比对象：我们的多维打分择优 vs **仅按 Ping**（直连延迟最低）择优（Clash `url-test` 式）。\n\n"
+        md += "> 模型估算：**\(headline)**。\n"
+        md += "> 对比对象：我们的多维打分择优 vs **仅按 Ping**（直连延迟最低）择优（理想化基线）。\n\n"
+
+        md += "> 这里只回放评分与黏性；不包含探测预算、失败复核、冷却、真实VPN应用或墙钟耗时。\n\n"
 
         md += "## 对比总览\n\n"
         md += "| 指标 | 仅按 Ping（基线） | 多维打分（本策略） | 差异 |\n"

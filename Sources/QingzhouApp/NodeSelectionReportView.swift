@@ -19,6 +19,9 @@ struct NodeSelectionReportView: View {
                              : L("优先地区：\(region)，无合格候选，使用其他地区"))
                     }
                     Text("有效排除 \(report.excludedCount) 个节点；本轮直连握手成功 \(report.directSucceeded) 个、失败 \(report.directFailed) 个")
+                    if report.origin == .scheduled {
+                        Text("自动测速每轮最多 24 组配置；复用近期结果 \(report.directReusedCount) 组，余下 \(report.directDeferredCount) 组留待后续轮换")
+                    }
                     if report.unmeasuredUDPCount > 0 {
                         Text("\(report.unmeasuredUDPCount) 个 UDP 节点缺少新鲜代理测量，未用 TCP 失败判定它们不可用")
                     }

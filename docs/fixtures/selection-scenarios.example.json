@@ -1,0 +1,24 @@
+[
+  {
+    "name": "example-outage-recovery",
+    "nodes": [{"id": "A"}, {"id": "B", "udp": true}],
+    "initialChoice": "A",
+    "frames": [
+      {
+        "at": 30,
+        "directFailures": ["A"],
+        "primary": {"A": {"failure": "probeFailed"}, "B": {"ms": 80}},
+        "backupDefault": {"failure": "probeFailed"},
+        "available": ["B"],
+        "acceptable": ["B"],
+        "outageStartedAt": 10
+      },
+      {
+        "at": 90,
+        "primaryDefault": {"ms": 80},
+        "available": ["A", "B"],
+        "acceptable": ["B"]
+      }
+    ]
+  }
+]

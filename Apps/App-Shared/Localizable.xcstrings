@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "自动测速每轮最多 24 组配置；复用近期结果 %lld 组，余下 %lld 组留待后续轮换": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic testing checks up to 24 configurations per round; reused %1$lld recent results, with %2$lld configurations left for later rounds"
+          }
+        }
+      }
+    },
     "网络路径已变化，本轮旧测量已作废": {
       "extractionState": "manual",
       "localizations": {

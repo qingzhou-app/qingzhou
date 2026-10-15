@@ -41,11 +41,25 @@ public actor NodeSelector {
         timeout: TimeInterval = 5,
         onResult: (@MainActor @Sendable (UUID, LatencyResult) -> Void)? = nil
     ) async -> [Node] {
-        // 先把要测的节点压成 (索引, URL) 二元组 —— probe URL 算出来不可用的直接跳过。
-        let work: [(Int, URL)] = nodes.enumerated().compactMap { (idx, node) in
+        await measure(nodes: nodes, timeout: timeout, shouldContinue: { true }, onResult: onResult)
+    }
+
+    public func measure(
+        nodes: [Node],
+        timeout: TimeInterval = 5,
+        shouldContinue: @escaping @MainActor @Sendable () -> Bool,
+        onResult: (@MainActor @Sendable (UUID, LatencyResult) -> Void)? = nil
+    ) async -> [Node] {
+        guard await Self.canContinue(shouldContinue) else { return nodes }
+        // 完整连接配置相同的订阅别名只开一组握手；回调仍覆盖各行 UUID。
+        var aliases: [String: [Int]] = [:]
+        var work: [(Int, URL)] = []
+        for (idx, node) in nodes.enumerated() {
             guard !node.isExcluded, node.protocolType.supportsTCPProbe,
-                  let url = nodeProbeURL(node) else { return nil }
-            return (idx, url)
+                  let url = nodeProbeURL(node) else { continue }
+            let fingerprint = node.identityFingerprint
+            if aliases[fingerprint] == nil { work.append((idx, url)) }
+            aliases[fingerprint, default: []].append(idx)
         }
         logger?.info(
             "Measuring latency: \(work.count)/\(nodes.count) candidates, concurrency=\(maxConcurrent)",
@@ -58,24 +72,24 @@ public actor NodeSelector {
 
             // 先 prime 一批
             for _ in 0..<maxConcurrent {
+                guard await Self.canContinue(shouldContinue) else { break }
                 guard let (idx, url) = iter.next() else { break }
                 group.addTask { [prober] in
-                    (idx, await Self.burstProbe(url, prober: prober, timeout: timeout))
+                    (idx, await Self.burstProbe(url, prober: prober, timeout: timeout, shouldContinue: shouldContinue))
                 }
             }
 
             var collected: [(Int, LatencyResult)] = []
             // 每完成一个就补一个，直到 iter 耗尽且 group 排空
             while let (idx, result) = await group.next() {
-                if Task.isCancelled { group.cancelAll(); break }
-                collected.append((idx, result))
-                // 测完一个立刻回调 UI（用 node id 定位，不依赖 index，调用方可能在重排）
-                if let onResult {
-                    await onResult(nodes[idx].id, result)
+                guard await Self.canContinue(shouldContinue) else { group.cancelAll(); break }
+                for alias in aliases[nodes[idx].identityFingerprint] ?? [idx] {
+                    collected.append((alias, result))
+                    if let onResult { await onResult(nodes[alias].id, result) }
                 }
                 if let (nextIdx, nextURL) = iter.next() {
                     group.addTask { [prober] in
-                        (nextIdx, await Self.burstProbe(nextURL, prober: prober, timeout: timeout))
+                        (nextIdx, await Self.burstProbe(nextURL, prober: prober, timeout: timeout, shouldContinue: shouldContinue))
                     }
                 }
             }
@@ -109,11 +123,17 @@ public actor NodeSelector {
     ///
     /// 串行而不并行：并行 3 条到同一节点会在上行侧互相挤占（蜂窝网尤甚），
     /// 量出来的是自伤延迟。
-    static func burstProbe(_ url: URL, prober: LatencyProber, timeout: TimeInterval) async -> LatencyResult {
+    private static func canContinue(_ check: (@MainActor @Sendable () -> Bool)?) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        return await check?() ?? true
+    }
+
+    static func burstProbe(_ url: URL, prober: LatencyProber, timeout: TimeInterval,
+        shouldContinue: (@MainActor @Sendable () -> Bool)? = nil) async -> LatencyResult {
         var successes: [Int] = []
         var lastError: String?
         for _ in 0..<burstCount {
-            if Task.isCancelled { break }
+            guard await canContinue(shouldContinue) else { break }
             let result = await prober.probe(url, timeout: timeout)
             if let ms = result.latencyMs {
                 successes.append(ms)

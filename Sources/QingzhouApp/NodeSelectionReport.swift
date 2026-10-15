@@ -65,6 +65,8 @@ public struct NodeSelectionReport: Sendable, Identifiable {
     public let directFailed: Int
     public let unmeasuredUDPCount: Int
     public let proxy: ProxyEvidence
+    public var directReusedCount: Int = 0
+    public var directDeferredCount: Int = 0
 
     public var summary: String {
         switch reason {
@@ -87,6 +89,9 @@ public struct NodeSelectionReport: Sendable, Identifiable {
 @MainActor
 final class SelectionMeasurementEvidence {
     var confirmedFailures: Set<String> = []
+    var directRecorded: Set<String> = []
+    var directReusedCount = 0
+    var directDeferredCount = 0
     var directSucceeded = 0
     var directFailed = 0
     var proxy = NodeSelectionReport.ProxyEvidence()

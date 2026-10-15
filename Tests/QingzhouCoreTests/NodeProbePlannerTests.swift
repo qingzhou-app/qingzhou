@@ -32,4 +32,14 @@ final class NodeProbePlannerTests: XCTestCase {
         let plan = planner.plan(ranked: [a], incumbent: alias)
         XCTAssertEqual(plan.candidates.map(\.id), [alias.id])
     }
+    func testAlternatingDirectWindowsDoNotForgetProxyExploration() {
+        let all = (0..<40).map(node)
+        var planner = NodeProbePlanner(), seen: Set<UUID> = []
+        for round in 0..<32 {
+            let rotating = round % 2 == 0 ? Array(all[8..<24]) : Array(all[24..<40])
+            let plan = planner.plan(ranked: Array(all.prefix(8)) + rotating, incumbent: all[0])
+            seen.formUnion(plan.candidates.map(\.id))
+        }
+        XCTAssertEqual(seen, Set(all.map(\.id)))
+    }
 }

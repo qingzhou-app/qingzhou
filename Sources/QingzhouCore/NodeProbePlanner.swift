@@ -10,6 +10,10 @@ public struct NodeProbePlanner: Sendable {
     private var round: UInt64 = 0
     private var lastExplored: [String: UInt64] = [:]
     public init() {}
+    /// 只按真实节点集合裁剪，暂时离开TCP测量窗口不等于节点已删除。
+    public mutating func prune(keeping identities: Set<String>) {
+        lastExplored = lastExplored.filter { identities.contains($0.key) }
+    }
     public mutating func plan(ranked: [Node], incumbent: Node?) -> Plan {
         round &+= 1
         var seen: Set<String> = []
@@ -28,8 +32,6 @@ public struct NodeProbePlanner: Sendable {
             return a != b ? a < b : $0.identityFingerprint < $1.identityFingerprint
         }
         let explorers = Array(remaining.prefix(Self.candidateLimit - selected.count))
-        let valid = Set(ranked.map(\.identityFingerprint))
-        lastExplored = lastExplored.filter { valid.contains($0.key) }
         for node in explorers { lastExplored[node.identityFingerprint] = round }
         selected.append(contentsOf: explorers)
         return Plan(candidates: selected, explorationCount: explorers.count)

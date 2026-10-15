@@ -12,6 +12,11 @@ public struct NodeSelectionHysteresis: Sendable {
     private var challenger: String?
     private var incumbent: String?
     private var winningRounds = 0
+    /// 下一轮需要独立的新测量，缓存不能充当第二轮证据。
+    public var pendingChallenger: String? {
+        if case .holdForStreak = decision { return challenger }
+        return nil
+    }
 
     public init() {}
 

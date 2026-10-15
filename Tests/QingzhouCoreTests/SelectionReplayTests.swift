@@ -268,6 +268,7 @@ final class SelectionReplayTests: XCTestCase {
         XCTAssertTrue(md.contains("提速 27.8%、省流量 50.0%、少切换 8 次"), md)
         XCTAssertTrue(md.contains("| 指标 |"))                  // 对比表
         XCTAssertTrue(md.contains("非普适"))                    // 诚实脚注
+        XCTAssertFalse(md.contains("Clash"))
         XCTAssertTrue(md.contains("仅按 Ping"))                 // 不点竞品名
         XCTAssertTrue(md.contains("HK-0.5x"))                   // 明细用节点名
         print("===== SAMPLE REPLAY REPORT =====\n\(md)\n===== END SAMPLE =====")
