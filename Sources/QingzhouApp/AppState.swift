@@ -58,6 +58,26 @@ public final class AppState {
     /// 200 条、重启清零，每日历史必须靠它。⚠️ 访问历史属敏感数据：独立文件落本地
     /// （`Self.domainHistoryFile`），**不进 Persistence.Snapshot**，绝不被 iCloud vault 镜像。
     public private(set) var domainHistory = DomainDailyHistory()
+    /// 扩展拥有的本地月度账本；主App只读，不写配置快照/云备份。
+    public private(set) var domainTrafficHistory: DomainTrafficLedger?
+    public private(set) var domainTrafficReadFailed = false
+    private var domainTrafficReadAt = Date.distantPast
+    private var domainTrafficReadGeneration = 0
+
+    public func refreshDomainTrafficHistory() async {
+        domainTrafficReadGeneration += 1
+        let generation = domainTrafficReadGeneration
+        let result = await Task.detached(priority: .utility) { () -> (DomainTrafficLedger?, Bool) in
+            guard let url = AppGroupStorage.fileURL(DomainTrafficLedger.storageName) else { return (nil, false) }
+            guard FileManager.default.fileExists(atPath: url.path) else { return (nil, false) }
+            let ledger = AppGroupStorage.read(DomainTrafficLedger.self, from: DomainTrafficLedger.storageName)
+            return (ledger, ledger == nil)
+        }.value
+        guard !Task.isCancelled, generation == domainTrafficReadGeneration else { return }
+        if let ledger = result.0 { domainTrafficHistory = ledger }
+        domainTrafficReadFailed = result.1
+    }
+
     /// 自定义规则的命中计数（近 30 天，规则页「命中 N 次 / 可考虑删除」数据源）。
     /// ⚠️ 同 domainHistory：独立文件落本地，**不进 Snapshot**、不上 iCloud。
     public private(set) var ruleHitStats = RuleHitStats()
@@ -2651,6 +2671,10 @@ public final class AppState {
                 lastWidgetStatus = status
                 WidgetRefresher.reload()
                 logger.debug("NEVPNStatus → \(status.description)，已触发小组件刷新", category: "widget")
+            }
+            if Date().timeIntervalSince(domainTrafficReadAt) >= 10 {
+                domainTrafficReadAt = Date()
+                await refreshDomainTrafficHistory()
             }
             expireBandwidthObservations()
             syncAutoStopState()   // 定时关闭：刷新倒计时 + 识别「扩展已按定时自停」

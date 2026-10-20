@@ -1,5 +1,19 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## 2026-10-20 build33 月度域名流量（双端已安装，保留未验收项）
+
+包含 build32 的窗口/TCP/节点诊断修复，增加从新内核开始的真实月度域名载荷统计。首页流量卡和连接页可进入，默认本月代理；可筛月份、代理/直连/全部、上下行排序及搜索。保留未知/其他字节，仅存本机最近6个月，不能补算旧账单。范围和误差见 [DOMAIN-TRAFFIC.md](DOMAIN-TRAFFIC.md)。
+
+- 工程：1042项（1041通过、1缺真实历史回放输入跳过、0失败），iOS/macOS App/Tunnel/Widget、开发签名及完整签名验证通过；Go六项race通过。独立只读审查发现的初始化失败永久停采问题已修复为重试/日志节流，并增加45秒未更新提示；复核无剩余阻断。
+- 安装：Mac `/Applications/Qingzhou.app` 和 iPhone 应用数据库独立确认 1.0(33)，旧包及配置保留本机回退备份。手机安装成功不等于新隧道已运行；后续远程启动命令25秒超时，未把它标成启动/手机月度采集通过。
+- Mac运行：停旧隧道、退出旧App、覆盖更新后恢复安装前最新选择的节点与rule模式，实际配置匹配；主App/Tunnel来自 `/Applications`。安装前后节点身份、选择、设置、订阅和规则相同，仅后台正常测速更新24个时间戳、23个延迟字段。没有恢复iCloud中29节点旧配置（本机32节点）。
+- Mac月度页：10:52开始真实记录；页面与文件都有代理/直连字节、域名排行和更新时间。代理→直连切换正确；搜索只过滤排行不缩小总量；布局截图核对可读。当前样本中ChatGPT/OpenAI相关流量占比较大，包含本次对话/调试活动，不能倒推以前整个月的消耗。
+- Mac主App退出后持续采集：两次进程快照只有同一个Tunnel PID28839，主App不在；同一内核session的记录时间从11:01:54推进到11:02:16，代理累计从165,738,568到169,511,419字节、直连从32,990,717到33,020,415字节。没有额外大文件下载。证据 `monthly-main-app-closed.json`；随后正常重开主App；之后观测到选择变为HY2、隧道PID/session更新，故不把该段标为同一会话始终不变。新session账本继续累计到代理193,171,849、直连33,925,648字节（11:04:17），记录未清零。最终首页实际与选择匹配、VPN连接；没有擅自恢复旧选择。
+- 仍待验收：手机新扩展采集与页面、长期/跨月真实运行、两端Widget/Live Activity、小屏/动态字体/最低系统，以及build32真实窗口关闭后状态栏恢复等旧条目。工程边界测试不能替代这些体验验收，不标全部完成。
+
+证据：`/private/tmp/qingzhou-build33-verify-driver.log`、`/private/tmp/qingzhou-build33-verify/`、`/private/tmp/qingzhou-build33-macos-signed.log`、`/private/tmp/qingzhou-build33-ios-signed.log`、`/private/tmp/qingzhou-monthly-go-final.log`；安装/运行记录 `/private/tmp/qingzhou-build33-acceptance/`（`ios-install.json`、`ios-installed-apps.json`、`ios-launch.log`）。新内核隔离构建日志 `/private/tmp/qingzhou-monthly-framework-build.log`。
+
+
 ## 2026-10-20 build32 工程修复（待与月度流量功能统一安装/验收）
 
 - 主窗口改为稳定 ID 的单 Window，状态栏和 ⌘1 共用 openWindow；重开窗口不重复启动调度器。侧栏与主页面标题显式依赖 App 语言，保留导航树和编辑草稿。

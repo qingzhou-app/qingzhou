@@ -9,6 +9,7 @@ public struct HomeView: View {
     @State private var isRefreshingIP = false
     @State private var isTestingSpeed = false
     @State private var singleTesting: Set<SpeedTestTarget> = []
+    @State private var showMonthlyTraffic = false
     #if os(iOS)
     /// iOS 上「连接」不再占 tab（tab 收敛到 5 个），从流量卡的入口 push 进来。
     @State private var showConnections = false
@@ -52,6 +53,9 @@ public struct HomeView: View {
         }
         }
         .navigationTitle(AppSection.home.localizedTitle(language: state.settings.language))
+        .sheet(isPresented: $showMonthlyTraffic) {
+            NavigationStack { DomainTrafficView(state: state) }
+        }
         // 注意：之前在这里 .task { await firstLoad() } 会和 app entry 的 .task 重复触发
         // refreshRemoteRules / refreshPublicIPInfo，启动时争抢主线程导致 UI 卡顿。
         // 现在统一由 app entry 调度，HomeView 只读 state。
@@ -430,6 +434,9 @@ public struct HomeView: View {
                             value: "\(ByteFormatter.format(xs.proxy.totalBytes)) / \(ByteFormatter.format(xs.direct.totalBytes))"
                                 + (xs.proxyShare.map { String(format: L("（代理 %.0f%%）"), $0 * 100) } ?? ""))
                 }
+                Button { showMonthlyTraffic = true } label: {
+                    Label("月度域名流量", systemImage: "chart.bar.xaxis")
+                }.buttonStyle(.borderless)
                 #if os(iOS)
                 // 连接页在 iOS 上不占 tab，从这里 push（macOS 侧栏有独立「连接」项，不重复放）
                 HStack {

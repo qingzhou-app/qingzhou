@@ -1,6 +1,236 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "记录暂未更新，当前数字可能不包含最近的流量。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording has not updated recently. These totals may exclude recent traffic."
+          }
+        }
+      }
+    },
+    "月度域名流量": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monthly Domain Traffic"
+          }
+        }
+      }
+    },
+    "未识别域名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unidentified domains"
+          }
+        }
+      }
+    },
+    "其他域名（超出记录上限）": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other domains (record limit reached)"
+          }
+        }
+      }
+    },
+    "月份": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Month"
+          }
+        }
+      }
+    },
+    "流量范围": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traffic scope"
+          }
+        }
+      }
+    },
+    "总流量": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total traffic"
+          }
+        }
+      }
+    },
+    "上传": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload"
+          }
+        }
+      }
+    },
+    "下载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download"
+          }
+        }
+      }
+    },
+    "仅统计这台设备经过轻舟的流量；搜索不改变上方总量。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only traffic through Qingzhou on this device is counted. Search does not change the totals above."
+          }
+        }
+      }
+    },
+    "统计文件暂时无法读取，已保留原文件；下方可能是上次读取的数据。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The traffic history cannot be read right now. The original file is preserved; the data below may be from the last successful read."
+          }
+        }
+      }
+    },
+    "这个月还没有流量记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No traffic history for this month"
+          }
+        }
+      }
+    },
+    "安装此版本并重新开启 VPN 后开始记录，无法补回此前的域名流量。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording starts after installing this version and restarting the VPN. Earlier domain traffic cannot be recovered."
+          }
+        }
+      }
+    },
+    "当前范围尚未记录到流量。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No traffic recorded in this scope yet."
+          }
+        }
+      }
+    },
+    "没有匹配的域名。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching domains."
+          }
+        }
+      }
+    },
+    "域名流量排行": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traffic by domain"
+          }
+        }
+      }
+    },
+    "记录范围与计费差异": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coverage and billing differences"
+          }
+        }
+      }
+    },
+    "开始记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First recorded"
+          }
+        }
+      }
+    },
+    "最近更新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last updated"
+          }
+        }
+      }
+    },
+    "归档时区": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording time zone"
+          }
+        }
+      }
+    },
+    "按主域名合并，保留最近 6 个月，仅存本机，不参与云同步。无法识别域名或超出记录上限的流量仍计入总量。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traffic is grouped by parent domain and kept locally for 6 months, without cloud sync. Unidentified domains and traffic beyond the record limit still count toward the totals."
+          }
+        }
+      }
+    },
+    "关闭主窗口仍会记录，约每 10 秒保存一次。月份按保存时的本地时间划分，跨月附近可能有少量偏差；隧道停止时最后数秒可能尚未保存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording continues with the main window closed and saves about every 10 seconds. Months follow local time at each save, so traffic near a month boundary may be slightly shifted. The final few seconds may be lost when the tunnel stops."
+          }
+        }
+      }
+    },
+    "这里统计应用载荷，不等于订阅账单。节点倍率、加密封装、重传和其他设备的用量，可能让账单更高；没有经过轻舟的流量不在这里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These application payload totals are not your subscription bill. Node multipliers, encryption overhead, retransmissions and other devices may increase billed usage. Traffic outside Qingzhou is not included."
+          }
+        }
+      }
+    },
     "连接诊断": {
       "extractionState": "manual",
       "localizations": {

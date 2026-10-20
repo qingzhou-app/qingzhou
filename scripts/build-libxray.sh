@@ -127,6 +127,10 @@ echo "==> Applying switch-outbound patch (scripts/patches/libxray/qingzhou_switc
 cp "$REPO_ROOT/scripts/patches/libxray/qingzhou_switch.go" "$LIBXRAY_DIR/xray/qingzhou_switch.go"
 cp "$REPO_ROOT/scripts/patches/libxray/qingzhou_switch_wrapper.go" "$LIBXRAY_DIR/qingzhou_switch_wrapper.go"
 
+# 5.8) 域名真实载荷统计：生成源补丁，先验证再进入三平台构建。
+python3 "$REPO_ROOT/scripts/apply-domain-traffic-patch.py" "$XC_PATCHED"
+(cd "$XC_PATCHED" && go test ./app/dispatcher -run TestQingzhouDomain -count=1)
+
 # 6) gomobile bind
 # 注意：不要带 maccatalyst —— gomobile + Xcode 26 在 maccatalyst 上有
 # "duplicate framework path" bug（详见 docs/ROADMAP.md "S1 已知坑"）。
@@ -139,13 +143,13 @@ gomobile bind \
 
 # 6) 把产物挪到本仓库
 SRC="$LIBXRAY_DIR/LibXray.xcframework"
-DST="$REPO_ROOT/Frameworks/LibXray.xcframework"
+DST="${LIBXRAY_OUTPUT_DIR:-$REPO_ROOT/Frameworks/LibXray.xcframework}"
 if [ ! -d "$SRC" ]; then
   echo "ERROR: build succeeded but $SRC missing" >&2
   exit 1
 fi
 
-mkdir -p "$REPO_ROOT/Frameworks"
+mkdir -p "$(dirname "$DST")"
 rm -rf "$DST"
 echo "==> Moving xcframework to $DST"
 mv "$SRC" "$DST"

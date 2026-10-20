@@ -6,6 +6,7 @@ public struct ConnectionsView: View {
     @State private var keyword: String = ""
     @State private var filter: ConnectionFilter = .active
     @State private var showDomainAnalysis = false
+    @State private var showMonthlyTraffic = false
     /// 「忽略 IP」过滤：临时状态，不持久化 —— 离开本页自动复位。
     /// 经 Binding 传给域名分析页，两页联动。
     @State private var hideBareIPs = false
@@ -47,6 +48,11 @@ public struct ConnectionsView: View {
         }
         .navigationTitle(AppSection.connections.localizedTitle(language: state.settings.language))
         .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Button { showMonthlyTraffic = true } label: {
+                    Label("月度域名流量", systemImage: "chart.bar.xaxis")
+                }
+            }
             // 统一「筛选」菜单：路由单选 + 忽略 IP / 隐藏 DNS（收自原顶部那行两个 button）
             ToolbarItem(placement: .primaryAction) {
                 ConnectionFilterMenu(routeFilter: $routeFilter,
@@ -68,6 +74,9 @@ public struct ConnectionsView: View {
                     #endif
                 }
             }
+        }
+        .sheet(isPresented: $showMonthlyTraffic) {
+            NavigationStack { DomainTrafficView(state: state) }
         }
         .sheet(isPresented: $showDomainAnalysis) {
             NavigationStack {

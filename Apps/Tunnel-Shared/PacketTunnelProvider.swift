@@ -84,6 +84,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private var metricsPort: Int?
     /// 统计轮询节流：每 2 个 stats tick（≈2 秒）查一次 QueryStats，别每秒都 GET。
     private var statsTickCount = 0
+    // 月度域名账本只在statsQueue读写；主App不参与累加。
+    private var domainTrafficRecorder: DomainTrafficRecorder?
+    private var domainTrafficInitializationErrorLogged = false
+    private var domainTrafficRecordedAt = Date.distantPast
+
     /// 阻断 QUIC（reject UDP 443）。startTunnel 从 providerConfig 读一次存下来，
     /// reconfigure / performTest 从存的配置重组时也复用同一值 —— 否则切节点/预检后 QUIC 又放开了。
     /// 默认 true（缺字段/旧配置也阻断，QUIC 经代理普遍不通，见 XrayConfigComposer / docs/QUIC.md）。
@@ -648,6 +653,26 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         guard let port = metricsPort else { return }
         let attributionBefore = bandwidthAttribution()
         guard let expvar = try? XrayCore.queryStats(metricsPort: port) else { return }
+        if now.timeIntervalSince(domainTrafficRecordedAt) >= 10 {
+            domainTrafficRecordedAt = now
+            if domainTrafficRecorder == nil {
+                if let url = TunnelAppGroup.containerURL?.appendingPathComponent(DomainTrafficLedger.storageName + ".json") {
+                    do {
+                        domainTrafficRecorder = try DomainTrafficRecorder(url: url)
+                        domainTrafficInitializationErrorLogged = false
+                    } catch {
+                        if !domainTrafficInitializationErrorLogged {
+                            os_log("Monthly domain history unreadable; preserving file and retrying later", log: log, type: .error)
+                            domainTrafficInitializationErrorLogged = true
+                        }
+                    }
+                }
+            }
+            if let data = expvar.data(using: .utf8), let snapshot = DomainTrafficSnapshot.parseMetrics(data) {
+                do { try domainTrafficRecorder?.record(snapshot, at: now) }
+                catch { os_log("Monthly domain history write failed; next sample will retry", log: log, type: .error) }
+            }
+        }
         let parsed = XrayCore.parseOutboundStats(expvar)
         guard !parsed.isEmpty else { return }
         let attributionAfter = bandwidthAttribution()
