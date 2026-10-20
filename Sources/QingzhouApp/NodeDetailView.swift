@@ -11,6 +11,9 @@ public struct NodeDetailView: View {
     /// 跟随 App 语言设置的 locale（根视图注入），日期格式化用
     @Environment(\.locale) private var locale
     @State var draft: Node
+    @State private var diagnosticTask: Task<Void, Never>?
+    @State private var diagnosticReport: NodeDiagnosticReport?
+    @State private var diagnosticInterrupted = false
     @State private var newParamKey: String = ""
     @State private var newParamValue: String = ""
     /// 「为什么选它」评分构成，**进入详情时算一次**缓存（用户主动看才算 —— 节点多时
@@ -27,6 +30,7 @@ public struct NodeDetailView: View {
     public var body: some View {
         Form {
             identitySection
+            diagnosticSection
             scoreSection
             basicSection
             credentialSection
@@ -44,6 +48,10 @@ public struct NodeDetailView: View {
                 scoreBreakdown = state.scoreForAutoSelect(live)
             }
         }
+        .onDisappear { diagnosticTask?.cancel(); diagnosticTask = nil }
+        .onChange(of: draft.identityFingerprint) { invalidateDiagnostic() }
+        .onChange(of: state.measurementNetworkID) { invalidateDiagnostic() }
+        .onChange(of: state.nodes.first { $0.id == draft.id }?.identityFingerprint) { invalidateDiagnostic() }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("保存") { save() }
@@ -52,6 +60,59 @@ public struct NodeDetailView: View {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
             }
+        }
+    }
+
+    private func invalidateDiagnostic() {
+        diagnosticTask?.cancel(); diagnosticTask = nil
+        diagnosticReport = nil
+        diagnosticInterrupted = true
+    }
+
+    private var diagnosticSection: some View {
+        Section {
+            if let report = diagnosticReport {
+                LabeledContent("TCP 直连", value: report.directSummary)
+                LabeledContent("真实代理链路", value: report.proxySummary)
+                Text(report.explanation).font(.caption).foregroundStyle(.secondary)
+                Text(report.completedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .standard).locale(locale)))
+                    .font(.caption2).foregroundStyle(.secondary)
+                Button("复制脱敏诊断报告") {
+                    #if os(macOS)
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(report.sanitizedText, forType: .string)
+                    #else
+                    UIPasteboard.general.string = report.sanitizedText
+                    #endif
+                    state.showToast(L("已复制"))
+                }
+            }
+            if diagnosticInterrupted {
+                Text("诊断已失效，请重新运行。未保存的节点修改请先保存。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if diagnosticTask != nil {
+                HStack { ProgressView().controlSize(.small); Button("取消诊断") { invalidateDiagnostic() } }
+            } else {
+                Button("运行连接诊断") {
+                    diagnosticReport = nil; diagnosticInterrupted = false
+                    diagnosticTask = Task {
+                        let report = await state.diagnoseNode(draft)
+                        guard !Task.isCancelled else { return }
+                        diagnosticReport = report; diagnosticInterrupted = report == nil
+                        if let live = state.nodes.first(where: { $0.id == draft.id && $0.identityFingerprint == draft.identityFingerprint }) {
+                            draft.lastLatencyMs = live.lastLatencyMs; draft.lastTestedAt = live.lastTestedAt
+                            draft.lastProxiedLatencyMs = live.lastProxiedLatencyMs; draft.lastProxiedTestedAt = live.lastProxiedTestedAt
+                            scoreBreakdown = state.scoreForAutoSelect(live)
+                        }
+                        diagnosticTask = nil
+                    }
+                }
+            }
+        } header: {
+            Text("连接诊断")
+        } footer: {
+            Text("分别检查直连与真实代理，不切换当前节点。报告不含节点名称、地址、凭据或订阅链接。")
         }
     }
 
@@ -248,12 +309,10 @@ public struct NodeDetailView: View {
             }
             Button {
                 Task {
-                    if let ms = await state.measureProxiedLatency(draft) {
-                        draft.lastProxiedLatencyMs = ms
-                        draft.lastProxiedTestedAt = Date()
-                    } else if state.isVPNRunning {
-                        draft.lastProxiedLatencyMs = nil
-                        draft.lastProxiedTestedAt = Date()
+                    await state.measureProxiedLatency(draft)
+                    if let live = state.nodes.first(where: { $0.id == draft.id && $0.identityFingerprint == draft.identityFingerprint }) {
+                        draft.lastProxiedLatencyMs = live.lastProxiedLatencyMs
+                        draft.lastProxiedTestedAt = live.lastProxiedTestedAt
                     }
                     // 经代理延迟变了 → 刷新「为什么选它」评分（延迟维会重新混合）
                     scoreBreakdown = state.scoreForAutoSelect(draft)

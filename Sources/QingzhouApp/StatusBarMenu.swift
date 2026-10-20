@@ -2,6 +2,20 @@
 import SwiftUI
 import QingzhouCore
 
+/// openWindow 能重新创建已关闭的主场景，也能恢复已有窗口；不误激活设置窗口。
+public struct MainWindowButton: View {
+    public static let sceneID = "qingzhou-main"
+    @Environment(\.openWindow) private var openWindow
+    public init() {}
+    public var body: some View {
+        Button("打开主窗口") {
+            openWindow(id: Self.sceneID)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+}
+
+
 /// macOS 状态栏菜单内容。在 app 入口里通过 `MenuBarExtra { StatusBarMenu(...) }` 使用。
 public struct StatusBarMenu: View {
     @Bindable var state: AppState
@@ -76,13 +90,7 @@ public struct StatusBarMenu: View {
 
         Divider()
 
-        Button("打开主窗口") {
-            // 主窗口 SwiftUI 场景：唤起首个 WindowGroup
-            NSApp.activate(ignoringOtherApps: true)
-            for window in NSApp.windows where window.canBecomeMain {
-                window.makeKeyAndOrderFront(nil)
-            }
-        }
+        MainWindowButton()
 
         Button("退出") {
             NSApplication.shared.terminate(nil)

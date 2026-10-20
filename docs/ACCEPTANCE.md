@@ -1,5 +1,16 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## 2026-10-20 build32 工程修复（待与月度流量功能统一安装/验收）
+
+- 主窗口改为稳定 ID 的单 Window，状态栏和 ⌘1 共用 openWindow；重开窗口不重复启动调度器。侧栏与主页面标题显式依赖 App 语言，保留导航树和编辑草稿。
+- TCP 探针按物理接口使用系统 DNS-SD 解析，显式 IP 连接；过滤 FakeDNS，最多 4 个备选地址共享总预算；无接口、解析异常、取消不记节点失败，不用经 VPN 的无绑定延迟代替直连。
+- 新增节点详情连接诊断：直连/真实代理结果分开，UDP 不测 TCP，无 VPN 不擅自连接；报告只含协议、时间、数值和枚举，不含节点名称、地址、凭据、订阅或原始错误。身份/网络变化、删除节点、停 VPN、取消会丢弃迟到结果。
+- 实机证据：旧系统解析抽查 6 个 TCP 节点全为 FakeDNS；最终生产探针同批 6 个均 TCP connected。物理接口能访问本地网关及 223.5.5.5:443，1.1.1.1:443 超时。TCP 成功不代表代理全链路成功，也不能代表 iOS 结果。阿里 DoH 节点查询被自动审批拒绝，未执行；使用系统接口解析后已无需该外部对照。
+- 最终工程验证：1033 项，1032 通过、1 项缺真实历史回放输入跳过、0 失败；iOS/macOS App/Tunnel/Widget 及开发签名构建通过。独立审查的多地址问题已补失败回归修复；详情测量与评分同步问题也已修正。
+- 尚未安装 build32：用户追加真实月度域名流量统计，后续一起交付。旧待验收条目保持未完成；窗口关闭/最小化/仅设置窗口等真实交互仍须最终复验，CUA 关闭后观察会重新呈现窗口，不能把这个现象当通过证据。
+
+本机证据：`/private/tmp/qingzhou-build32-verify-driver.log`、`/private/tmp/qingzhou-build32-verify/`、`/private/tmp/qingzhou-build32-macos-signed.log`、`/private/tmp/qingzhou-build32-ios-signed.log`、`/private/tmp/qingzhou-oct20/production-probe-final.log`、`/private/tmp/qingzhou-oct20-review-green.log`。
+
 ## 2026-10-15 agent 全面验收与 build31 修复（尚未全部通过）
 
 用户授权由 agent 执行验收。本轮先验收已安装 build30，修复实测发现的三处界面问题，再构建并安装 build31 到 Mac 和 iPhone。手机无线安装完成后，用户解锁恢复 USB/CoreDevice 通道；独立查询确认 1.0(31)，普通启动与仅重开主 App 的运行复验通过。iPhone 镜像已获准启用并连通，首页状态已核对；镜像坐标点击故障仍阻碍其余交互验收。下表区分真机结果、工程回归和未覆盖项目。

@@ -21,7 +21,7 @@ public struct ProbeInterfaceCandidate: Sendable, Equatable {
 /// 所以这里是「反向主动绑定」：
 /// 1. 优先选类型明确的物理口（.wifi / .cellular / .wiredEthernet），保持系统偏好序取第一个；
 /// 2. 没有，再在 `.other` 里按**名字**排除已知虚拟接口（utun/ipsec/ppp/awdl/llw/…），取第一个幸存者；
-/// 3. 还没有 → 返回 nil，调用方**回退到无绑定**（宁可测到假延迟，也不能全超时）。
+/// 3. 还没有 → 返回 nil，调用方报告接口不可用，不回退到无绑定。
 public enum PhysicalInterfacePicker {
     /// 类型即物理的接口 —— 无需看名字。
     private static let explicitPhysicalTypes: Set<NWInterface.InterfaceType> = [
@@ -35,7 +35,7 @@ public enum PhysicalInterfacePicker {
         "utun", "ipsec", "ppp", "tun", "tap", "awdl", "llw", "lo", "bridge",
     ]
 
-    /// 返回应绑定的候选下标；nil = 没有合适的物理接口，调用方应回退到无绑定连接。
+    /// 返回应绑定的候选下标；nil = 没有合适的物理接口，调用方应报告接口不可用。
     public static func pickIndex(_ candidates: [ProbeInterfaceCandidate]) -> Int? {
         // 第一优先：类型明确的物理口。availableInterfaces 本身是系统偏好序，取第一个即最优。
         if let idx = candidates.firstIndex(where: { explicitPhysicalTypes.contains($0.type) }) {
@@ -55,7 +55,7 @@ public enum PhysicalInterfacePicker {
 /// 生命周期设计（避免常驻 monitor 的泄漏 / 回调循环引用）：
 /// - monitor 只活在单次快照里：start → 收到第一次 path 更新（通常 <10ms）→ cancel，
 ///   不设常驻 handler，也就没有 handler 强持有 monitor 的环；
-/// - 500ms 兜底超时，保证系统不回调时也不会挂住探针（返回 nil → 无绑定回退）；
+/// - 500ms 兜底超时，保证系统不回调时也不会挂住探针（返回 nil → 接口不可用）；
 /// - 3 秒 TTL 缓存 + in-flight 去重：NodeSelector 一轮测几百个节点（并发 8），
 ///   同一轮里只做 1~2 次快照，不会每个探针都起一个 monitor。
 actor DirectInterfaceResolver {
@@ -66,7 +66,7 @@ actor DirectInterfaceResolver {
     private let ttl: Duration = .seconds(3)
     private let clock = ContinuousClock()
 
-    /// 当前应绑定的物理接口；nil 表示找不到（调用方回退到无绑定）。
+    /// 当前应绑定的物理接口；nil 表示找不到（调用方报告接口不可用）。
     func currentPhysicalInterface() async -> NWInterface? {
         if let cached, clock.now - cached.at < ttl {
             return cached.interface

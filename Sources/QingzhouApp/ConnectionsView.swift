@@ -45,7 +45,7 @@ public struct ConnectionsView: View {
                 .listStyle(.plain)
             }
         }
-        .navigationTitle("连接")
+        .navigationTitle(AppSection.connections.localizedTitle(language: state.settings.language))
         .toolbar {
             // 统一「筛选」菜单：路由单选 + 忽略 IP / 隐藏 DNS（收自原顶部那行两个 button）
             ToolbarItem(placement: .primaryAction) {

@@ -92,3 +92,26 @@ public enum L10n {
 public func L(_ key: String.LocalizationValue) -> String {
     String(localized: key, bundle: L10n.bundle)
 }
+
+// 显式读取语言设置，让 Observation 能追踪侧栏和原生窗口标题的语言变化。
+extension AppSection {
+    func localizedTitle(language: AppLanguage, bundle: Bundle = .main) -> String {
+        let key: String
+        switch self {
+        case .home: key = "首页"
+        case .nodes: key = "节点"
+        case .subscriptions: key = "订阅"
+        case .rules: key = "规则"
+        case .connections: key = "连接"
+        case .logs: key = "日志"
+        case .settings: key = "设置"
+        }
+        let localizedBundle: Bundle
+        if let name = LocaleResolver.lprojName(for: language),
+           let path = bundle.path(forResource: name, ofType: "lproj"),
+           let resolved = Bundle(path: path) {
+            localizedBundle = resolved
+        } else { localizedBundle = bundle }
+        return localizedBundle.localizedString(forKey: key, value: key, table: nil)
+    }
+}

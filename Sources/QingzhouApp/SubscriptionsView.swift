@@ -67,7 +67,7 @@ public struct SubscriptionsView: View {
                 }
             }
         }
-        .navigationTitle("订阅")
+        .navigationTitle(AppSection.subscriptions.localizedTitle(language: state.settings.language))
         // iOS 下拉刷新；macOS List 没有下拉手势，靠工具栏「全部刷新」按钮
         .refreshable { await refreshAll() }
         .toolbar {

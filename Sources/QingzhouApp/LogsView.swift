@@ -50,7 +50,7 @@ public struct LogsView: View {
                 }
             }
         }
-        .navigationTitle("日志")
+        .navigationTitle(AppSection.logs.localizedTitle(language: state.settings.language))
         .searchable(text: $keyword)
         .toolbar {
             ToolbarItem {

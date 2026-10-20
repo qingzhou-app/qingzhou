@@ -1,7 +1,7 @@
 // 示例：macOS App 入口。
 //
 // 包含两个 Scene：
-// - WindowGroup 提供常规窗口
+// - Window 提供唯一主窗口
 // - MenuBarExtra 提供状态栏菜单（macOS 13+）
 //
 // 同样，真要让代理工作需要 Network Extension Target 和 entitlements，详见 docs/BUILD.md。
@@ -50,13 +50,17 @@ struct VPNMacApp: App {
         logger: Logger(capacity: 10000, minimumLevel: .debug)
     )
 
+    @State private var didStart = false
+
     var body: some Scene {
-        WindowGroup {
+        Window("轻舟", id: MainWindowButton.sceneID) {
             RootView(state: state)
                 .frame(minWidth: 880, minHeight: 560)
                 .preferredColorScheme(colorScheme(for: state.settings.theme))
                 .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
                 .task {
+                    guard !didStart else { return }
+                    didStart = true
                     state.startSchedulers()
                     state.applyMacSystemPreferences()
                     #if DEBUG
@@ -77,7 +81,9 @@ struct VPNMacApp: App {
                 }
         }
         .commands {
-            CommandGroup(replacing: .newItem) { } // 关掉 ⌘N
+            CommandGroup(replacing: .newItem) {
+                MainWindowButton().keyboardShortcut("1", modifiers: .command)
+            }
         }
 
         // 标准设置场景：让 ⌘, 和菜单栏「设置…」能打开设置窗口（macOS 用户的肌肉记忆）。

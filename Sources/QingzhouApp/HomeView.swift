@@ -51,7 +51,7 @@ public struct HomeView: View {
             }
         }
         }
-        .navigationTitle("首页")
+        .navigationTitle(AppSection.home.localizedTitle(language: state.settings.language))
         // 注意：之前在这里 .task { await firstLoad() } 会和 app entry 的 .task 重复触发
         // refreshRemoteRules / refreshPublicIPInfo，启动时争抢主线程导致 UI 卡顿。
         // 现在统一由 app entry 调度，HomeView 只读 state。

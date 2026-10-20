@@ -102,7 +102,7 @@ public actor NodeSelector {
             updated[i].lastTestedAt = nil
         }
         let now = Date()
-        for (idx, result) in measurements {
+        for (idx, result) in measurements where result.isNodeObservation {
             updated[idx].lastLatencyMs = result.latencyMs
             updated[idx].lastTestedAt = now
         }
@@ -132,13 +132,18 @@ public actor NodeSelector {
         shouldContinue: (@MainActor @Sendable () -> Bool)? = nil) async -> LatencyResult {
         var successes: [Int] = []
         var lastError: String?
+        var lastFailure: DirectProbeFailure?
         for _ in 0..<burstCount {
-            guard await canContinue(shouldContinue) else { break }
+            guard await canContinue(shouldContinue) else {
+                return .init(url: url, latencyMs: nil, failure: .cancelled)
+            }
             let result = await prober.probe(url, timeout: timeout)
+            guard result.isNodeObservation else { return result }
             if let ms = result.latencyMs {
                 successes.append(ms)
             } else {
                 lastError = result.errorDescription
+                lastFailure = result.failure
             }
         }
         let loss = Double(burstCount - successes.count) / Double(burstCount)
@@ -146,11 +151,18 @@ public actor NodeSelector {
             return LatencyResult(
                 url: url, latencyMs: nil,
                 errorDescription: lastError ?? "all \(burstCount) probes failed",
-                lossFraction: 1.0
+                lossFraction: 1.0, failure: lastFailure
             )
         }
         let sorted = successes.sorted()
         return LatencyResult(url: url, latencyMs: sorted[(sorted.count - 1) / 2], lossFraction: loss)
+    }
+
+    /// 手动诊断单个节点，不写历史、不改变排除/选择状态。
+    public func diagnose(_ node: Node, timeout: TimeInterval = 5,
+        shouldContinue: (@MainActor @Sendable () -> Bool)? = nil) async -> LatencyResult? {
+        guard node.protocolType.supportsTCPProbe, let url = nodeProbeURL(node) else { return nil }
+        return await Self.burstProbe(url, prober: prober, timeout: timeout, shouldContinue: shouldContinue)
     }
 
     private func nodeProbeURL(_ node: Node) -> URL? {

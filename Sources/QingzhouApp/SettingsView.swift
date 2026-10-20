@@ -33,7 +33,7 @@ public struct SettingsView: View {
         // 切 English 后「定时关闭」的值仍显示「关闭」）。静态 Text 靠 \.locale 环境值
         // 自动刷新不受影响，但 String 值内容不变时 cell 未必重渲染 —— id 直接换树。
         .id(state.settings.language)
-        .navigationTitle("设置")
+        .navigationTitle(AppSection.settings.localizedTitle(language: state.settings.language))
         .formStyle(.grouped)
         // 「立即恢复」的版本选择 sheet。两条呈现纪律（复验 #18 两轮打回换来的）：
         // 1. 挂在 Form 顶层，**不要挂进 Section** —— iOS 的 Form 是惰性容器（UICollectionView），

@@ -1,6 +1,270 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "连接诊断": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection diagnostics"
+          }
+        }
+      }
+    },
+    "TCP 直连": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct TCP"
+          }
+        }
+      }
+    },
+    "真实代理链路": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy request"
+          }
+        }
+      }
+    },
+    "复制脱敏诊断报告": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy sanitized diagnostic report"
+          }
+        }
+      }
+    },
+    "运行连接诊断": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run connection diagnostics"
+          }
+        }
+      }
+    },
+    "取消诊断": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel diagnostics"
+          }
+        }
+      }
+    },
+    "诊断已失效，请重新运行。未保存的节点修改请先保存。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics are no longer current. Save any node changes, then run again."
+          }
+        }
+      }
+    },
+    "分别检查直连与真实代理，不切换当前节点。报告不含节点名称、地址、凭据或订阅链接。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tests direct connectivity and proxy requests separately without switching the current node. Reports omit node names, addresses, credentials, and subscription links."
+          }
+        }
+      }
+    },
+    "UDP 协议不适用 TCP 握手": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP handshakes do not apply to this UDP protocol"
+          }
+        }
+      }
+    },
+    "解析得到虚拟地址，未执行直连": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DNS returned a synthetic address; direct TCP was not attempted"
+          }
+        }
+      }
+    },
+    "系统 DNS 未返回可用地址": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System DNS did not return a usable address"
+          }
+        }
+      }
+    },
+    "直连网络暂不可用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct network is unavailable"
+          }
+        }
+      }
+    },
+    "TCP 握手超时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP handshake timed out"
+          }
+        }
+      }
+    },
+    "TCP 连接被拒绝": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP connection refused"
+          }
+        }
+      }
+    },
+    "节点地址或端口无效": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid node address or port"
+          }
+        }
+      }
+    },
+    "TCP 连接未完成": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP connection did not complete"
+          }
+        }
+      }
+    },
+    "节点配置未通过内核校验": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Node configuration failed core validation"
+          }
+        }
+      }
+    },
+    "代理链路测试失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy request failed"
+          }
+        }
+      }
+    },
+    "代理测试暂不可用，请稍后重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proxy testing is unavailable; try again later"
+          }
+        }
+      }
+    },
+    "未测试，请先连接 VPN": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not tested; connect the VPN first"
+          }
+        }
+      }
+    },
+    "本次节点代理请求成功。结果仅代表当前网络和测试目标。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The proxy request succeeded. This result applies only to this network and test target."
+          }
+        }
+      }
+    },
+    "请检查节点凭据、传输配置及测试目标；TCP 连通不能证明代理可用。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check node credentials, transport settings, and the test target. TCP connectivity does not prove proxy usability."
+          }
+        }
+      }
+    },
+    "当前只有直连结果，连接 VPN 后可继续验证真实代理链路。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only direct connectivity was tested. Connect the VPN to verify a real proxy request."
+          }
+        }
+      }
+    },
+    "本次未获得有效代理结果，不能据此判断节点故障。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No valid proxy result was obtained. This does not establish a node failure."
+          }
+        }
+      }
+    },
     "开启后按地区偏好与综合评分自动择优。正常切换需连续两轮领先；若希望保留手选节点，请关闭自动择优。": {
       "extractionState": "manual",
       "localizations": {

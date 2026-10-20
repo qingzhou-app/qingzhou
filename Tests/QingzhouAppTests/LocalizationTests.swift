@@ -3,6 +3,21 @@ import QingzhouCore
 @testable import QingzhouApp
 
 final class LocalizationTests: XCTestCase {
+    func testSectionTitlesSwitchLanguageWithoutChangingGlobalLanguage() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bundle")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for (language, title) in [("en", "Home"), ("zh-Hans", "首页")] {
+            let directory = root.appendingPathComponent(language + ".lproj")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try "\"首页\" = \"\(title)\";".write(to: directory.appendingPathComponent("Localizable.strings"), atomically: true, encoding: .utf8)
+        }
+        let bundle = try XCTUnwrap(Bundle(path: root.path))
+        XCTAssertEqual(AppSection.home.localizedTitle(language: .en, bundle: bundle), "Home")
+        XCTAssertEqual(AppSection.home.localizedTitle(language: .zhHans, bundle: bundle), "首页")
+        XCTAssertEqual(AppSection.home.localizedTitle(language: .en, bundle: bundle), "Home")
+        XCTAssertEqual(AppSection.nodes.localizedTitle(language: .en, bundle: bundle), "节点")
+    }
+
     func testSystemUsesAutoupdatingCurrent() {
         let locale = LocaleResolver.locale(for: .system)
         // autoupdatingCurrent 的 identifier 与系统当前一致

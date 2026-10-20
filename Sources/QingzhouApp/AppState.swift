@@ -1841,6 +1841,7 @@ public final class AppState {
             self.measuringNodeIds.remove(nodeID)
             guard let i = self.nodes.firstIndex(where: { $0.id == nodeID && $0.identityFingerprint == fingerprints[nodeID] }),
                   !self.isEffectivelyExcluded(self.nodes[i]) else { return }
+            guard result.isNodeObservation else { return }
             let testedAt = self.measurementNow()
             self.nodes[i].lastLatencyMs = result.latencyMs
             self.nodes[i].lastTestedAt = testedAt
@@ -1869,6 +1870,36 @@ public final class AppState {
             nodes[i].lastTestedAt = observation.at
             nodes[i].lastLatencyMs = observation.ms
         }
+    }
+
+    private var diagnosticGeneration = UUID()
+
+    /// 用户主动触发；沿用已有串行代理探针，不改当前选择、不额外启停 VPN。
+    public func diagnoseNode(_ node: Node) async -> NodeDiagnosticReport? {
+        let generation = UUID()
+        diagnosticGeneration = generation
+        proxyProbeContext &+= 1
+        let network = measurementNetworkID
+        let context = proxyProbeContext
+        func isCurrent() -> Bool {
+            !Task.isCancelled && diagnosticGeneration == generation && measurementNetworkID == network
+                && proxyProbeContext == context
+                && nodes.contains { $0.id == node.id && $0.identityFingerprint == node.identityFingerprint }
+        }
+        guard isCurrent() else { return nil }
+        let direct = await nodeSelector.diagnose(node, shouldContinue: { [weak self] in
+            guard let self else { return false }
+            return self.diagnosticGeneration == generation && self.measurementNetworkID == network
+                && self.proxyProbeContext == context
+                && self.nodes.contains { $0.id == node.id && $0.identityFingerprint == node.identityFingerprint }
+        })
+        guard isCurrent() else { return nil }
+        let proxy: ProxyProbeOutcome?
+        if isVPNRunning && !isSwitchingTunnel {
+            proxy = await probeProxiedLatency(node)
+        } else { proxy = nil }
+        guard isCurrent() else { return nil }
+        return NodeDiagnosticReport(node: node, direct: direct, proxy: proxy, at: measurementNow())
     }
 
     // MARK: - 经代理延迟（VPN 开启时经隧道扩展 libXray Ping 真实走节点测）

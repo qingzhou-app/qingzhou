@@ -22,7 +22,7 @@ public struct RulesView: View {
                     .id("qz-rules-custom")   // App Store 截图 demo 的滚动锚点（无副作用）
                 remoteSection
             }
-            .navigationTitle("规则")
+            .navigationTitle(AppSection.rules.localizedTitle(language: state.settings.language))
             .searchable(text: $searchText, prompt: "搜索规则")
             // 规则添加成功一记 .success（iOS 触觉；macOS no-op）。用条数增长当触发器 ——
             // 删除（减少）不响，避免误报

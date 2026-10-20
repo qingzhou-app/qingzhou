@@ -140,7 +140,7 @@ public struct RootView: View {
         NavigationSplitView {
             List(selection: sidebarSelectionBinding) {
                 ForEach(AppSection.allCases, id: \.self) { section in
-                    Text(section.sidebarTitle).tag(section)
+                    Text(section.localizedTitle(language: state.settings.language)).tag(section)
                 }
             }
             .navigationTitle("VPN")
@@ -174,19 +174,4 @@ public struct RootView: View {
         }
     }
     #endif
-}
-
-extension AppSection {
-    /// macOS 侧栏显示名。
-    var sidebarTitle: String {
-        switch self {
-        case .home:          return L("首页")
-        case .nodes:         return L("节点")
-        case .subscriptions: return L("订阅")
-        case .rules:         return L("规则")
-        case .connections:   return L("连接")
-        case .logs:          return L("日志")
-        case .settings:      return L("设置")
-        }
-    }
 }
