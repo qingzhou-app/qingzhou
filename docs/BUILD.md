@@ -1,5 +1,24 @@
 # 构建
 
+## macOS覆盖安装后的扩展来源核验
+
+同一bundle ID的旧App或DerivedData副本可能仍被系统选中。主App显示新版本，不代表Tunnel和Widget已经换新；典型症状是系统显示Connected，但首页一直确认实际连接，月度账本/内存文件停止更新。
+
+```bash
+pluginkit -m -A -D -v -i com.sbraveyoung.qingzhou.mac.tunnel
+pluginkit -m -A -D -v -i com.sbraveyoung.qingzhou.mac.widget
+ps -axo pid,comm | rg 'Qingzhou|VPN-Tunnel'
+```
+
+安装到`/Applications/Qingzhou.app`后，核对并记录每个同ID扩展路径。对确认属于旧构建的路径逐个执行`pluginkit -r "旧扩展绝对路径"`，仅撤销注册，不删除文件、配置或备份；不要处理其他产品的扩展。然后注册当前安装路径：
+
+```bash
+pluginkit -a /Applications/Qingzhou.app/Contents/PlugIns/Qingzhou-Tunnel-macOS.appex
+pluginkit -a /Applications/Qingzhou.app/Contents/PlugIns/Qingzhou-Widget-macOS.appex
+```
+
+关开一次轻舟VPN，复核Tunnel进程来自安装目录，并检查实际配置回执和月度账本时间继续更新。再次构建或打开旧App可能重新注册副本，每次开发安装都应复核。2026-10-23实测清理14个旧注册后，3个进程均来自安装目录，账本与内存上报恢复；不要仅凭签名/安装成功宣称运行验收通过。
+
 ## 前置要求
 
 | 工具 | 最低版本 | 备注 |

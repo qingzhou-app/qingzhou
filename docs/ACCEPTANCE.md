@@ -1,5 +1,18 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## 2026-10-23 build34 静默 iCloud 恢复
+
+- 启动检查与后台镜像发现云端差异时不再自动弹恢复提示；设置中仍可选择版本、查看差异并确认恢复。冲突暂停上传，保留两边配置，不自动采认不同内容。64项云相关回归通过。
+- 工程：1043项（1042通过、1缺历史回放输入跳过、0失败）；iOS/macOS App/Tunnel/Widget编译、开发签名与完整签名验证通过。独立只读审查无阻断；RootView、AppState、CloudSyncCoordinator各有1处旧弹窗注释待清理，不影响执行。
+- 安装：Mac `/Applications/Qingzhou.app` 和 iPhone 14 Pro 应用数据库独立确认1.0(34)。旧Mac包及配置留存本机。手机解锁后成功启动，16次只读采样中恢复确认和版本列表均未呈现；VPN当时未连接，读到既有月度账本（代理52,140,369、直连17,373,607字节）。不能将此标为新扩展采集通过。
+- Mac手动恢复：启动未弹自动恢复；设置入口成功列出当前r707及4个历史版本，取消返回设置；未执行真实恢复或替换配置。
+- Mac验收发现旧扩展误启动：主程序34，而Tunnel进程来自`/Applications/VPN-macOS.app`，Widget来自build33构建目录，月度文件停在02:09。系统共注册11个同ID Tunnel和5个Widget。移除14个旧注册（不删除文件），保留安装目录2个，启停后主程序/Tunnel/Widget均来自`/Applications/Qingzhou.app`。新会话02:47:59启动，月度账本02:48:45更新、内存02:48:49上报，系统Connected。安装后必须核验扩展路径，见[BUILD.md](BUILD.md)。
+- 后续02:50采样确认Mac实际nodeID与当前选择一致，请求/实际均rule，月度账本继续更新；桌面UI工具报`cgWindowNotFound`，因此没有把修复后的界面显示或窗口恢复标通过。
+- 工具中断：planning-with-files升级时旧3.24.3钩子路径失效，阻断命令和写文件；用户重载后已恢复。期间手机重新锁屏，后续启动采样待解锁；旧UI、跨月与兼容性条目继续保留，不标全部通过。
+- 宣发：[AI时代定位与六平台内容包](marketing/2026-10-launch-kit.md)已完成，含搜索词、标题、正文、视频脚本及官方竞品来源，未对外发布。
+
+证据：`/private/tmp/qingzhou-build34-verify/`、`/private/tmp/qingzhou-build34-ios-signed.log`、`/private/tmp/qingzhou-build34-macos-signed.log`、`/private/tmp/qingzhou-build34-acceptance/`。手机初次记录`ios-initial.json`，版本查询`ios-apps.json`，Mac旧注册`mac-extension-registration-before.json`、新扩展采样`mac-new-extension.json`。
+
 ## 2026-10-20 build33 月度域名流量（双端已安装，保留未验收项）
 
 包含 build32 的窗口/TCP/节点诊断修复，增加从新内核开始的真实月度域名载荷统计。首页流量卡和连接页可进入，默认本月代理；可筛月份、代理/直连/全部、上下行排序及搜索。保留未知/其他字节，仅存本机最近6个月，不能补算旧账单。范围和误差见 [DOMAIN-TRAFFIC.md](DOMAIN-TRAFFIC.md)。

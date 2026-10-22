@@ -567,12 +567,14 @@ public struct SettingsView: View {
                 Label("立即恢复 iCloud 数据", systemImage: "icloud.and.arrow.down")
             }
             .disabled(!state.settings.iCloudSyncEnabled)
+            Text("不会自动弹出恢复提示。需要恢复时，请点上方按钮选择云端版本；出现版本差异时会暂停自动上传，保留两边配置。")
+                .font(.caption2).foregroundStyle(.secondary)
             Text("配置（订阅、节点、规则、设置）会镜像到你 iCloud Drive 的「轻舟」文件夹，卸载 App 不会丢失，重装或换设备时可一键恢复。云端保留最近 \(CloudVaultStore.maxBackups) 份历史版本。不含连接记录与流量统计。")
                 .font(.caption2).foregroundStyle(.secondary)
         }
     }
 
-    /// iCloud 同步开关走专用方法 —— 开启时要立刻跑一次云端比对（可能提示恢复）。
+    /// iCloud 同步开关走专用方法 —— 开启时要立刻跑一次云端比对（只更新状态，不弹恢复提示）。
     private var cloudSyncBinding: Binding<Bool> {
         Binding(
             get: { state.settings.iCloudSyncEnabled },

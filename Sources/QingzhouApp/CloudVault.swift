@@ -497,6 +497,8 @@ public enum CloudSyncStatus: Equatable, Sendable {
     /// 本机和 iCloud 都还没有数据（新装机、还没添加配置）—— 有数据后会自动开始镜像。
     case idle
     case syncing
+    /// 云端有不同的新内容；暂停自动覆盖，在设置中手动恢复。
+    case manualRestoreAvailable(revision: Int)
     case synced(Date)
     /// 云文档来自更新版本的 App。
     case incompatibleCloud(schemaVersion: Int)
@@ -510,6 +512,7 @@ public enum CloudSyncStatus: Equatable, Sendable {
         case .unavailable: return L("iCloud 不可用（未登录或未开启 iCloud Drive）")
         case .idle: return L("尚无可同步的数据")
         case .syncing: return L("同步中…")
+        case .manualRestoreAvailable: return L("云端有更新，自动上传已暂停；请手动恢复或处理版本差异")
         case .synced(let date):
             return L("最近同步 \(date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(L10n.locale)))")
         case .incompatibleCloud:

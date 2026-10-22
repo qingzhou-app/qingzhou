@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "云端有更新，自动上传已暂停；请手动恢复或处理版本差异": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cloud changes found. Automatic uploads are paused; restore manually or resolve the differences."
+          }
+        }
+      }
+    },
+    "不会自动弹出恢复提示。需要恢复时，请点上方按钮选择云端版本；出现版本差异时会暂停自动上传，保留两边配置。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore prompts never appear automatically. Use the button above to choose a cloud version. When versions differ, automatic uploads pause to preserve both copies."
+          }
+        }
+      }
+    },
     "记录暂未更新，当前数字可能不包含最近的流量。": {
       "localizations": {
         "en": {

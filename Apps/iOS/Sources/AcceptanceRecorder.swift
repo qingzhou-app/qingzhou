@@ -18,6 +18,11 @@ enum AcceptanceRecorder {
         let remoteRuleCount: Int
         let requestedMode: String
         let appliedMode: String?
+        let cloudRestorePresented: Bool
+        let cloudVersionSheetPresented: Bool
+        let monthlyLastObservedAt: Date?
+        let monthlyProxyBytes: Int64
+        let monthlyDirectBytes: Int64
     }
 
     private struct Report: Codable {
@@ -42,13 +47,26 @@ enum AcceptanceRecorder {
             for tick in 0...15 {
                 guard !Task.isCancelled else { return }
                 let applied = state.appliedTunnelConfiguration
+                let rows = state.domainTrafficHistory?.months.values.flatMap(\.rows) ?? []
+                let proxyBytes = rows.reduce(Int64(0)) { partial, row in
+                    let (sum, overflow) = partial.addingReportingOverflow(row.proxy.total)
+                    return overflow ? Int64.max : sum
+                }
+                let directBytes = rows.reduce(Int64(0)) { partial, row in
+                    let (sum, overflow) = partial.addingReportingOverflow(row.direct.total)
+                    return overflow ? Int64.max : sum
+                }
                 report.samples.append(Sample(at: Date(), systemStatus: state.tunnelManager.status.rawValue,
                     running: state.isVPNRunning, switching: state.isSwitchingTunnel,
                     connectedSince: state.connectedSince, appliedID: applied?.id,
                     appliedNodeID: applied?.nodeID, selectedNodeID: state.currentNodeId,
                     selectionMatchesApplied: state.currentNode.map { applied?.matches($0) } ?? nil,
                     remoteRuleCount: state.remoteRules.count, requestedMode: state.settings.proxyMode.rawValue,
-                    appliedMode: applied?.mode.rawValue))
+                    appliedMode: applied?.mode.rawValue,
+                    cloudRestorePresented: state.cloudRestoreOffer != nil,
+                    cloudVersionSheetPresented: state.isCloudVersionSheetPresented,
+                    monthlyLastObservedAt: state.domainTrafficHistory?.lastObservedAt,
+                    monthlyProxyBytes: proxyBytes, monthlyDirectBytes: directBytes))
                 report.events = AcceptanceTrace.events
                 try encoder.encode(report).write(to: url, options: .atomic)
                 if tick < 15 { try await Task.sleep(for: .seconds(1)) }

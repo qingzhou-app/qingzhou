@@ -431,6 +431,13 @@ final class AppStateCloudVaultTests: XCTestCase {
         )
     }
 
+    private func chooseLatestManually(_ state: AppState) async throws {
+        await state.requestManualCloudRestore()
+        let chosen = try XCTUnwrap(state.cloudVersionOptions?.first { $0.backupFileName == nil })
+        state.chooseCloudRestoreCandidate(chosen)
+        state.presentPendingCloudRestoreOffer()
+    }
+
     func testPersistMirrorsToCloud() async throws {
         let store = makeStore()
         let state = makeState(store: store)
@@ -487,7 +494,8 @@ final class AppStateCloudVaultTests: XCTestCase {
         let document = try await store.loadDocument()
         XCTAssertEqual(document?.revision, 2)
         XCTAssertEqual(document?.snapshot.nodes.first?.name, "other-device")
-        XCTAssertEqual(state.cloudRestoreOffer?.header.revision, 2)
+        XCTAssertNil(state.cloudRestoreOffer)
+        XCTAssertEqual(state.cloudSyncStatus, .manualRestoreAvailable(revision: 2))
         XCTAssertEqual(state.nodes.count, 2, "冲突提示不应丢掉本地编辑")
         state.persistence.waitForPendingWritesForTesting()
     }
@@ -522,7 +530,7 @@ final class AppStateCloudVaultTests: XCTestCase {
         XCTAssertNil(doc, "关掉同步后不应写云端")
     }
 
-    func testStartupOffersRestoreAndRestoreApplies() async throws {
+    func testStartupStaysSilentAndManualRestoreApplies() async throws {
         let store = makeStore()
         // 「另一台设备」先写好云端文档
         let node = try ProxyURLParser.parse("trojan://pw@cloud.example.com:443#cloud-node")
@@ -535,6 +543,8 @@ final class AppStateCloudVaultTests: XCTestCase {
         let state = makeState(store: store)
         XCTAssertTrue(state.nodes.isEmpty)
         await state.runCloudVaultStartupCheck()
+        XCTAssertNil(state.cloudRestoreOffer)
+        try await chooseLatestManually(state)
         XCTAssertEqual(state.cloudRestoreOffer?.header.deviceName, "other-device")
         XCTAssertEqual(state.cloudRestoreOffer?.header.revision, 5)
         XCTAssertEqual(state.cloudRestoreOffer?.header.contentSummary, "0 个订阅 · 1 个节点")
@@ -576,6 +586,8 @@ final class AppStateCloudVaultTests: XCTestCase {
 
         let state = makeState(store: store)
         await state.runCloudVaultStartupCheck()
+        XCTAssertNil(state.cloudRestoreOffer)
+        try await chooseLatestManually(state)
         XCTAssertNotNil(state.cloudRestoreOffer)
         state.declineCloudRestore()
 
@@ -589,7 +601,8 @@ final class AppStateCloudVaultTests: XCTestCase {
         try await store.save(VaultDocument(revision: 6, modifiedAt: Date(), deviceName: "other", snapshot: snapshot))
         let relaunched2 = makeState(store: store)
         await relaunched2.runCloudVaultStartupCheck()
-        XCTAssertEqual(relaunched2.cloudRestoreOffer?.header.revision, 6, "云端真有新变化时必须恢复提示")
+        XCTAssertNil(relaunched2.cloudRestoreOffer, "新版本也只能在设置中恢复")
+        XCTAssertEqual(relaunched2.cloudSyncStatus, .manualRestoreAvailable(revision: 6))
     }
 
     /// #启动恢复弹窗优化 之二：云端 revision 更高但用户内容与本机一致 → 静默采认，
@@ -643,6 +656,8 @@ final class AppStateCloudVaultTests: XCTestCase {
 
         let state = makeState(store: store)
         await state.runCloudVaultStartupCheck()
+        XCTAssertNil(state.cloudRestoreOffer)
+        try await chooseLatestManually(state)
         XCTAssertNotNil(state.cloudRestoreOffer)
         state.declineCloudRestore()
         XCTAssertNil(state.cloudRestoreOffer)
@@ -1001,6 +1016,8 @@ final class AppStateCloudVaultTests: XCTestCase {
             "slow.example.com": 300, "fast.example.com": 20, "mid.example.com": 80,
         ])
         await state.runCloudVaultStartupCheck()
+        XCTAssertNil(state.cloudRestoreOffer)
+        try await chooseLatestManually(state)
         XCTAssertNotNil(state.cloudRestoreOffer)
         await state.restoreFromCloud(candidate: state.cloudRestoreOffer)
 
@@ -1017,6 +1034,7 @@ final class AppStateCloudVaultTests: XCTestCase {
 
         let state = makeState(store: store)
         await state.runCloudVaultStartupCheck()
+        try await chooseLatestManually(state)
         await state.restoreFromCloud(candidate: state.cloudRestoreOffer)
 
         XCTAssertTrue(state.nodes.isEmpty)
@@ -1126,7 +1144,7 @@ final class AppStateCloudVaultTests: XCTestCase {
 
     /// 恢复确认弹窗要带「与本机配置的差异摘要」：启动检查发现云端更新时，
     /// offer 里应算好 diff —— 用户在确认前就知道恢复会加 / 删 / 改什么。
-    func testStartupOfferCarriesDiffSummary() async throws {
+    func testManualOfferAfterSilentStartupCarriesDiffSummary() async throws {
         let store = makeStore()
         var snapshot = Persistence.Snapshot()
         snapshot.nodes = [try ProxyURLParser.parse("trojan://pw@cloud.example.com:443#cloud-node")]
@@ -1137,6 +1155,8 @@ final class AppStateCloudVaultTests: XCTestCase {
         let state = makeState(store: store)
         try state.addNode(fromURL: "trojan://pw@local.example.com:443#local-node")
         await state.runCloudVaultStartupCheck()
+        XCTAssertNil(state.cloudRestoreOffer)
+        try await chooseLatestManually(state)
         XCTAssertNotNil(state.cloudRestoreOffer)
         XCTAssertEqual(state.cloudRestoreOffer?.diffSummary, "与本机相比：节点 +1 −1 · 规则 +1")
     }

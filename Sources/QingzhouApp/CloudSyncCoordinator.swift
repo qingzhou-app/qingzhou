@@ -324,14 +324,10 @@ final class CloudSyncCoordinator {
                 status = .idle
             }
         case .offerRestore(let cloud):
-            // 差异摘要在生成 offer 时就算好 —— alert 的 message 在呈现瞬间定格，事后补不进去
-            var candidate = VaultRestoreCandidate(header: cloud)
-            candidate.diffSummary = await state.cloudRestoreDiffSummary(for: candidate)
-            guard isCurrent(ticket) else { return }
-            guard state.cloudRestoreOffer == nil else { return }
-            state.cloudRestoreOffer = candidate
-            status = Self.syncedStatus(from: lastSynced) ?? .unknown
-            state.logger.info("iCloud vault newer (rev \(cloud.revision) from \(cloud.deviceName)) — offering restore", category: "cloud")
+            // 自动检查只更新设置页状态。恢复必须由用户在设置页选择版本发起。
+            // 不记录“已拒绝”，不采认不同内容的新revision，避免间接授权自动覆盖。
+            status = .manualRestoreAvailable(revision: cloud.revision)
+            state.logger.info("iCloud has a newer version; waiting for manual restore in Settings", category: "cloud")
         case .adoptCloudRevision(let cloud):
             // 云端 revision 更高但用户内容与本机一致 → 静默跟进同步记录，不打扰用户
             let now = Date()
@@ -380,7 +376,7 @@ final class CloudSyncCoordinator {
                 status = .incompatibleCloud(schemaVersion: header.schemaVersion)
                 return
             }
-            // 运行期间另一台设备写了新内容：保留两边，沿用恢复/暂不恢复的显式决策。
+            // 运行期间另一台设备写了新内容：保留两边，等待设置页中的显式恢复决策。
             // 用户已拒绝这个revision，才允许下次本地编辑将它覆盖（现有约定）。
             if case .restoredHistory(let confirmed) = authorization, header != confirmed.header {
                 throw CloudVaultStore.StoreError.conflict
@@ -393,15 +389,7 @@ final class CloudSyncCoordinator {
                 }
                 guard isCurrent(ticket) else { return }
                 if remoteHash != contentHash {
-                    var candidate = VaultRestoreCandidate(header: header)
-                    candidate.diffSummary = await state.cloudRestoreDiffSummary(for: candidate)
-                    guard isCurrent(ticket) else { return }
-                    guard state.cloudRestoreOffer == nil else {
-                        status = Self.syncedStatus(from: lastSynced) ?? .unknown
-                        return
-                    }
-                    state.cloudRestoreOffer = candidate
-                    status = Self.syncedStatus(from: lastSynced) ?? .unknown
+                    status = .manualRestoreAvailable(revision: header.revision)
                     return
                 }
             }

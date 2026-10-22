@@ -112,6 +112,27 @@ final class CloudSyncCoordinatorTests: XCTestCase {
         AppState(persistence: Persistence(directory: directory), cloudVault: store)
     }
 
+    func testStartupAndNewRevisionsStaySilentWithoutOverwritingEitherSide() async throws {
+        let store = ControlledCloudVault(document: try document(5, "remote.example"))
+        for revision in [5, 6] {
+            await store.setDocument(try document(revision, "remote-\(revision).example"))
+            let app = state(store)
+            app.customRules = snapshot("local.example").customRules
+            await app.runCloudVaultStartupCheck()
+            XCTAssertNil(app.cloudRestoreOffer, "启动或其他设备新版本都不应弹恢复")
+            XCTAssertEqual(app.customRules.first?.value, "local.example")
+            app.persist()
+            await app.cloudMirrorTask?.value
+            XCTAssertNil(app.cloudRestoreOffer, "后台镜像冲突也不能弹恢复")
+            let cloud = await store.document
+            XCTAssertEqual(cloud?.revision, revision)
+            XCTAssertEqual(cloud?.snapshot.customRules.first?.value, "remote-\(revision).example")
+            app.persistence.waitForPendingWritesForTesting()
+        }
+        let saves = await store.saves
+        XCTAssertEqual(saves, 0, "静默不等于批准覆盖云端")
+    }
+
     func testDisablingSyncRejectsLateStartupOfferAndStatus() async throws {
         let store = ControlledCloudVault(document: try document(5, "cloud.example"))
         let app = state(store)
@@ -209,7 +230,8 @@ final class CloudSyncCoordinatorTests: XCTestCase {
         await gate.resume()
         await old.value
         await new.value
-        XCTAssertEqual(app.cloudRestoreOffer?.header.revision, 2)
+        XCTAssertNil(app.cloudRestoreOffer)
+        XCTAssertEqual(app.cloudSyncStatus, .manualRestoreAvailable(revision: 2))
     }
 
     func testDisableThenReenableRejectsOldEpoch() async throws {
@@ -226,7 +248,8 @@ final class CloudSyncCoordinatorTests: XCTestCase {
         await gate.resume()
         await old.value
         await new.value
-        XCTAssertEqual(app.cloudRestoreOffer?.header.revision, 2)
+        XCTAssertNil(app.cloudRestoreOffer)
+        XCTAssertEqual(app.cloudSyncStatus, .manualRestoreAvailable(revision: 2))
         app.persistence.waitForPendingWritesForTesting()
     }
 
@@ -428,13 +451,13 @@ final class CloudSyncCoordinatorTests: XCTestCase {
         app.persistence.waitForPendingWritesForTesting()
     }
 
-    func testAutomaticDiffReadCannotReplaceManuallyChosenOffer() async throws {
+    func testAutomaticHeaderReadCannotReplaceManuallyChosenOffer() async throws {
         for mirroring in [false, true] {
             let store = ControlledCloudVault(document: try document(5, "cloud.example"))
             let app = state(store)
             app.customRules = snapshot("local.example").customRules
             let gate = CloudIOGate()
-            await store.pauseDocument(gate)
+            await store.pauseHeader(gate)
             let operation: Task<Void, Never>
             if mirroring {
                 app.persist()
