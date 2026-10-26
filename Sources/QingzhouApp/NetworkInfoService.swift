@@ -1,54 +1,106 @@
 import Foundation
+import Network
+import QingzhouCore
+import QingzhouSpeedTest
 import QingzhouLogging
 
-/// 拉取当前公网 IP 与地理 / ISP 信息。
-///
-/// 用 ipapi.co —— 免费、无 key、有 CORS。它每天有 1000 次免费上限，对桌面 app 足够。
-/// 注意：当 VPN 开启时这里返回的是代理节点出口的 IP；关闭时是用户当前的 IP。
+/// Explicit-route IP lookup. Default traffic always uses the physical interface;
+/// node traffic must supply the fixed-target endpoint acknowledged by the tunnel.
 public actor NetworkInfoService {
-    private let session: URLSession
-    private let logger: QingzhouLogging.Logger?
-
-    public init(session: URLSession = .shared, logger: QingzhouLogging.Logger? = nil) {
+    private let session: URLSession?
+    public init(session: URLSession? = nil, logger: QingzhouLogging.Logger? = nil) {
         self.session = session
-        self.logger = logger
     }
 
     public func fetchPublicIPInfo() async throws -> PublicIPInfo {
-        let url = URL(string: "https://ipapi.co/json/")!
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 8
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, _) = try await session.data(for: req)
-        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let ip = obj["ip"] as? String else {
-            throw NSError(domain: "NetworkInfoService", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Bad JSON shape"])
+        if let session {
+            var request = URLRequest(url: URL(string: "https://\(PublicIPProbe.host)\(PublicIPProbe.path)")!)
+            request.timeoutInterval = 8
+            let (data, response) = try await session.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+            return try Self.decode(data)
         }
-        return PublicIPInfo(
-            ip: ip,
-            country: obj["country_name"] as? String,
-            region: obj["region"] as? String,
-            city: obj["city"] as? String,
-            isp: obj["org"] as? String,
-            fetchedAt: Date()
-        )
+        return try Self.decode(await PublicIPTransport.direct())
+    }
+
+    public func fetchProxyIPInfo(port: UInt16) async throws -> PublicIPInfo {
+        try Self.decode(await PublicIPTransport.proxy(port: port))
+    }
+
+    static func decode(_ data: Data) throws -> PublicIPInfo {
+        guard data.count <= PublicIPProbe.maximumResponseBytes,
+              let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              obj["error"] as? Bool != true,
+              obj["success"] as? Bool == true,
+              let ip = obj["ip"] as? String,
+              IPv4Address(ip) != nil || IPv6Address(ip) != nil else { throw URLError(.cannotParseResponse) }
+        return PublicIPInfo(ip: ip, country: obj["country"] as? String,
+            region: obj["region"] as? String, city: obj["city"] as? String,
+            isp: (obj["connection"] as? [String: Any])?["isp"] as? String, fetchedAt: Date())
     }
 }
 
 extension AppState {
     public func refreshPublicIPInfo() async {
-        // 截图 demo：真实出口 IP 属于隐私，绝不能进 App Store 截图；演示值已注入
         if ScreenshotDemoMode.isActive { return }
-        let svc = NetworkInfoService(logger: logger)
-        do {
-            let info = try await svc.fetchPublicIPInfo()
-            publicIPInfo = info
-            // VPN 开着查到的是节点出口 IP，关着是本机直连 IP。分别缓存，首页并排对比。
-            if isVPNRunning { proxyIPInfo = info } else { directIPInfo = info }
-            logger.info("Public IP (\(isVPNRunning ? "proxy" : "direct")): \(info.ip)", category: "network")
-        } catch {
-            logger.warn("Fetch public IP failed: \(error)", category: "network")
+        let service = NetworkInfoService()
+        await refreshPublicIPInfo(direct: { try await service.fetchPublicIPInfo() }, proxy: { configurationID in
+            let port = try await self.tunnelManager.publicIPEndpoint(configurationID: configurationID)
+            let info = try await service.fetchProxyIPInfo(port: port)
+            // A second acknowledgement rejects a switch/restart during the TLS request.
+            guard try await self.tunnelManager.publicIPEndpoint(configurationID: configurationID) == port else {
+                throw URLError(.networkConnectionLost)
+            }
+            return info
+        })
+    }
+
+    func refreshPublicIPInfo(
+        direct: @escaping @MainActor () async throws -> PublicIPInfo,
+        proxy: @escaping @MainActor (UUID) async throws -> PublicIPInfo
+    ) async {
+        let token = UUID()
+        ipRefreshGeneration = token
+        let network = measurementNetworkID
+        let configuration = isVPNRunning ? appliedTunnelConfiguration?.id : nil
+        directIPInfo = nil; proxyIPInfo = nil; publicIPInfo = nil
+        directIPFailed = false; proxyIPFailed = false
+        // Both requests run independently; failure of one never substitutes the other's result.
+        let directTask = Task { @MainActor in
+            do {
+                let info = try await direct()
+                guard !Task.isCancelled, self.ipRefreshGeneration == token, self.measurementNetworkID == network else { return }
+                self.directIPInfo = info
+                if !self.isVPNRunning { self.publicIPInfo = info }
+            } catch {
+                guard self.ipRefreshGeneration == token, self.measurementNetworkID == network else { return }
+                self.directIPFailed = true
+                self.logger.warn("Direct public IP lookup failed", category: "network")
+            }
         }
+        let proxyTask = Task { @MainActor in
+            guard let configuration else { return }
+            do {
+                let info = try await proxy(configuration)
+                guard !Task.isCancelled, self.ipRefreshGeneration == token, self.measurementNetworkID == network,
+                      self.isVPNRunning, self.appliedTunnelConfiguration?.id == configuration else { return }
+                self.proxyIPInfo = info; self.publicIPInfo = info
+            } catch {
+                guard self.ipRefreshGeneration == token, self.measurementNetworkID == network,
+                      self.appliedTunnelConfiguration?.id == configuration else { return }
+                self.proxyIPFailed = true
+                self.logger.warn("Node public IP lookup failed", category: "network")
+            }
+        }
+        await withTaskCancellationHandler {
+            await directTask.value
+            await proxyTask.value
+        } onCancel: { directTask.cancel(); proxyTask.cancel() }
+    }
+
+    func invalidatePublicIPInfo() {
+        ipRefreshGeneration = UUID()
+        directIPInfo = nil; proxyIPInfo = nil; publicIPInfo = nil
+        directIPFailed = false; proxyIPFailed = false
     }
 }

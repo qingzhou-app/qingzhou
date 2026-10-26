@@ -82,6 +82,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// 空闲端口传给 compose；拿不到（罕见）就 nil = 本会话不开统计，VPN 照常起。
     /// 只在 startTunnel / reconfigure / bringUpXray 的串行流程里写，statsQueue 上只读。
     private var metricsPort: Int?
+    private let publicIPPort = OSAllocatedUnfairLock<Int?>(initialState: nil)
     /// 统计轮询节流：每 2 个 stats tick（≈2 秒）查一次 QueryStats，别每秒都 GET。
     private var statsTickCount = 0
     // 月度域名账本只在statsQueue读写；主App不参与累加。
@@ -176,7 +177,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         self.activeGeoDir = geo.dir
 
         // xray 内置流量统计的 expvar 端口（loopback）。拿不到就不开统计，绝不挡 VPN 启动。
-        self.metricsPort = (try? XrayCore.getFreePorts(1))?.first
+        let diagnosticPorts = (try? XrayCore.getFreePorts(2)) ?? []
+        self.metricsPort = diagnosticPorts.first
+        publicIPPort.withLock { $0 = diagnosticPorts.count > 1 ? diagnosticPorts[1] : nil }
 
         // 转换 Node → outbounds JSON
         let xrayJSON: String
@@ -191,6 +194,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 userRules: userRules,
                 hasFullGeoIP: geo.isFull,
                 metricsPort: self.metricsPort,
+                publicIPPort: publicIPPort.withLock { $0 },
                 blockQUIC: self.blockQUIC
             )
         } catch {
@@ -869,8 +873,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         // 但保留原地重配路径的正确性 —— 一旦重新启用不至于用错数据）。
         let geo = resolveGeoData()
         self.activeGeoDir = geo.dir
+        let previousPublicIPPort = publicIPPort.withLock { $0 }
         // 重配 = 新 xray 实例，metrics 端口重新要一个（旧实例可能还没放掉旧端口）。
-        self.metricsPort = (try? XrayCore.getFreePorts(1))?.first
+        let diagnosticPorts = (try? XrayCore.getFreePorts(2)) ?? []
+        self.metricsPort = diagnosticPorts.first
+        publicIPPort.withLock { $0 = diagnosticPorts.count > 1 ? diagnosticPorts[1] : nil }
         let xrayJSON: String
         do {
             let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
@@ -881,12 +888,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 userRules: userRules,
                 hasFullGeoIP: geo.isFull,
                 metricsPort: self.metricsPort,
+                publicIPPort: publicIPPort.withLock { $0 },
                 // 从存的 blockQUIC 重组：别只在 startTunnel 阻断，切换后 QUIC 又放开就白搞了。
                 blockQUIC: self.blockQUIC
             )
         } catch {
             os_log("reconfigure: build config failed, keep old xray: %{public}@",
                    log: log, type: .error, error.localizedDescription)
+            publicIPPort.withLock { $0 = previousPublicIPPort }
             // 构建失败：旧 xray 照跑，退出切换窗口（baseline 不动，继续按旧节点判死）。
             healthControl.withLock { $0.isSwitching = false }
             reply(error)   // 旧 xray 照跑，网络不受影响
@@ -1109,6 +1118,20 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 completionHandler?(try? JSONSerialization.data(withJSONObject: payload))
             }
+        case "publicIPEndpoint":
+            let health = healthControl
+            let configuration = sessionInfo.withLock { info in
+                let snapshot = info
+                return health.withLock { state in
+                    state.isSwitching || snapshot?.stoppedAt != nil ? nil : snapshot?.appliedConfiguration?.id
+                }
+            }
+            guard let configuration, obj["configurationID"] == configuration.uuidString,
+                  let port = publicIPPort.withLock({ $0 }) else {
+                completionHandler?(try? JSONSerialization.data(withJSONObject: ["ok": false, "error": "Exit path unavailable"]))
+                return
+            }
+            completionHandler?(try? JSONSerialization.data(withJSONObject: ["ok": true, "configurationID": configuration.uuidString, "port": port]))
         case "setAutoStop":
             // VPN 运行中改「定时关闭」档位：从现在起按新时长重新计时（0 = 取消），不断流。
             let seconds = TimeInterval(obj["seconds"] ?? "") ?? 0

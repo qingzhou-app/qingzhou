@@ -369,11 +369,11 @@ public struct HomeView: View {
             // 按连接状态切换：未连接时不显示「节点出口」——那栏留着只会摆上一次会话的
             // 缓存或直连 IP，误导用户以为还在走节点。连上了才有「节点出口」的语义。
             if state.isVPNRunning {
-                ipRow(title: "节点出口", info: state.proxyIPInfo, tint: .blue)
+                ipRow(title: "节点出口", info: state.proxyIPInfo, tint: .blue, failed: state.proxyIPFailed)
                 Divider().padding(.vertical, 4)
-                ipRow(title: "直连（不走节点）", info: state.directIPInfo, tint: .green)
+                ipRow(title: "直连（不走节点）", info: state.directIPInfo, tint: .green, failed: state.directIPFailed)
             } else {
-                ipRow(title: "直连 IP（VPN 未连接）", info: state.directIPInfo, tint: .green)
+                ipRow(title: "直连 IP（VPN 未连接）", info: state.directIPInfo, tint: .green, failed: state.directIPFailed)
             }
             HStack {
                 Spacer()
@@ -392,7 +392,7 @@ public struct HomeView: View {
         }
     }
 
-    private func ipRow(title: LocalizedStringKey, info: PublicIPInfo?, tint: Color) -> some View {
+    private func ipRow(title: LocalizedStringKey, info: PublicIPInfo?, tint: Color, failed: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Circle().fill(tint).frame(width: 7, height: 7)
@@ -407,7 +407,7 @@ public struct HomeView: View {
                 Text("更新于 \(info.fetchedAt.formatted(.relative(presentation: .named).locale(locale)))")
                     .font(.caption2).foregroundStyle(.tertiary)
             } else {
-                Text(isRefreshingIP ? "查询中…" : "尚未获取")
+                Text(failed ? "查询失败，请重试" : (isRefreshingIP ? "查询中…" : "尚未获取"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

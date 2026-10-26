@@ -142,6 +142,7 @@ public final class AppState {
                 tunnelSession.clearAppliedState()
             }
             if oldValue != isVPNRunning {
+                invalidatePublicIPInfo()
                 proxyProbeContext &+= 1
                 nodeProbeCooldown.reset()
                 WidgetRefresher.reload()
@@ -189,10 +190,13 @@ public final class AppState {
 
     /// 公网 IP / 地理信息，由 NetworkInfoService 异步填充。
     public var publicIPInfo: PublicIPInfo?
-    /// 不走 VPN 的出口 IP（VPN 关闭时查询到，缓存展示）。
+    /// 绑定物理接口查询的出口 IP；VPN 开启时仍独立查询。
     public var directIPInfo: PublicIPInfo?
-    /// 走 VPN / 节点出口的 IP（VPN 开启时查询到）。
+    /// 经运行中隧道的专用入口查询的节点出口。
     public var proxyIPInfo: PublicIPInfo?
+    public var directIPFailed = false
+    public var proxyIPFailed = false
+    var ipRefreshGeneration = UUID()
     /// 远程规则源最近一次拉取时间 / 错误。
     public var remoteRulesStatus: RemoteFetchStatus = .idle
     /// 订阅最近一次刷新错误（按 id 索引），仅保留最近一条错误信息。
@@ -1791,6 +1795,7 @@ public final class AppState {
     func measurementNetworkDidChange(at date: Date? = nil) {
         let now = date ?? measurementNow()
         measurementNetworkID = UUID()
+        invalidatePublicIPInfo()
         measurementNetworkStartedAt = now
         proxyProbeContext &+= 1
         nodeProbeCooldown.reset()
@@ -2245,7 +2250,10 @@ public final class AppState {
         // 伪造的连接态，iCloud 检查可能弹恢复框），见 ScreenshotDemoMode。
         if ScreenshotDemoMode.isActive { return }
         stopSchedulers()
-        measurementNetworkObserver.start { [weak self] in self?.measurementNetworkDidChange() }
+        measurementNetworkObserver.start { [weak self] in
+            self?.measurementNetworkDidChange()
+            self?.scheduleIPRefresh()
+        }
         wireFailoverNotificationDelegate()   // 故障提醒：挂通知点击回调（幂等）
         #if os(macOS)
         // 「打开 App 自动连」监听器随 app 启动就位（之后由 settings 副作用保持同步）
@@ -2604,7 +2612,9 @@ public final class AppState {
     /// 下载评分单独由 ingestXrayOutboundStats 的可归属 proxy 计数驱动。
     public func ingestTrafficStats(_ stats: TrafficStats) {
         trafficHistory.record(stats)
+        let previous = appliedTunnelConfiguration?.id
         tunnelSession.ingestHeartbeat(stats)
+        if previous != appliedTunnelConfiguration?.id { invalidatePublicIPInfo() }
     }
 
     /// 只用扩展可归属的 proxy outbound 字节差分；TUN / direct 下载绝不参与。
@@ -2832,7 +2842,12 @@ public final class AppState {
 
     /// 会话是扩展的提交点，系统已连接才采认；启动窗口中拒绝上次会话的残留。
     func syncAppliedConfiguration(session: TunnelSessionInfo?, status: NEVPNStatus) {
+        let previous = appliedTunnelConfiguration?.id
         tunnelSession.update(session: session, status: status)
+        if previous != appliedTunnelConfiguration?.id {
+            invalidatePublicIPInfo()
+            scheduleIPRefresh()
+        }
     }
 
     /// 回执与共享文件独立，写文件失败时不能继续采认旧会话为实际配置。

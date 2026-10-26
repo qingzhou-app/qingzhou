@@ -49,7 +49,7 @@ settings:
     # build 29 = 网络路径会话与样本衰减、近期代理下载观测、6候选预算/轮换探索。
     # build 30 = 自动TCP预算/增量测量与真实择优编排场景回放。
     # build 31 = 验收修复：详情指纹只显示摘要、择优说明与地区无障碍名称。
-    CURRENT_PROJECT_VERSION: "34"
+    CURRENT_PROJECT_VERSION: "35"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
 

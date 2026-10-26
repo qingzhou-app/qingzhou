@@ -32,9 +32,8 @@ public enum XrayConfigComposer {
         }
     }
 
-    /// 拼装完整 xray 配置。只有一个 `tun` inbound —— 整机流量走 TUN。
-    /// （不再开本地 HTTP/SOCKS inbound：TUN 已接管所有流量，本地代理纯属冗余，
-    /// 还会带来端口冲突。系统代理模式已彻底移除。）
+    /// 拼装完整 xray 配置。整机流量走 TUN，不开放通用 HTTP/SOCKS 代理。
+    /// 可选 loopback 入口仅用于内部统计和固定目标公网 IP 检测。
     /// - Parameters:
     ///   - outboundsJSON: libXray.convertShareLinks 的返回（顶层是 {"outbounds":[...]}）
     ///   - mode: 用户选的代理模式（global / rule / direct）
@@ -60,6 +59,7 @@ public enum XrayConfigComposer {
         userRules: [Rule] = [],
         hasFullGeoIP: Bool = false,
         metricsPort: Int? = nil,
+        publicIPPort: Int? = nil,
         tunInterfaceName: String = "utun",
         blockQUIC: Bool = true
     ) throws -> String {
@@ -140,6 +140,19 @@ public enum XrayConfigComposer {
                 ["type": "field", "inboundTag": ["metrics-in"], "outboundTag": "metrics"],
                 at: 0
             )
+            routing["rules"] = rules
+        }
+
+        // Fixed-target diagnostic inlet: cannot forward arbitrary destinations. It deliberately
+        // precedes mode/user routing so "node exit" always measures the active proxy outbound.
+        if let publicIPPort, (1...65535).contains(publicIPPort) {
+            inbounds.append([
+                "tag": "public-ip-in", "protocol": "dokodemo-door",
+                "listen": "127.0.0.1", "port": publicIPPort,
+                "settings": ["address": PublicIPProbe.host, "port": 443, "network": "tcp"] as [String: Any]
+            ])
+            var rules = routing["rules"] as? [[String: Any]] ?? []
+            rules.insert(["type": "field", "inboundTag": ["public-ip-in"], "outboundTag": "proxy"], at: 0)
             routing["rules"] = rules
         }
 

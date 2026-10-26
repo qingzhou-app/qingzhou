@@ -1,6 +1,9 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "查询失败，请重试": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Lookup failed. Try again."}}}},
+    "节点出口查询超时": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Node exit lookup timed out"}}}},
+    "节点出口查询失败": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Node exit lookup failed"}}}},
     "云端有更新，自动上传已暂停；请手动恢复或处理版本差异": {
       "localizations": {
         "en": {

@@ -1,5 +1,19 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## 2026-10-27 build35 公网 IP 双路径修复
+
+**结论：工程验证及 Mac 实际双路径通过；手机运行与界面验收待补，不标全部通过。**
+
+- 直连由物理接口系统 DNS 解析并绑定同一接口 TLS；节点出口通过当前隧道固定目标 loopback 入口强制走 proxy，不受规则/直连模式分流影响。正常验证 TLS，拒绝重定向、错误状态、压缩及超限/截断响应；不以另一条路径补失败结果。
+- 请求轮次、网络路径及实际配置身份隔离。心跳否定旧配置也清理旧 IP；回归覆盖刷新乱序、切网、断开与两路失败隔离。
+- 原 ipapi.co 在真实物理请求中返回403；切换为 HTTPS ipwho.is，保留国家/城市/ISP。接口依据：https://ipwhois.io/documentation 。不上传节点地址、凭据或访问历史。
+- 1055项测试：1054通过、1缺历史回放输入跳过、0失败；iOS/macOS App/Tunnel/Widget签名构建与签名校验通过。独立只读审查的1项Important已用失败回归修复；1项Minor保留：主动取消刷新可能短暂显示查询失败。
+- 双端已覆盖安装35。Mac实际Tunnel19910来自安装目录，同ID注册仅1处；VPN运行且rule模式时，生产传输代码物理直连返回中国北京、固定入口返回荷兰阿姆斯特丹，IP不同。此项是网络路径实测，不等同于首页完整交互。
+- iPhone安装成功，启动被系统Locked拒绝。Mac CUA exact-path两次cgWindowNotFound，状态栏关闭→恢复不能标通过。尚未变更其他代理工具或恢复云配置。
+
+本机证据：`/private/tmp/qingzhou-build35-acceptance/`（实际IP仅保留本机JSON，不入仓库）；测试`/private/tmp/qz35-swift-final.log`，构建`/private/tmp/qz35-{ios,macos}-final.log`。此前各项待验收继续保留。
+
+
 ## 2026-10-26 build34 iPhone 14 Pro运行验收补齐
 
 沿用已安装的1.0(34)，独立应用数据库确认，未重装或修改节点参数。用户延长亮屏后，完成普通启动、启动VPN、仅退出主App再重开、停止VPN四轮，每轮16个状态样本。

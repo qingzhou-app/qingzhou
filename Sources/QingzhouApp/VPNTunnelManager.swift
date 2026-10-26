@@ -272,6 +272,19 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         return number.intValue
     }
 
+    /// Ask the actual extension for its fixed-target IP inlet; never infer it from UI selection.
+    func publicIPEndpoint(configurationID: UUID) async throws -> UInt16 {
+        let reply = try await sendCommandForReply(
+            ["command": "publicIPEndpoint", "configurationID": configurationID.uuidString],
+            timeoutSeconds: 3, timeoutLabel: L("节点出口查询超时"), failureLabel: L("节点出口查询失败"))
+        guard reply["configurationID"] as? String == configurationID.uuidString,
+              let port = reply["port"] as? NSNumber,
+              CFGetTypeID(port) != CFBooleanGetTypeID(),
+              port.doubleValue.rounded() == port.doubleValue,
+              (1...65535).contains(port.intValue) else { throw URLError(.badServerResponse) }
+        return UInt16(port.intValue)
+    }
+
     /// 配置预检：让**运行中**的扩展用与真实连接同款的 compose+xray 构建流程校验节点配置
     /// （扩展 handleAppMessage "testNode"）。
     /// - 扩展明确回「配置非法」→ 抛 `TunnelError.configRejected(可读错误)`；
