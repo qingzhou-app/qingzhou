@@ -60,19 +60,51 @@ public struct TCPConnectLatencyProber: LatencyProber {
         guard let iface = await DirectInterfaceResolver.shared.currentPhysicalInterface() else {
             return .init(url: url, latencyMs: nil, failure: .noPhysicalInterface)
         }
-        let started = Date()
-        let resolved = await DirectDNSResolver().resolve(normalizedHost, interfaceIndex: UInt32(iface.index), timeout: timeout)
-        guard !Task.isCancelled else { return .init(url: url, latencyMs: nil, failure: .cancelled) }
-        switch resolved {
-        case .failure(let failure): return .init(url: url, latencyMs: nil, failure: failure)
-        case .success(let addresses):
-            let remaining = timeout - Date().timeIntervalSince(started)
-            guard remaining > 0 else { return .init(url: url, latencyMs: nil, failure: .dnsFailed) }
-            let parameters = NWParameters.tcp
-            parameters.requiredInterface = iface
-            return await Self.connectAddresses(addresses, url: url, timeout: remaining) { address, budget in
-                await Self.tcpConnect(host: address, port: port, url: url, timeout: budget, parameters: parameters)
+        return await Self.probeAddressFamilies(url: url, timeout: timeout) { ipv6, budget in
+            let started = Date()
+            let resolved = await DirectDNSResolver().resolve(normalizedHost, interfaceIndex: UInt32(iface.index), timeout: budget, ipv6: ipv6)
+            guard !Task.isCancelled else { return .init(url: url, latencyMs: nil, failure: .cancelled) }
+            switch resolved {
+            case .failure(let failure): return .init(url: url, latencyMs: nil, failure: failure)
+            case .success(let addresses):
+                let remaining = budget - Date().timeIntervalSince(started)
+                guard remaining > 0 else { return .init(url: url, latencyMs: nil, failure: .dnsFailed) }
+                let parameters = NWParameters.tcp
+                parameters.requiredInterface = iface
+                // Binding an interface alone does not suppress Network.framework proxy selection.
+                // Same-endpoint tests reproduced ENETDOWN without this flag and success with it.
+                parameters.preferNoProxies = true
+                return await Self.connectAddresses(addresses, url: url, timeout: remaining) { address, budget in
+                    await Self.tcpConnect(host: address, port: port, url: url, timeout: budget, parameters: parameters)
+                }
             }
+        }
+    }
+
+    /// Race complete DNS + TCP paths, not DNS answers: a fast AAAA answer may have no usable
+    /// IPv6 route. Keep the IPv4 opportunity until a handshake succeeds, within one total budget.
+    static func probeAddressFamilies(url: URL, timeout: TimeInterval,
+        attempt: @escaping @Sendable (Bool, TimeInterval) async -> LatencyResult) async -> LatencyResult {
+        guard timeout > 0, !Task.isCancelled else { return .init(url: url, latencyMs: nil, failure: .cancelled) }
+        let delay = min(0.2, timeout / 2)
+        return await withTaskGroup(of: LatencyResult.self) { group in
+            group.addTask { await attempt(false, timeout) }
+            group.addTask {
+                do { try await Task.sleep(for: .seconds(delay)) }
+                catch { return .init(url: url, latencyMs: nil, failure: .cancelled) }
+                guard !Task.isCancelled else { return .init(url: url, latencyMs: nil, failure: .cancelled) }
+                return await attempt(true, timeout - delay)
+            }
+            var failure = LatencyResult(url: url, latencyMs: nil, failure: .dnsFailed)
+            for await result in group {
+                if Task.isCancelled { group.cancelAll(); return .init(url: url, latencyMs: nil, failure: .cancelled) }
+                if result.latencyMs != nil || result.failure == .syntheticAddress || result.failure == .invalidEndpoint {
+                    group.cancelAll(); return result
+                }
+                // A failed TCP attempt carries more evidence than the other family's absent DNS.
+                if result.isNodeObservation || !failure.isNodeObservation && result.failure != .dnsFailed { failure = result }
+            }
+            return failure
         }
     }
 

@@ -28,6 +28,12 @@ struct VPNiOSApp: App {
                     #endif
                     state.startSchedulers()
                     #if DEBUG
+                    if CommandLine.arguments.contains("--qz-network-acceptance") {
+                        Task { await NetworkAcceptanceRecorder.record(state,
+                            diagnoseNodes: CommandLine.arguments.contains("--qz-diagnose-nodes")) }
+                    }
+                    #endif
+                    #if DEBUG
                     if CommandLine.arguments.contains("--qz-acceptance-record") {
                         Task { await AcceptanceRecorder.record(state) }
                     }

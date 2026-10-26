@@ -16,7 +16,7 @@ final class DirectDNSResolver: @unchecked Sendable {
         return bytes.count == 4 && bytes[0] == 198 && (bytes[1] == 18 || bytes[1] == 19)
     }
 
-    func resolve(_ host: String, interfaceIndex: UInt32, timeout: TimeInterval) async -> Result<[String], DirectProbeFailure> {
+    func resolve(_ host: String, interfaceIndex: UInt32, timeout: TimeInterval, ipv6: Bool = false) async -> Result<[String], DirectProbeFailure> {
         if Self.isSynthetic(host) { return .failure(.syntheticAddress) }
         if IPv4Address(host) != nil || IPv6Address(host) != nil { return .success([host]) }
         return await withTaskCancellationHandler {
@@ -25,7 +25,7 @@ final class DirectDNSResolver: @unchecked Sendable {
                     if let finished = self.finished { continuation.resume(returning: finished); return }
                     self.continuation = continuation
                     let result = DNSServiceGetAddrInfo(&self.reference, 0, interfaceIndex,
-                        DNSServiceProtocol(kDNSServiceProtocol_IPv4), host, { _, flags, _, error, _, address, _, context in
+                        DNSServiceProtocol(ipv6 ? kDNSServiceProtocol_IPv6 : kDNSServiceProtocol_IPv4), host, { _, flags, _, error, _, address, _, context in
                             guard let context else { return }
                             let request = Unmanaged<DirectDNSResolver>.fromOpaque(context).takeUnretainedValue()
                             guard error == 0, let address else { request.finish(.failure(.dnsFailed)); return }

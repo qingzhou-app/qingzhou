@@ -62,6 +62,12 @@ struct VPNMacApp: App {
                     guard !didStart else { return }
                     didStart = true
                     state.startSchedulers()
+                    #if DEBUG
+                    if CommandLine.arguments.contains("--qz-network-acceptance") {
+                        Task { await NetworkAcceptanceRecorder.record(state,
+                            diagnoseNodes: CommandLine.arguments.contains("--qz-diagnose-nodes")) }
+                    }
+                    #endif
                     state.applyMacSystemPreferences()
                     #if DEBUG
                     // 远程验收钩子（仅 DEBUG，同 iOS 壳）：`open Qingzhou.app --args --qz-lang-en`

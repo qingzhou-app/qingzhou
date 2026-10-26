@@ -1,5 +1,30 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## 2026-10-27 build36 逐项验收结论
+
+| 优先级 / 项目 | 本轮结论 | 仍需补齐 |
+|---|---|---|
+| P0 公网IP | **Mac通过**：首页曾实际显示物理直连中国北京与节点出口荷兰阿姆斯特丹；最终36运行记录再次确认两路均成功、IP不同、VPN运行、配置回执有效。 | iPhone新版本运行验证仍被Locked阻断。 |
+| P1 TCP测速 | **Mac通过**：最终生产探针31/31 TCP节点成功，含两条IPv6-only；3个Hysteria2使用UDP，不纳入TCP失败。 | iPhone物理接口实测。 |
+| P1 代理可用性 | **部分通过**：首轮32个代理请求成功，复测补齐1个，共33/34有成功证据；剩余1个重复TCP成功、默认代理目标失败。 | 该节点第二目标也未完成，仅作辅助线索，不据此断言凭据、出口或服务端根因。 |
+| P1 Mac状态栏恢复 | **未验收**：唯一主窗口/openWindow修复已存在并通过构建。 | CUA再次报native pipe startup failed；读取窗口会激活App，不能替代关闭后点击状态栏的真实测试。 |
+| P1 手机网页/视频、切网、月度详情 | **待设备可操作**。原34的账本新增/主App退出后持续采集已通过，不能替代本轮UI。 | 14 Pro已安装36，启动仍被系统Locked拒绝；需要解锁亮屏后继续。 |
+| P2 Widget / Live Activity | **工程覆盖通过、完整系统交互未验收**。 | 真实添加、开关/异常/停止状态转换。 |
+| P2 多设备云冲突 / 历史恢复 | **工程回归通过、真实恢复未验收**。 | 隔离测试数据和可操作的两端；未覆盖或恢复用户私有配置。 |
+| P2 跨月 / 耗电 / 兼容性 | **保留待验收**。账本边界回归通过。 | 真实跨月与长时间观测；最低系统、小屏、动态字体实际环境。 |
+
+### TCP修复和验证范围
+
+- 相同节点/同一物理接口对照：Network.framework默认代理选择时ENETDOWN，`preferNoProxies=true`时握手成功。探针现在同时绑定物理接口与显式忽略代理，不修改系统代理设置。
+- 另两条节点只有AAAA记录；旧A-only查询误报DNS失败。现在A先启动，最多200ms后启动AAAA，两种地址族共享总时间预算，以完整DNS+TCP握手成功为准。避免快速AAAA解析但IPv6不可达时提前丢弃有效IPv4路径；保留FakeDNS拦截和取消。TUN/direct IPv4策略未改。
+- 回归先失败后修复：IPv6-only、无A慢查询、AAAA快但不可达/A慢但成功；共5个地址族回归。最终全量1060项，1059通过、1缺历史回放输入跳过、0失败；双端App/Tunnel/Widget签名构建及完整签名校验通过。
+- 仅DEBUG、显式启动参数启用的验收记录器记录布尔、时间、内部节点UUID及脱敏报告；不记录地址/凭据/IP。节点诊断顺序执行，最多64个；诊断后重新查询双路公网IP。普通启动不运行额外扫描。
+- 独立审查Important“DNS赢家过早取消另一地址族”已修复并回归。Minor保留：第二测试目标直接调用manager，缺少AppState网络轮次复核，故只作辅助线索；公网IP主动取消可能短暂显示查询失败。
+- 双端36覆盖安装保留数据；Mac设置、节点ID、当前选择、规则保持不变，订阅仅后台更新`lastUpdatedAt`/`usedBytes`。没有修改节点凭据或恢复云配置。
+
+本机证据：`/private/tmp/qingzhou-build35-acceptance/`中的`tcp-proxy-policy-comparison.log`、`node-tcp-before.json`、`node-tcp.json`、`mac36-first-diagnostics.json`、`mac36-final-diagnostics.json`、`ios36-install.json`、`ios36-launch.log`。最终测试`/private/tmp/qz36-swift-final3.log`，构建`/private/tmp/qz36-{macos,ios}-final2.log`。失败节点名称仅在本机配置及用户沟通中定位，不将私有订阅信息写入版本库。
+
+
 ## 2026-10-27 build35 公网 IP 双路径修复
 
 **结论：工程验证及 Mac 实际双路径通过；手机运行与界面验收待补，不标全部通过。**
