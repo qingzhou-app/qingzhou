@@ -281,4 +281,69 @@ final class SplitExitPlanTests: XCTestCase {
         let settings = try XCTUnwrap(probe["settings"] as? [String: Any])
         XCTAssertEqual(settings["address"] as? String, PublicIPProbe.host)
     }
+
+    // MARK: - root 中继（断网开关）
+
+    private func planWithRelay() -> SplitExitPlan {
+        let exit = node("住宅", .socks5, host: "203.0.113.9", port: 1080,
+                        password: "p@ss", params: ["username": "u"])
+        let hop = node("HK-01", .trojan, host: "hk.example.com", port: 443, password: "pw")
+        return SplitExitPlan(exitNode: exit, hopNode: hop,
+                             relay: .init(port: 10808, username: "relayuser", password: "relaypass"))
+    }
+
+    /// 链路必须完整：exit → hop → relay，direct 也要经 relay。
+    /// 少一环就意味着"某个出站还在用 uid 501 直连外网"，断网开关一开就被拦死。
+    func testRelayChainCoversEveryEgress() throws {
+        let outbounds = try planWithRelay().outbounds()
+        XCTAssertEqual(outbounds.map { $0["tag"] as? String },
+                       ["exit", "hop", "relay", "direct", "reject", "dns-out"])
+
+        func dialerProxy(_ tag: String) throws -> String? {
+            let ob = try XCTUnwrap(outbounds.first { $0["tag"] as? String == tag })
+            let stream = ob["streamSettings"] as? [String: Any]
+            let sockopt = stream?["sockopt"] as? [String: Any]
+            return sockopt?["dialerProxy"] as? String
+        }
+        XCTAssertEqual(try dialerProxy("exit"), "hop", "住宅代理连跳板")
+        XCTAssertEqual(try dialerProxy("hop"), "relay", "跳板的拨号也要经中继")
+        XCTAssertEqual(try dialerProxy("direct"), "relay", "国内直连同样经中继")
+        XCTAssertNil(try dialerProxy("relay"), "中继是最外层，不能再套")
+    }
+
+    func testRelayOutboundCarriesCredentialsAndLoopback() throws {
+        let outbounds = try planWithRelay().outbounds()
+        let relay = try XCTUnwrap(outbounds.first { $0["tag"] as? String == "relay" })
+        XCTAssertEqual(relay["protocol"] as? String, "socks")
+        let servers = try XCTUnwrap((relay["settings"] as? [String: Any])?["servers"] as? [[String: Any]])
+        let server = try XCTUnwrap(servers.first)
+        XCTAssertEqual(server["address"] as? String, "127.0.0.1")
+        XCTAssertEqual(server["port"] as? Int, 10808)
+        let users = try XCTUnwrap(server["users"] as? [[String: String]])
+        XCTAssertEqual(users.first?["user"], "relayuser")
+        XCTAssertEqual(users.first?["pass"], "relaypass")
+    }
+
+    /// 中继只做 TCP，国内 DNS 必须改成 TCP 查询，否则查询发不出去、国内域名全部解析失败。
+    func testDomesticDNSSwitchesToTCPWhenRelayEnabled() throws {
+        let dns = planWithRelay().dns()
+        let servers = try XCTUnwrap(dns["servers"] as? [Any])
+        let tcp = servers.compactMap { $0 as? [String: Any] }
+            .compactMap { $0["address"] as? String }
+            .filter { $0.hasPrefix("tcp://") }
+        XCTAssertTrue(tcp.contains("tcp://223.5.5.5"), "实际：\(tcp)")
+
+        // 路由规则仍要按纯 IP 匹配（不能把 tcp:// 前缀带进 ip 数组）
+        let rules = try XCTUnwrap(planWithRelay().routing()["rules"] as? [[String: Any]])
+        let first = try XCTUnwrap(rules.first)
+        XCTAssertEqual(first["ip"] as? [String], ["223.5.5.5", "119.29.29.29"])
+    }
+
+    func testNoRelayKeepsEgressLocal() throws {
+        let outbounds = try makePlan().outbounds()
+        XCTAssertFalse(outbounds.contains { $0["tag"] as? String == "relay" })
+        let direct = try XCTUnwrap(outbounds.first { $0["tag"] as? String == "direct" })
+        let sockopt = (direct["streamSettings"] as? [String: Any])?["sockopt"] as? [String: Any]
+        XCTAssertNil(sockopt?["dialerProxy"])
+    }
 }

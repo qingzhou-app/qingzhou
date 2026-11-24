@@ -10,17 +10,44 @@ set -u
 BASE="/Library/Application Support/qingzhou-guard"
 PORT="$(cat "$BASE/port" 2>/dev/null || echo 10808)"
 ANCHOR="com.apple/qingzhou_guard"
+RENDERED="$BASE/qingzhou-guard.rendered.conf"
 
 log() { echo "$(date '+%F %T') [guard-run] $*"; }
 
+# 找轻舟的 utun：它的 IPv4 地址固定是 10.0.10.1（PacketTunnelProvider 里的 NEIPv4Settings）。
+# 按地址找而不是按 utunN 序号找 —— 设备号每次连接都可能变，写死会错。
+find_tun_dev() {
+  for dev in $(ifconfig -l 2>/dev/null); do
+    case "$dev" in
+      utun*)
+        if ifconfig "$dev" 2>/dev/null | grep -q 'inet 10\.0\.10\.1 '; then
+          echo "$dev"; return 0
+        fi
+        ;;
+    esac
+  done
+  return 1
+}
+
 apply_rules() {
-  pfctl -a "$ANCHOR" -f "$BASE/qingzhou-guard.conf" >/dev/null 2>&1
+  dev="$(find_tun_dev)"
+  if [ -z "$dev" ]; then
+    # 找不到隧道设备 = 轻舟没连上。此时**不能**把规则灌进去：
+    # 没有「放行 utun」的规则，连正常上网都会被拦，等于把机器锁死。
+    log "未找到轻舟的 utun（10.0.10.1），本轮不加载规则"
+    return 1
+  fi
+  sed "s/__TUN_DEV__/${dev}/g" "$BASE/qingzhou-guard.conf" > "$RENDERED" 2>/dev/null || return 1
+  chmod 600 "$RENDERED"
+  pfctl -a "$ANCHOR" -f "$RENDERED" >/dev/null 2>&1 || { log "pfctl 加载失败"; return 1; }
   pfctl -E >/dev/null 2>&1 || true
+  return 0
 }
 
 if [ -f "$BASE/enabled" ]; then
-  apply_rules
-  log "pf 规则已加载（锚点 $ANCHOR，端口 $PORT）"
+  if apply_rules; then
+    log "pf 规则已加载（锚点 $ANCHOR，中继端口 $PORT）"
+  fi
 else
   log "未启用断网开关（无 enabled 标记），只启动中继"
 fi
@@ -30,11 +57,21 @@ RELAY=$!
 log "中继已启动 pid=$RELAY"
 
 # 主循环：中继退出就跟着退出（KeepAlive 会整体重启）；
-# 同时定期补 pf 规则，防止被别的程序清掉。
+# 同时定期补规则 —— 既防被别人清掉，也跟上隧道重连后的新设备名。
 while kill -0 "$RELAY" 2>/dev/null; do
   sleep 10
   if [ -f "$BASE/enabled" ]; then
-    apply_rules
+    if ! pfctl -s rules -a "$ANCHOR" 2>/dev/null | grep -q 'block out quick all'; then
+      log "锚点规则不见了，重新加载"
+      apply_rules
+    else
+      # 隧道重连后设备名可能变了：规则里的设备名和当前不一致就重灌
+      cur="$(find_tun_dev)"
+      if [ -n "$cur" ] && ! grep -q "on $cur all" "$RENDERED" 2>/dev/null; then
+        log "隧道设备变为 $cur，重灌规则"
+        apply_rules
+      fi
+    fi
   fi
 done
 

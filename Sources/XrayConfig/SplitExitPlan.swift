@@ -77,10 +77,31 @@ public struct SplitExitPlan {
         public var isEmpty: Bool { cnDomains.isEmpty && cnDomainKeywords.isEmpty && cnCIDRs.isEmpty }
     }
 
+    /// 断网开关的 root 中继（`Tools/qingzhou-guard`）。
+    ///
+    /// 为什么代理要经它出网：轻舟的 xray 以 uid 501 运行，pf 只能按 uid 匹配 ——
+    /// 「拦掉除 root 外的一切」如果不给代理留一条 root 的出网路径，就会连代理一起拦死。
+    /// 串上中继之后，uid 501 的出站只到 127.0.0.1，真正拨号由 root 中继完成。
+    public struct RelayEndpoint: Sendable, Equatable {
+        public var host: String
+        public var port: UInt16
+        public var username: String
+        public var password: String
+
+        public init(host: String = "127.0.0.1", port: UInt16 = 10808,
+                    username: String, password: String) {
+            self.host = host
+            self.port = port
+            self.username = username
+            self.password = password
+        }
+    }
+
     /// outbound tag。固定字符串，日志与验收脚本按这些 tag 归因，改名会破坏验收。
     public enum Tag {
         public static let exit   = "exit"
         public static let hop    = "hop"
+        public static let relay  = "relay"
         public static let direct = "direct"
         public static let reject = "reject"
         public static let dnsOut = "dns-out"
@@ -93,6 +114,8 @@ public struct SplitExitPlan {
     public var blockQUIC: Bool
     /// 指向海外出口的 UDP 一律拒绝，而不是回退直连。
     public var rejectOverseasUDP: Bool
+    /// 断网开关的 root 中继。nil = 代理直接出网（没有断网开关时的行为）。
+    public var relay: RelayEndpoint?
     /// 海外 DoH 解析器。必须能通过 TCP 443 走到（出口不支持 UDP）。
     public var overseasResolvers: [String]
     /// 国内解析器（明文 UDP，走直连）。
@@ -104,6 +127,7 @@ public struct SplitExitPlan {
         lists: Lists = Lists(),
         blockQUIC: Bool = true,
         rejectOverseasUDP: Bool = true,
+        relay: RelayEndpoint? = nil,
         overseasResolvers: [String] = ["https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"],
         domesticResolvers: [String] = ["223.5.5.5", "119.29.29.29"]
     ) {
@@ -112,6 +136,7 @@ public struct SplitExitPlan {
         self.lists = lists
         self.blockQUIC = blockQUIC
         self.rejectOverseasUDP = rejectOverseasUDP
+        self.relay = relay
         self.overseasResolvers = overseasResolvers
         self.domesticResolvers = domesticResolvers
     }
@@ -153,6 +178,11 @@ public struct SplitExitPlan {
     /// 出口组只有住宅代理一个成员；`hop` 只作为 dialerProxy 的跳板存在，
     /// 不作为任何路由规则的 outboundTag —— 所以「海外出口里没有 DIRECT」是结构性的，
     /// 不依赖某条规则写对。
+    ///
+    /// 带 root 中继时链路是：
+    ///   exit(住宅 SOCKS5) ──dialerProxy──▶ hop(跳板) ──dialerProxy──▶ relay(root) ──▶ 外网
+    ///   direct(freedom)    ──────────────dialerProxy──────────────▶ relay(root) ──▶ 外网
+    /// 也就是 uid 501 的出站只到 127.0.0.1，真正拨号全在 root 进程里完成。
     public func outbounds() throws -> [[String: Any]] {
         var exit = try NodeConverter.toOutboundDict(exitNode)
         exit["tag"] = Tag.exit
@@ -164,16 +194,42 @@ public struct SplitExitPlan {
         var hop = try NodeConverter.toOutboundDict(hopNode)
         hop["tag"] = Tag.hop
 
-        let direct: [String: Any] = [
+        var outbounds: [[String: Any]] = [exit, hop]
+
+        // 中继放在 hop 之后：hop 的拨号也要走它，否则 uid 501 的出站仍会直连外网，
+        // 断网开关一旦启用就会把这条链路拦掉。
+        if let relay {
+            var hopWithRelay = hop
+            hopWithRelay = Self.attachDialerProxy(Tag.relay, to: hopWithRelay)
+            outbounds[1] = hopWithRelay
+
+            let relayOutbound: [String: Any] = [
+                "tag": Tag.relay,
+                "protocol": "socks",
+                "settings": ["servers": [[
+                    "address": relay.host,
+                    "port": Int(relay.port),
+                    "users": [["user": relay.username, "pass": relay.password]]
+                ] as [String: Any]]] as [String: Any]
+            ]
+            outbounds.append(relayOutbound)
+        }
+
+        var direct: [String: Any] = [
             "tag": Tag.direct,
             "protocol": "freedom",
             "settings": ["domainStrategy": "AsIs"] as [String: Any],
             "streamSettings": ["sockopt": ["domainStrategy": "ForceIP"]] as [String: Any]
         ]
-        let reject: [String: Any] = ["tag": Tag.reject, "protocol": "blackhole", "settings": [:] as [String: Any]]
-        let dnsOut: [String: Any] = ["tag": Tag.dnsOut, "protocol": "dns"]
+        // 国内直连也是「从本机发出去的包」。不串中继的话，断网开关会把国内直连一起拦掉。
+        if relay != nil {
+            direct = Self.attachDialerProxy(Tag.relay, to: direct)
+        }
+        outbounds.append(direct)
 
-        return [exit, hop, direct, reject, dnsOut]
+        outbounds.append(["tag": Tag.reject, "protocol": "blackhole", "settings": [:] as [String: Any]])
+        outbounds.append(["tag": Tag.dnsOut, "protocol": "dns"])
+        return outbounds
     }
 
     /// 把 `dialerProxy` 合并进 streamSettings.sockopt，保留节点原有的 sockopt 字段。
@@ -197,7 +253,7 @@ public struct SplitExitPlan {
         //    其余（海外 DoH）走海外出口 —— 这就是「海外域名由海外 DNS 经海外出口解析」。
         //    必须排在最前：这些查询本身也是 udp/tcp 53，抢在 `port:53 → dns-out` 之前
         //    拦下，否则会重入 dns 模块形成环。
-        let domesticIPs = domesticResolvers.filter { Self.isIPLiteral($0) }
+        let domesticIPs = domesticResolvers.compactMap { Self.ipLiteral(from: $0) }
         if !domesticIPs.isEmpty {
             rules.append(["type": "field", "inboundTag": ["dns-module"],
                           "ip": domesticIPs, "outboundTag": Tag.direct])
@@ -280,9 +336,13 @@ public struct SplitExitPlan {
         domesticMatch += lists.cnDomainKeywords
 
         var servers: [Any] = ["fakedns"]
-        for resolver in domesticResolvers.filter({ Self.isIPLiteral($0) }) {
+        for resolver in domesticResolvers {
+            guard let ip = Self.ipLiteral(from: resolver) else { continue }
+            // 带 root 中继时必须用 TCP 查：中继只做 SOCKS5 CONNECT（TCP），UDP 过不去。
+            // xray 的 DNS 上游写法 `tcp://` 正好是"用 TCP 查这个地址"。
+            let address = relay != nil ? "tcp://\(ip)" : ip
             servers.append([
-                "address": resolver,
+                "address": address,
                 "port": 53,
                 "domains": domesticMatch
             ] as [String: Any])
@@ -396,9 +456,23 @@ public struct SplitExitPlan {
 
     /// 是否是字面 IP（不需要走 DNS 解析）。
     static func isIPLiteral(_ s: String) -> Bool {
+        ipLiteral(from: s) != nil
+    }
+
+    /// 从 `8.8.8.8` / `tcp://8.8.8.8` / `https://...` 里取出字面 IP；不是 IP 返回 nil。
+    static func ipLiteral(from s: String) -> String? {
+        var v = s
+        if let range = v.range(of: "://") { v = String(v[range.upperBound...]) }
+        // 去掉可能的路径（DoH 地址形如 1.1.1.1/dns-query）
+        if let slash = v.firstIndex(of: "/") { v = String(v[..<slash]) }
+        if let colon = v.firstIndex(of: ":"), v.contains("]") == false, !v.contains("::") {
+            // host:port 形式（IPv4 才会走到这里）
+            v = String(v[..<colon])
+        }
         var v4 = in_addr()
-        if inet_pton(AF_INET, s, &v4) == 1 { return true }
+        if inet_pton(AF_INET, v, &v4) == 1 { return v }
         var v6 = in6_addr()
-        return inet_pton(AF_INET6, s, &v6) == 1
+        if inet_pton(AF_INET6, v, &v6) == 1 { return v }
+        return nil
     }
 }
