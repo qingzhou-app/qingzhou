@@ -20,7 +20,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-echo "==> 1/4 检查中继"
+echo "==> 1/5 检查中继"
 if ! nc -z 127.0.0.1 "$PORT" 2>/dev/null; then
   echo "    中继没有在 127.0.0.1:$PORT 监听 —— 不启用。" >&2
   echo "    先跑： sudo launchctl kickstart -k system/com.sbraveyoung.qingzhou.guard" >&2
@@ -41,7 +41,33 @@ if [ -z "$TUN" ]; then
 fi
 echo "    OK：$TUN"
 
-echo "==> 3/4 渲染并校验 pf 规则"
+echo "==> 3/5 确认代理真的在经中继出网（不做这步就开拦截 = 整机断网）"
+# 证据一：App 生效的 xray 配置里有 relay 出站（app 配置时写进 App Group）
+TARGET_USER="${SUDO_USER:-$(stat -f %Su /dev/console)}"
+TARGET_HOME="$(eval echo "~${TARGET_USER}")"
+XRAY_CFG="$TARGET_HOME/Library/Group Containers/group.com.sbraveyoung.qingzhou/xray-config.json"
+if [ ! -f "$XRAY_CFG" ] || ! grep -q '"relay"' "$XRAY_CFG" 2>/dev/null; then
+  echo "    App 生效的配置里没有 relay 出站。" >&2
+  echo "    请先在 App：设置 → 分流方案 → 打开「经 root 中继出网」并重连，再回来。" >&2
+  exit 1
+fi
+# 证据二：中继日志最近 2 分钟内有过 CONNECT —— 说明有真实流量在走它
+RELAY_LOG="/var/log/qingzhou-relay.log"
+if [ -f "$RELAY_LOG" ]; then
+  LOG_MTIME="$(stat -f %m "$RELAY_LOG")"
+  NOW="$(date +%s)"
+  AGE=$((NOW - LOG_MTIME))
+  if [ "$AGE" -gt 120 ]; then
+    echo "    中继日志 ${AGE}s 没有新流量 —— App 大概率没在经中继出网。" >&2
+    echo "    请确认：分流开关已开 + 「经 root 中继出网」已开 + 已重连。" >&2
+    exit 1
+  fi
+  echo "    OK（${AGE}s 前有流量经过中继）"
+else
+  echo "    ⚠️ 找不到 ${RELAY_LOG}，跳过流量证据检查"
+fi
+
+echo "==> 4/5 渲染并校验 pf 规则"
 sed "s/__TUN_DEV__/$TUN/g" "$BASE/qingzhou-guard.conf" > "$RENDERED" 2>/dev/null
 chmod 600 "$RENDERED"
 if ! pfctl -n -a "$ANCHOR" -f "$RENDERED" 2>/dev/null; then
@@ -50,7 +76,7 @@ if ! pfctl -n -a "$ANCHOR" -f "$RENDERED" 2>/dev/null; then
 fi
 echo "    OK"
 
-echo "==> 4/4 加载规则"
+echo "==> 5/5 加载规则"
 : > "$BASE/enabled"
 chmod 644 "$BASE/enabled"
 # ⚠️ 不再吞掉 pfctl 的 stderr：语法错、权限不够都会在这里显形，
