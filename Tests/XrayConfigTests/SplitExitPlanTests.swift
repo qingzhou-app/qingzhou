@@ -199,6 +199,19 @@ final class SplitExitPlanTests: XCTestCase {
         XCTAssertTrue((ipRule["ip"] as? [String])?.contains("1.0.1.0/24") == true)
     }
 
+    /// 名单里的关键字条目必须原样进 domain 数组（裸串 = 子串匹配），
+    /// 加 `domain:` 前缀会变成"以 .wechat 结尾"，等于把这条规则丢掉。
+    func testInjectedKeywordsAreBareStrings() throws {
+        let lists = SplitExitPlan.Lists(cnDomainKeywords: ["wechat"])
+        let rules = try XCTUnwrap(makePlan(lists: lists).routing()["rules"] as? [[String: Any]])
+        let rule = try XCTUnwrap(rules.first { r in
+            (r["domain"] as? [String])?.contains("geosite:cn") == true
+        })
+        let entries = try XCTUnwrap(rule["domain"] as? [String])
+        XCTAssertTrue(entries.contains("wechat"))
+        XCTAssertFalse(entries.contains("domain:wechat"))
+    }
+
     // MARK: - DNS
 
     func testDNSDoesNotReturnIPv6() throws {

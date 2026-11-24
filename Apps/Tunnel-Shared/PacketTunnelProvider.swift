@@ -467,12 +467,42 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         return SplitExitNodes(exit: exit, hop: hop)
     }
 
+    /// 读主 App 更新好的国内名单（direct.txt / cncidr.txt）。
+    ///
+    /// 为什么要限量：iOS 给 NE 扩展 50 MiB 的 jetsam 硬上限，几万条域名全塞进
+    /// routing 规则会实打实吃掉几 MB 常驻内存（Go 侧数组 + 字符串头）。这里按
+    /// 「保留前 N 条」截断并打日志 —— 名单本身按域名热度排过序，前 N 条覆盖绝大多数流量；
+    /// 剩下的仍由 `geosite:cn` / `geoip:cn` 兜。真机上量过内存再决定要不要放开。
+    private func loadSplitExitLists() -> SplitExitPlan.Lists {
+        guard let dir = TunnelAppGroup.ensureWorkingDirectory() else {
+            os_log("split-exit: App Group 不可用 → 名单只用 geosite/geoip", log: log, type: .error)
+            return .init()
+        }
+        let url = dir.appendingPathComponent(SplitExitListsFile.fileName)
+        guard let data = try? Data(contentsOf: url),
+              let lists = SplitExitListsFile.decode(data) else {
+            os_log("split-exit: 未找到名单文件 → 名单只用 geosite/geoip", log: log, type: .default)
+            return .init()
+        }
+        let maxDomains = 20_000, maxCIDRs = 10_000
+        let domains = Array(lists.domains.prefix(maxDomains))
+        let keywords = Array(lists.domainKeywords.prefix(2_000))
+        let cidrs = Array(lists.cidrs.prefix(maxCIDRs))
+        if domains.count < lists.domains.count || cidrs.count < lists.cidrs.count {
+            os_log("split-exit: 名单已截断 domains=%d/%d cidrs=%d/%d（NE 内存预算）",
+                   log: log, type: .default,
+                   domains.count, lists.domains.count, cidrs.count, lists.cidrs.count)
+        }
+        return .init(cnDomains: domains, cnDomainKeywords: keywords, cnCIDRs: cidrs)
+    }
+
     /// 用分流方案生成完整 xray 配置。TUN 接口名与 access log 与老路径一致，
     /// 这样连接页、流量统计、域名账本都不用改。
     private func composeSplitExit(_ nodes: SplitExitNodes,
                                   accessLogPath: String?,
                                   tunInterfaceName: String) throws -> String {
-        let plan = SplitExitPlan(exitNode: nodes.exit, hopNode: nodes.hop)
+        let plan = SplitExitPlan(exitNode: nodes.exit, hopNode: nodes.hop,
+                                 lists: loadSplitExitLists())
         return try plan.composeJSON(
             accessLogPath: accessLogPath,
             tunInterfaceName: tunInterfaceName,

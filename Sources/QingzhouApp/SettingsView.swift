@@ -201,14 +201,38 @@ public struct SettingsView: View {
                 }
                 Text("住宅 SOCKS5 的地址/端口/账号/密码请在「节点」里编辑该节点。")
                     .font(.caption2).foregroundStyle(.secondary)
+
+                // 国内名单：每天自动更新一次；这里给当前状态 + 手动更新入口。
+                // 没拉到名单也能用（退回内置 geosite:cn / geoip:cn），所以不做成阻断项。
+                HStack {
+                    Text(splitExitListsText)
+                        .font(.caption2)
+                        .foregroundStyle(state.splitExitListsStatus.error == nil ? Color.secondary : Color.orange)
+                    Spacer()
+                    Button(state.splitExitListsStatus.isLoading ? "更新中…" : "更新名单") {
+                        Task { await state.refreshSplitExitLists(force: true) }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption2)
+                    .disabled(state.splitExitListsStatus.isLoading)
+                }
             }
         }
+        .onAppear { state.loadSplitExitListsStatus() }
+    }
+
+    private var splitExitListsText: String {
+        let status = state.splitExitListsStatus
+        if let error = status.error { return L("国内名单不可用：\(error)") }
+        guard status.isLoaded else { return L("国内名单尚未下载，当前只用内置 geosite/geoip") }
+        let when = status.updatedAt.map { $0.formatted(.relative(presentation: .named).locale(locale)) } ?? "—"
+        return L("国内名单：\(status.domainCount) 域名 / \(status.cidrCount) 网段（\(when)）")
     }
 
     /// 节点下拉：`nil` 表示未选。列表用 `id` 作 tag，重名节点也不会串。
     private func nodePicker(title: LocalizedStringKey,
                             selected: UUID?,
-                            set: @escaping (UUID?) -> Void) -> some View {
+                            set: @escaping @Sendable (UUID?) -> Void) -> some View {
         Picker(title, selection: Binding(get: { selected }, set: set)) {
             Text("未选择").tag(UUID?.none)
             ForEach(state.splitExitCandidates) { node in

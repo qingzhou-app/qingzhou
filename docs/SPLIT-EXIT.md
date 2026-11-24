@@ -59,9 +59,24 @@ App → TUN → xray
 
 ## 规则名单
 
-`SplitExitPlan.Lists` 接收外部注入的国内域名 / 国内 IP 段（对应 Loyalsoldier 的
-`direct.txt` / `cncidr.txt`）。空数组是合法的，此时仅用 `geosite:cn` / `geoip:cn`，
-行为正确但粒度粗。**每日自动拉取尚未实现**（见下）。
+`SplitExitPlan.Lists` 接收国内域名 / 域名关键字 / 国内 IP 段。数据来自
+Loyalsoldier/clash-rules 的 `release/direct.txt` 与 `release/cncidr.txt`，
+由 `SplitExitListsUpdater`（主 App）每天拉一次，写到 App Group 的
+`xray-data/split-exit-lists.json`，隧道扩展启动时读。
+
+几条刻意的取舍：
+
+- **两份都成功才更新**：只有域名没有 IP（或反之）会让国内直连出现看不见的缺口，
+  比"这次不更新"危险得多。
+- **失败保留旧名单**：拉不到 / 解析出 0 条 / 写盘失败 / 回读不一致，都不覆盖旧文件。
+- **写完回读校验**：写得进去但读不回来，和没写是一回事。
+- **关键字单独存**：`DOMAIN-KEYWORD,wechat` 这种不含点的条目如果加 `domain:` 前缀，
+  就变成"以 `.wechat` 结尾"，等于把规则丢掉；它们按裸串（xray 的子串匹配）注入。
+- **注入有上限**：域名 20000 / 关键字 2000 / IP 段 10000。iOS 给 NE 扩展 50 MiB 的
+  jetsam 上限，几万条规则是实打实的常驻内存；超出部分由 `geosite:cn` / `geoip:cn` 兜。
+  这个上限要等真机内存实测后再调。
+
+名单为空时仍是正确行为（只用内置 geosite/geoip），只是粒度粗一些。
 
 ## geosite 分类白名单
 
@@ -82,6 +97,8 @@ xray 遇到 routing 里引用了不存在的 geosite 分类会**直接启动失�
   `Settings.splitExit{Enabled,ExitNodeID,HopNodeID}` 持久化；
   `AppState.startTunnel` / `performReapply` 把两个节点塞进 providerConfiguration；
   隧道扩展按 `splitExit` 走 `SplitExitPlan`，否则走原有单节点路径
+- **国内名单每日更新**：`SplitExitListsUpdater` 拉 direct.txt / cncidr.txt、
+  失败保留旧版、写 App Group 供扩展读取；设置页显示条数与更新时间并可手动刷新
 
 接入时的几条硬约束（都有测试或显式分支）：
 
@@ -95,14 +112,16 @@ xray 遇到 routing 里引用了不存在的 geosite 分类会**直接启动失�
 
 未完成（不要在验收里算作已实现）：
 
-1. **规则名单每日更新**：`Lists` 目前恒为空，只用内置 `geosite:cn` / `geoip:cn`。
-2. **断网开关**：pf 侧独立组件完全没做。零泄漏依赖「代理核心的身份」这一前提，
+1. **断网开关**：pf 侧独立组件完全没做。零泄漏依赖「代理核心的身份」这一前提，
    本轮未能实测确认（本机进程列表被系统限制，`ps` 不可用），必须在目标机上用特权脚本
    实测后再设计，不能只看代码推断。
-3. **IPv6 接管**：TUN 层仍声明 IPv6 默认路由（`PacketTunnelProvider` 里，
+2. **IPv6 接管**：TUN 层仍声明 IPv6 默认路由（`PacketTunnelProvider` 里，
    用于接住 IPv6 流量避免绕过隧道），但 DNS 已不返回 AAAA。故障瞬间 IPv6 是否漏出属于
    断网开关范畴，未验证。
-4. **iOS target 未在本轮编译验证**：macOS target（含同一个隧道扩展、同一份 Sources）编译通过；
-   iOS 的 xcodebuild 在依赖解析阶段被本机沙箱拦住（`sandbox-exec: Operation not permitted`），
-   与代码无关，需要在正常终端里跑一次 `scripts/verify.sh` 确认。
+3. **Xcode target 编译验证不完整**：`Qingzhou-macOS` 曾整体 BUILD SUCCEEDED；
+   之后的新增改动（名单注入）用 `swiftc -typecheck` 对隧道扩展文件单独验证通过，
+   但未再整体编译 —— 本机的 xcodebuild 在生成工程后会重新解析依赖并被
+   `sandbox-exec: Operation not permitted` 拦住。需要在普通终端跑一次 `scripts/verify.sh`
+   （含 iOS / macOS 两个 target）才能算完整验证。
+4. **NE 内存**：名单注入的上限（2 万域名 / 1 万网段）是保守估计，未做真机内存实测。
 

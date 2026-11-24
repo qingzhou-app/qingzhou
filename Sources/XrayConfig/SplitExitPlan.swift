@@ -63,13 +63,18 @@ public struct SplitExitPlan {
     public struct Lists: Sendable, Equatable {
         /// 国内域名（DOMAIN-SUFFIX 的值，如 `qq.com`）。空 = 不追加。
         public var cnDomains: [String]
+        /// 国内域名关键字（`DOMAIN-KEYWORD,wechat` 这种不含点的条目）。xray 里裸串即子串匹配。
+        public var cnDomainKeywords: [String]
         /// 国内 IP 段（如 `1.0.1.0/24`）。
         public var cnCIDRs: [String]
 
-        public init(cnDomains: [String] = [], cnCIDRs: [String] = []) {
+        public init(cnDomains: [String] = [], cnDomainKeywords: [String] = [], cnCIDRs: [String] = []) {
             self.cnDomains = cnDomains
+            self.cnDomainKeywords = cnDomainKeywords
             self.cnCIDRs = cnCIDRs
         }
+
+        public var isEmpty: Bool { cnDomains.isEmpty && cnDomainKeywords.isEmpty && cnCIDRs.isEmpty }
     }
 
     /// outbound tag。固定字符串，日志与验收脚本按这些 tag 归因，改名会破坏验收。
@@ -244,6 +249,8 @@ public struct SplitExitPlan {
         //    （需求：IP 类规则不要为了匹配去本地解析域名）。
         var cnDomainEntries = ["geosite:cn"]
         cnDomainEntries += lists.cnDomains.map { "domain:\($0)" }
+        // 关键字条目原样放进 domain 数组：xray 对不带前缀的串做子串匹配。
+        cnDomainEntries += lists.cnDomainKeywords
         rules.append(["type": "field", "domain": cnDomainEntries, "outboundTag": Tag.direct])
 
         var cnIPEntries = ["geoip:cn"]
@@ -270,6 +277,7 @@ public struct SplitExitPlan {
         // 国内域名也走国内 DNS，拿国内边缘 IP。
         var domesticMatch = ["geosite:cn"] + nodeHosts
         domesticMatch += lists.cnDomains.map { "domain:\($0)" }
+        domesticMatch += lists.cnDomainKeywords
 
         var servers: [Any] = ["fakedns"]
         for resolver in domesticResolvers.filter({ Self.isIPLiteral($0) }) {

@@ -200,6 +200,10 @@ public final class AppState {
     var ipRefreshGeneration = UUID()
     /// 远程规则源最近一次拉取时间 / 错误。
     public var remoteRulesStatus: RemoteFetchStatus = .idle
+    /// 分流方案用的国内名单（direct.txt / cncidr.txt）最近一次状态。
+    public var splitExitListsStatus = SplitExitListsStatus()
+    /// 上次尝试刷新名单的时刻（只在内存）：用来做 24 小时节流，不用每 15 秒读一次文件。
+    var lastSplitExitListsAttempt: Date?
     /// 订阅最近一次刷新错误（按 id 索引），仅保留最近一条错误信息。
     public var subscriptionErrors: [UUID: String] = [:]
     /// 轻量 toast 文案（自动择优、订阅添加等非阻塞反馈）。UI 浮层显示，几秒自动消失。
@@ -2447,6 +2451,11 @@ public final class AppState {
                 }
                 lastRefresh = Date()
             }
+
+            // 4) 分流方案的国内名单：24 小时一次（内部自己节流，失败也记时间，不刷屏重试）
+            if settings.splitExitEnabled {
+                await refreshSplitExitListsIfDue()
+            }
         }
     }
 
@@ -2974,6 +2983,19 @@ public enum RemoteFetchStatus: Sendable, Equatable {
     case loading
     case success(at: Date, count: Int)
     case failure(message: String)
+}
+
+/// 分流方案国内名单的运行状态（设置页展示用）。
+public struct SplitExitListsStatus: Sendable, Equatable {
+    public var domainCount = 0
+    public var cidrCount = 0
+    public var updatedAt: Date?
+    public var error: String?
+    public var isLoading = false
+
+    public init() {}
+
+    public var isLoaded: Bool { domainCount > 0 && cidrCount > 0 }
 }
 
 /// 公网 IP / 地理信息。
