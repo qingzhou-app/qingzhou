@@ -94,6 +94,17 @@ public struct Settings: Codable, Sendable {
     /// 有效阻断值由 `QUICPolicyResolver.shouldBlock` 按当前节点协议 + 实测坏标记算出，
     /// 再经 providerConfiguration 的 `blockQUIC` bool 传给扩展。见 docs/QUIC.md。
     public var quicPolicy: QUICPolicy
+    /// 分流方案开关：「国内直连、其余全走海外出口」。
+    ///
+    /// 打开后 VPN 不再用「当前节点」当出口，而是走 `splitExitExitNodeID` 那个节点
+    /// （通常是静态住宅 SOCKS5），它自己经 `splitExitHopNodeID` 跳板连出去。
+    /// 出口是手选的，没有自动择优、没有故障切换、没有 DIRECT 兜底 —— 出口挂了就是
+    /// 海外断网。所以打开期间自动择与被禁用（见 AppState）。
+    public var splitExitEnabled: Bool
+    /// 海外出口节点 id（住宅 SOCKS5）。
+    public var splitExitExitNodeID: UUID?
+    /// 跳板节点 id（出口自己的流量经它出去）。
+    public var splitExitHopNodeID: UUID?
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -120,7 +131,10 @@ public struct Settings: Codable, Sendable {
         ignoredUpdateVersion: String = "",
         showLiveActivity: Bool = true,
         autoFailoverAlert: Bool = false,
-        quicPolicy: QUICPolicy = .auto
+        quicPolicy: QUICPolicy = .auto,
+        splitExitEnabled: Bool = false,
+        splitExitExitNodeID: UUID? = nil,
+        splitExitHopNodeID: UUID? = nil
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -147,6 +161,9 @@ public struct Settings: Codable, Sendable {
         self.showLiveActivity = showLiveActivity
         self.autoFailoverAlert = autoFailoverAlert
         self.quicPolicy = quicPolicy
+        self.splitExitEnabled = splitExitEnabled
+        self.splitExitExitNodeID = splitExitExitNodeID
+        self.splitExitHopNodeID = splitExitHopNodeID
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -168,6 +185,7 @@ public struct Settings: Codable, Sendable {
         case showLiveActivity
         case autoFailoverAlert
         case quicPolicy
+        case splitExitEnabled, splitExitExitNodeID, splitExitHopNodeID
     }
 
     public init(from decoder: Decoder) throws {
@@ -205,5 +223,9 @@ public struct Settings: Codable, Sendable {
         // 缺 key（旧持久化数据 / build 10 的 blockQUIC bool 字段被忽略）或未知档位值 →
         // 回落 .auto（智能默认：hysteria2 放行实测、其余挡）。try? 一并吞掉缺 key + 解码失败。
         self.quicPolicy = (try? c.decode(QUICPolicy.self, forKey: .quicPolicy)) ?? .auto
+        // 旧持久化数据没有分流字段 → 全部回落关闭/空（不影响既有用户行为）
+        self.splitExitEnabled = try c.decodeIfPresent(Bool.self, forKey: .splitExitEnabled) ?? false
+        self.splitExitExitNodeID = try c.decodeIfPresent(UUID.self, forKey: .splitExitExitNodeID)
+        self.splitExitHopNodeID = try c.decodeIfPresent(UUID.self, forKey: .splitExitHopNodeID)
     }
 }

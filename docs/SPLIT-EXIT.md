@@ -72,21 +72,37 @@ xray 遇到 routing 里引用了不存在的 geosite 分类会**直接启动失�
 
 ## 实现状态
 
-已完成（有单测，`Tests/XrayConfigTests/SplitExitPlanTests.swift`）：
+已完成（有单测）：
 
 - SOCKS5 协议解析 / 出站 / 分享链接编码 / Clash YAML 导入
 - `dialerProxy` 链式出口、单出口 UDP 拒绝
 - `GEOSITE` 规则类型与转换、geosite 白名单
-- 上述规则顺序、DNS 结构、假 IP 池、出口组结构的完整配置构造
+- 上述规则顺序、DNS 结构、假 IP 结构、出口组结构的完整配置构造
+- **接入 App**：设置页「分流方案」开关 + 海外出口 / 跳板两个手选下拉；
+  `Settings.splitExit{Enabled,ExitNodeID,HopNodeID}` 持久化；
+  `AppState.startTunnel` / `performReapply` 把两个节点塞进 providerConfiguration；
+  隧道扩展按 `splitExit` 走 `SplitExitPlan`，否则走原有单节点路径
+
+接入时的几条硬约束（都有测试或显式分支）：
+
+- 出口或跳板缺一个 → **不连接**并报原因，绝不退回单节点。回退等于让住宅代理从本机直连。
+- 出口与跳板是同一节点 → 拒绝（会绕成死循环）。
+- 分流开启期间**跳过自动择优**（否则会把 `currentNodeId` 改掉，等于自动换出口）。
+- 分流开启时强制 `.rule` 模式（全局/直连那两套 routing 与它互斥）。
+- 扩展内 `reconfigure` / `switchNode` 在分流模式下**明确回错**，让主 App 回退全量重启；
+  否则会用旧节点套新配置，产生"半新半旧"的配置。
+- 自定义用户规则在分流模式下不注入：规则顺序是需求固定的，插进去会破坏优先级保证。
 
 未完成（不要在验收里算作已实现）：
 
-1. **接入 App**：`SplitExitPlan` 目前只有单测在调用，`AppState` / UI 还没有「海外出口 /
-   跳板」两个手选组的入口，也没有把选中结果送进隧道扩展。当前 VPN 仍走原有
-   `XrayConfigComposer.compose(mode:)`。
-2. **规则名单每日更新**：`Lists` 需要外部喂，多源拉取 + 校验 + 失败保留旧版没做。
-3. **断网开关**：pf 侧独立组件完全没做。零泄漏依赖「代理核心的身份」这一前提，
+1. **规则名单每日更新**：`Lists` 目前恒为空，只用内置 `geosite:cn` / `geoip:cn`。
+2. **断网开关**：pf 侧独立组件完全没做。零泄漏依赖「代理核心的身份」这一前提，
    本轮未能实测确认（本机进程列表被系统限制，`ps` 不可用），必须在目标机上用特权脚本
    实测后再设计，不能只看代码推断。
-4. **IPv6 接管**：TUN 层是否保留 IPv6 默认路由、故障瞬间 IPv6 是否漏出，属于 D 项，
-   未验证。
+3. **IPv6 接管**：TUN 层仍声明 IPv6 默认路由（`PacketTunnelProvider` 里，
+   用于接住 IPv6 流量避免绕过隧道），但 DNS 已不返回 AAAA。故障瞬间 IPv6 是否漏出属于
+   断网开关范畴，未验证。
+4. **iOS target 未在本轮编译验证**：macOS target（含同一个隧道扩展、同一份 Sources）编译通过；
+   iOS 的 xcodebuild 在依赖解析阶段被本机沙箱拦住（`sandbox-exec: Operation not permitted`），
+   与代码无关，需要在正常终端里跑一次 `scripts/verify.sh` 确认。
+

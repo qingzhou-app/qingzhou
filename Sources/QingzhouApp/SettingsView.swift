@@ -16,6 +16,7 @@ public struct SettingsView: View {
     public var body: some View {
         Form {
             proxySection
+            splitExitSection
             autoSelectSection
             regionSection
             appearanceSection
@@ -165,6 +166,53 @@ public struct SettingsView: View {
                 Text("INFO").tag("INFO")
                 Text("WARN").tag("WARN")
                 Text("ERROR").tag("ERROR")
+            }
+        }
+    }
+
+    /// 分流方案：「国内直连、其余全走海外出口」。
+    ///
+    /// 只放两个手选项 + 一个开关，不提供"自动"选项 —— 出口挂了就应该断网，
+    /// 任何自动择优/故障切换都会破坏这个语义（AppState 在开启期间也会跳过择优）。
+    private var splitExitSection: some View {
+        Section("分流方案") {
+            Toggle("国内直连、其余全走海外出口", isOn: Binding(
+                get: { state.settings.splitExitEnabled },
+                set: { state.setSplitExitEnabled($0) }
+            ))
+            if state.settings.splitExitEnabled {
+                nodePicker(
+                    title: "海外出口",
+                    selected: state.settings.splitExitExitNodeID,
+                    set: { state.setSplitExitExitNode($0) }
+                )
+                nodePicker(
+                    title: "跳板",
+                    selected: state.settings.splitExitHopNodeID,
+                    set: { state.setSplitExitHopNode($0) }
+                )
+                if let blocked = state.splitExitBlockedReason {
+                    Text(blocked).font(.caption2).foregroundStyle(.orange)
+                } else {
+                    Text("出口的手选节点挂了就是断网，不会自动换节点、不会回落到直连。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Text("出口自身的流量经「跳板」连出去；跳板不通时海外整体不通，国内直连不受影响。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Text("住宅 SOCKS5 的地址/端口/账号/密码请在「节点」里编辑该节点。")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// 节点下拉：`nil` 表示未选。列表用 `id` 作 tag，重名节点也不会串。
+    private func nodePicker(title: LocalizedStringKey,
+                            selected: UUID?,
+                            set: @escaping (UUID?) -> Void) -> some View {
+        Picker(title, selection: Binding(get: { selected }, set: set)) {
+            Text("未选择").tag(UUID?.none)
+            ForEach(state.splitExitCandidates) { node in
+                Text("\(node.name)（\(node.protocolType.rawValue)）").tag(UUID?.some(node.id))
             }
         }
     }

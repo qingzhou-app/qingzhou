@@ -808,6 +808,71 @@ public final class AppState {
     public var sortedNodes: [Node] { nodes.sorted(by: settings.nodeSortOrder) }
     public var currentNode: Node? { nodes.first { $0.id == currentNodeId } }
 
+    // MARK: - 分流方案（国内直连 / 海外出口）
+
+    /// 海外出口节点（住宅 SOCKS5）。用户手选，不会被自动择优改动。
+    public var splitExitExitNode: Node? {
+        guard let id = settings.splitExitExitNodeID else { return nil }
+        return nodes.first { $0.id == id }
+    }
+
+    /// 跳板节点：出口自己的流量经它出去。
+    public var splitExitHopNode: Node? {
+        guard let id = settings.splitExitHopNodeID else { return nil }
+        return nodes.first { $0.id == id }
+    }
+
+    /// 分流方案能否真正启用：开关打开 + 两个节点都在 + 不是同一个节点。
+    /// 返回 nil 表示可用，否则是给人看的原因。
+    public var splitExitBlockedReason: String? {
+        guard settings.splitExitEnabled else { return nil }
+        guard let exit = splitExitExitNode else { return L("未选择「海外出口」节点") }
+        guard let hop = splitExitHopNode else { return L("未选择「跳板」节点") }
+        if exit.host == hop.host, exit.port == hop.port, exit.protocolType == hop.protocolType {
+            return L("「海外出口」和「跳板」是同一个节点，会绕成死循环")
+        }
+        return nil
+    }
+
+    /// 当前真正可用的分流节点对；开关关着或配置不完整时 nil。
+    var activeSplitExit: (exit: Node, hop: Node)? {
+        guard settings.splitExitEnabled, splitExitBlockedReason == nil,
+              let exit = splitExitExitNode, let hop = splitExitHopNode else { return nil }
+        return (exit, hop)
+    }
+
+    /// 可用于「海外出口」的节点：SOCKS5 优先展示，但不禁用其它协议 ——
+    /// 静态住宅代理通常是 SOCKS5，用户也可能拿别的协议顶一下。
+    public var splitExitCandidates: [Node] { sortedNodes }
+
+    /// 切换分流开关。打开时强制规则模式：分流方案自带完整 routing，
+    /// 全局/直连模式那两套 routing 与它互斥，留着只会让人以为「开了没生效」。
+    public func setSplitExitEnabled(_ enabled: Bool) {
+        guard settings.splitExitEnabled != enabled else { return }
+        settings.splitExitEnabled = enabled
+        if enabled, settings.proxyMode != .rule {
+            settings.proxyMode = .rule
+        }
+        applySettingsSideEffects()
+        persist()
+        // 分流开关改变出口身份 → VPN 在跑时必须重连，否则还在按旧配置走。
+        Task { await reapplyRunningTunnel() }
+    }
+
+    public func setSplitExitExitNode(_ id: UUID?) {
+        guard settings.splitExitExitNodeID != id else { return }
+        settings.splitExitExitNodeID = id
+        persist()
+        Task { await reapplyRunningTunnel() }
+    }
+
+    public func setSplitExitHopNode(_ id: UUID?) {
+        guard settings.splitExitHopNodeID != id else { return }
+        settings.splitExitHopNodeID = id
+        persist()
+        Task { await reapplyRunningTunnel() }
+    }
+
     // MARK: - 地区
 
     /// 当前所有节点覆盖的地区 → 节点数，按节点数降序。用于设置页地区列表。
@@ -1041,6 +1106,18 @@ public final class AppState {
             isVPNRunning = false
             return
         }
+        // 分流方案：出口和跳板都必须在，缺一个就**不连**而不是退回单节点 ——
+        // 缺跳板的住宅代理只能从本机直连（国内连不上 + 暴露真实 IP），
+        // 缺出口则等于没有海外出口。两种都不是用户要的状态，报清楚让它停在这儿。
+        if let blocked = splitExitBlockedReason {
+            tunnelError = blocked
+            isVPNRunning = false
+            logger.error("Split exit blocked: \(blocked)", category: "tunnel")
+            return
+        }
+        let splitExitActive = settings.splitExitEnabled
+        let exitNode = splitExitActive ? splitExitExitNode : nil
+        let hopNode = splitExitActive ? splitExitHopNode : nil
         let link = node.flatMap(NodeEncoder.shareLink)
         guard settings.proxyMode == .direct || link != nil else {
             tunnelError = L("无法把节点编码成分享链接")
@@ -1052,13 +1129,15 @@ public final class AppState {
         do {
             // description 带节点名，方便用户在「系统设置 → 网络 → VPN」里识别
             try await tunnelManager.configure(
-                node: node,
+                node: exitNode ?? node,
                 mode: settings.proxyMode,
                 shareLink: shareLink,
                 rules: effectiveUserRules,
                 autoStopSeconds: settings.autoStopSeconds,
                 blockQUIC: effBlockQUIC,
-                description: L("轻舟 · \((node?.name ?? L("直连")))")
+                description: L("轻舟 · \((exitNode?.name ?? node?.name ?? L("直连")))"),
+                splitExitExit: exitNode,
+                splitExitHop: hopNode
             )
             try await tunnelManager.start()
             activeTrafficSessionID = nil
@@ -1340,13 +1419,17 @@ public final class AppState {
         guard isVPNRunning else { return }
         // Selecting a future proxy node does not change a direct tunnel.
         if scope == .nodeOnly && settings.proxyMode == .direct { return }
+        // 分流方案生效时，出口不是"当前节点"，重连必须带上出口/跳板两个节点。
+        // 少了它们，configure() 会把 providerConfiguration 里残留的分流字段清掉，
+        // 下一次连接就悄悄退回单节点 —— 用户以为还在分流，其实已经直连住宅代理了。
+        let split = activeSplitExit
         let node = settings.proxyMode == .direct ? nil : currentNode
-        guard settings.proxyMode == .direct || node != nil else {
+        guard settings.proxyMode == .direct || node != nil || split != nil else {
             tunnelError = VPNTunnelManager.TunnelError.noCurrentNode.errorDescription
             return
         }
         let link = node.flatMap(NodeEncoder.shareLink)
-        guard settings.proxyMode == .direct || link != nil else { return }
+        guard settings.proxyMode == .direct || link != nil || split != nil else { return }
         let shareLink = link ?? ""
         #if DEBUG
         AcceptanceTrace.record(scope == .full ? .reapplyFullStarted : .reapplyNodeStarted)
@@ -1385,7 +1468,7 @@ public final class AppState {
         // ⚠️ 但原地换出口**不重建 routing** —— 若新节点有效阻断值与当前隧道 routing 所用的
         // （扩展确认的blockQUIC）不一致（如 trojan[挡]→hysteria2[放行]，或反向），原地切会留下
         // 过期的 QUIC 路由。此时降级为全量重启（下方路径重建 routing）。一致时才走零断流快路径。
-        if scope == .nodeOnly, let node, let applied = appliedTunnelConfiguration,
+        if scope == .nodeOnly, split == nil, let node, let applied = appliedTunnelConfiguration,
            applied.mode == mode, applied.blockQUIC == effBlockQUIC {
             do {
                 // 先落盘新节点配置：扩展若之后被系统回收再由 On-Demand 拉起，用的是
@@ -1399,7 +1482,9 @@ public final class AppState {
                     // 原地切换 = 同一会话延续：定时倒计时不重置（扩展侧计时器没动）
                     autoStopSeconds: autoStopSeconds,
                     blockQUIC: effBlockQUIC,   // == applied.blockQUIC，routing 无需变
-                    description: L("轻舟 · \(node.name)")
+                    description: L("轻舟 · \(node.name)"),
+                    splitExitExit: split?.exit,
+                    splitExitHop: split?.hop
                 )
                 let confirmedID = try await tunnelManager.switchNodeInPlace(node: node, shareLink: shareLink)
                 recordAppliedAcknowledgement(confirmedID)
@@ -1423,7 +1508,7 @@ public final class AppState {
         // 在同一扩展进程内 stop→run 有全局状态没干净复位。扩展侧代码保留待查，这里先走全量重启。
         do {
             try await tunnelManager.configure(
-                node: node,
+                node: split?.exit ?? node,
                 mode: mode,
                 shareLink: shareLink,
                 rules: rules,
@@ -1431,7 +1516,9 @@ public final class AppState {
                 // 从头再数）。不带旧剩余时间过去 —— 语义简单、扩展侧无需额外状态。
                 autoStopSeconds: autoStopSeconds,
                 blockQUIC: effBlockQUIC,   // 全量重启会重建 routing，带上新有效阻断值
-                description: L("轻舟 · \((node?.name ?? L("直连")))")
+                description: L("轻舟 · \((split?.exit.name ?? node?.name ?? L("直连")))"),
+                splitExitExit: split?.exit,
+                splitExitHop: split?.hop
             )
             // 切换窗口先关 On-Demand 再 stop：connect 规则匹配所有流量，stop 后系统
             // 会被任意流量触发抢跑重连 —— 复用半死的旧扩展进程（正是下面轮询要避免的
@@ -2322,7 +2409,8 @@ public final class AppState {
         try? await Task.sleep(for: .seconds(5))
         if Task.isCancelled { return }
 
-        if settings.autoSelectTrigger == .onAppLaunch || settings.autoSelectTrigger == .onAppLaunchAndInterval {
+        if !settings.splitExitEnabled,
+           settings.autoSelectTrigger == .onAppLaunch || settings.autoSelectTrigger == .onAppLaunchAndInterval {
             await autoSelectBestNode(origin: .scheduled)
         }
         var lastAutoSelect = Date()
@@ -2338,7 +2426,10 @@ public final class AppState {
             // 择优包含测速；同一拍两者都到期时只做择优，避免预算被翻倍。
             let measureInterval = settings.autoMeasureIntervalSeconds
             let trigger = settings.autoSelectTrigger
-            if (trigger == .interval || trigger == .onAppLaunchAndInterval)
+            // 分流方案的出口是手选的，自动择优会把 currentNodeId 改掉、进而把出口也换掉 ——
+            // 那就成了「自动换节点」，与「手选、挂了就断」直接冲突。开着分流时跳过择优。
+            if !settings.splitExitEnabled,
+               (trigger == .interval || trigger == .onAppLaunchAndInterval)
                 && now.timeIntervalSince(lastAutoSelect) >= settings.autoSelectIntervalSeconds {
                 await autoSelectBestNode(origin: .scheduled)
                 lastAutoSelect = Date()
