@@ -223,4 +223,51 @@ final class RoutingRuleConverterTests: XCTestCase {
             Rule(type: .domainSuffix, value: "a.com", target: .proxy)
         ]))
     }
+
+    // MARK: - GEOSITE
+
+    /// geolocation-!cn 是本方案的关键分类：它必须能被解析成 xray 的 geosite 引用。
+    func testGeoSiteMapsToXrayGeositeReference() {
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoSite, value: "geolocation-!cn", target: .proxy)
+        ])
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0]["domain"] as? [String], ["geosite:geolocation-!cn"])
+        XCTAssertEqual(out[0]["outboundTag"] as? String, "proxy")
+    }
+
+    func testGeoSiteIsCaseInsensitive() {
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoSite, value: "BiliBili", target: .direct)
+        ])
+        XCTAssertEqual(out[0]["domain"] as? [String], ["geosite:bilibili"])
+    }
+
+    /// 内置 geosite.dat 里没有的分类必须跳过：xray 遇到不存在的 geosite 分类会直接
+    /// 启动失败，一条手写错的规则就能让整机断网。
+    func testUnknownGeoSiteCategoryIsSkipped() {
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoSite, value: "definitely-not-a-category", target: .proxy)
+        ])
+        XCTAssertTrue(out.isEmpty)
+    }
+
+    /// `!cn` 是"除 cn 之外"的写法，xray 没有等价语义（`!` 在 xray 里只作为分类名的一部分，
+    /// 如 geolocation-!cn）—— 透传会变成一条永不命中的规则，静默失效。
+    func testNegatedGeoSiteIsSkipped() {
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoSite, value: "!cn", target: .proxy)
+        ])
+        XCTAssertTrue(out.isEmpty)
+    }
+
+    /// 相邻同 target 的 GEOSITE 与 DOMAIN 合并到同一条 domain 规则（都是域名维度）。
+    func testGeoSiteMergesWithAdjacentDomainRules() {
+        let out = RoutingRuleConverter.xrayRules(from: [
+            Rule(type: .geoSite, value: "cn", target: .direct),
+            Rule(type: .domainSuffix, value: "example.cn", target: .direct)
+        ])
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0]["domain"] as? [String], ["geosite:cn", "domain:example.cn"])
+    }
 }

@@ -14,6 +14,8 @@ public enum NodeEncoder {
     public static func shareLink(_ node: Node) -> String? {
         var queryItems: [URLQueryItem] = []
         for (k, v) in node.parameters.sorted(by: { $0.key < $1.key }) {
+            // socks5 的用户名属于 userinfo，不能重复塞进 query（否则解析回来会是两个来源）
+            if k == "username", node.protocolType == .socks5 { continue }
             queryItems.append(URLQueryItem(name: k, value: v))
         }
         var comps = URLComponents()
@@ -26,6 +28,16 @@ public enum NodeEncoder {
         switch node.protocolType {
         case .trojan, .hysteria2:
             comps.percentEncodedUser = node.password.flatMap(Self.strictEncode)
+            return comps.url?.absoluteString
+        case .socks5:
+            // socks5://user:pass@host:port#name —— 用户名在 userinfo 里，密码在 password 段。
+            // 两者都用 percentEncodedXxx 赋值，避免 URLComponents 二次编码。
+            if let user = node.parameters["username"], !user.isEmpty {
+                comps.percentEncodedUser = Self.strictEncode(user)
+                if let pass = node.password, !pass.isEmpty {
+                    comps.percentEncodedPassword = Self.strictEncode(pass)
+                }
+            }
             return comps.url?.absoluteString
         case .vless:
             comps.percentEncodedUser = node.uuid.flatMap(Self.strictEncode)

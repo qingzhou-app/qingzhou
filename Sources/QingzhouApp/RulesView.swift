@@ -10,6 +10,9 @@ public struct RulesView: View {
     @State private var newTarget: RuleTarget = .proxy
     @State private var addError: String?
     @State private var refreshing = false
+    /// 远程规则一次渲染多少条。远程规则动辄几千上万条，一次性铺开会卡住列表；
+    /// 但"只能看前 200 条"也说不过去 —— 所以给「再显示 N 条」和「全部显示」。
+    @State private var remoteLimit = 200
 
     public init(state: AppState) { self.state = state }
 
@@ -134,6 +137,16 @@ public struct RulesView: View {
                 }
             }
 
+            // GEOSITE 只能用内置 geosite.dat 里存在的分类：xray 遇到缺失分类会直接启动失败，
+            // 所以未知分类会被**跳过**而不是透传 —— 这里提前说清，别让用户以为规则生效了。
+            if newType == .geoSite {
+                let v = newValue.trimmingCharacters(in: .whitespaces)
+                if !v.isEmpty && !GeoDataBundle.supportsGeoSite(v) {
+                    Text("「\(v)」不在内置 geosite 分类白名单里，这条规则会被跳过。")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
+            }
+
             // 命中后动作 —— 三选一，segmented 紧凑
             Picker("匹配后", selection: $newTarget) {
                 ForEach(RuleTarget.allCases, id: \.self) { target in
@@ -196,6 +209,7 @@ public struct RulesView: View {
         case .ipCIDR:        return "IPv4 网段"
         case .ipCIDR6:       return "IPv6 网段"
         case .geoip:         return "GEOIP（国家代码）"
+        case .geoSite:       return "GEOSITE（域名分类）"
         case .processName:   return "进程名（仅 macOS）"
         case .userAgent:     return "User-Agent"
         case .final:         return "FINAL（兜底）"
@@ -218,6 +232,7 @@ public struct RulesView: View {
         case .ipCIDR:        return "192.168.0.0/16"
         case .ipCIDR6:       return "fc00::/7"
         case .geoip:         return "cn / private"
+        case .geoSite:       return "geolocation-!cn"
         case .processName:   return "Telegram"
         case .userAgent:     return "MyApp/*"
         case .final:         return ""
@@ -249,15 +264,33 @@ public struct RulesView: View {
                 Text(state.remoteRules.isEmpty ? "尚未加载远程规则" : "无匹配规则")
                     .foregroundStyle(.secondary).font(.caption)
             } else {
-                ForEach(filtered.prefix(200)) { rule in
+                ForEach(filtered.prefix(remoteLimit)) { rule in
                     ruleRow(rule, isCustom: false)
                 }
-                if filtered.count > 200 {
-                    Text("已展示前 200 条，共 \(filtered.count) 条匹配。")
+                if filtered.count > remoteLimit {
+                    Text("已显示 \(remoteLimit) / \(filtered.count) 条")
                         .font(.caption2).foregroundStyle(.secondary)
+                    Button {
+                        remoteLimit += 200
+                    } label: {
+                        Label("再显示 200 条", systemImage: "chevron.down")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    // 全部展开是把上万行一次性塞进 List，会明显卡顿；先用文字说清代价，
+                    // 让用户自己决定要不要。
+                    Button {
+                        remoteLimit = filtered.count
+                    } label: {
+                        Label("全部显示（\(filtered.count) 条，可能卡顿）", systemImage: "list.bullet")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
         }
+        // 搜索词变了就回到 200 条，否则上一次"全部显示"会让下一次搜索也铺满全表
+        .onChange(of: searchText) { _, _ in remoteLimit = 200 }
     }
 
     /// 内置 geoip.dat 是精简版（仅 cn/private，给 NE 扩展 50MB 内存预算省地）——

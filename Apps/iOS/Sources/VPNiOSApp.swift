@@ -21,7 +21,8 @@ struct VPNiOSApp: App {
         WindowGroup {
             RootView(state: state)
                 .preferredColorScheme(colorScheme(for: state.settings.theme))
-                .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
+                .environment(\.locale, LocaleResolver.locale(for: state.effectiveLanguage))
+                .environment(\.timeZone, state.displayTimeZone)
                 .task {
                     #if DEBUG
                     if CommandLine.arguments.contains("--qz-acceptance-record") { AcceptanceTrace.begin() }

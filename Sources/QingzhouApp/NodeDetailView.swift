@@ -233,6 +233,16 @@ public struct NodeDetailView: View {
                     set: { draft.uuid = $0 }
                 ))
                 .font(.caption.monospaced())
+            case .socks5:
+                TextField("用户名（可留空）", text: Binding(
+                    get: { draft.parameters["username"] ?? "" },
+                    set: { draft.parameters["username"] = $0.isEmpty ? nil : $0 }
+                ))
+                .font(.caption.monospaced())
+                SecureField("密码（可留空）", text: Binding(
+                    get: { draft.password ?? "" },
+                    set: { draft.password = $0.isEmpty ? nil : $0 }
+                ))
             }
         }
     }

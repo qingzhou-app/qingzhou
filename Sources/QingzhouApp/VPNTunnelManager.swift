@@ -117,9 +117,12 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         rules: [Rule] = [],
         autoStopSeconds: TimeInterval = 0,
         blockQUIC: Bool = true,
-        description: String = "VPN"
+        description: String = "VPN",
+        splitExitExit: Node? = nil,
+        splitExitHop: Node? = nil,
+        guardRelay: GuardRelayCredentials? = nil
     ) async throws {
-        guard mode == .direct || node != nil else { throw TunnelError.noCurrentNode }
+        guard mode == .direct || node != nil || splitExitExit != nil else { throw TunnelError.noCurrentNode }
         let node = mode == .direct ? nil : node
         if manager == nil { try await load() }
         guard let manager = manager else { throw TunnelError.managerNotLoaded }
@@ -131,17 +134,25 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
 
         // 把 Node 序列化成 JSON 字符串 —— providerConfiguration 是 plist 字典，不接受
         // 任意 Swift Codable。先 encode 到 Data 再转 String。
-        let nodeJSON: String
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(node)
-            nodeJSON = String(data: data, encoding: .utf8) ?? ""
-        } catch {
-            // 极少触发 —— Node 的字段都是基础类型。真出错就只走 shareLink 路。
-            logger?.warn("encode node failed: \(error); falling back to shareLink only", category: "tunnel")
-            nodeJSON = ""
+        func encodeNode(_ n: Node?) -> String {
+            guard let n else { return "" }
+            do {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                let data = try encoder.encode(n)
+                return String(data: data, encoding: .utf8) ?? ""
+            } catch {
+                // 极少触发 —— Node 的字段都是基础类型。真出错就只走 shareLink 路。
+                logger?.warn("encode node failed: \(error); falling back to shareLink only", category: "tunnel")
+                return ""
+            }
         }
+        let nodeJSON = encodeNode(node)
+
+        // 分流方案：出口 + 跳板两个节点**必须**一起给。缺一个就不开分流 ——
+        // 只有出口没跳板会让住宅代理从本机直连（国内连不上，且暴露真实 IP），
+        // 那不是"退化"，是错的行为。
+        let splitExitActive = splitExitExit != nil && splitExitHop != nil
 
         // 把启动信息塞进 providerConfiguration —— 系统保存在 VPN preferences 里，
         // Extension 启动时通过 protocolConfiguration.providerConfiguration 读出来。
@@ -161,6 +172,13 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
             // 覆盖旧值，否则关掉后旧配置还会继续阻断。
             "blockQUIC": NSNumber(value: blockQUIC)
         ]
+        // 分流方案：**始终写**这三个 key（关闭时写 false / 空串），否则上一次开过的
+        // 出口/跳板会残留在 VPN preferences 里，被下一次连接误用。
+        providerConfig["splitExit"] = NSNumber(value: splitExitActive)
+        providerConfig["exitNodeJSON"] = splitExitActive ? encodeNode(splitExitExit) : ""
+        providerConfig["hopNodeJSON"] = splitExitActive ? encodeNode(splitExitHop) : ""
+        // root 中继凭据。同样**始终写**（空串表示不用），避免上一轮的凭据残留。
+        providerConfig["guardRelayJSON"] = (splitExitActive ? guardRelay?.jsonString : nil) ?? ""
         // 用户规则：压缩内联（Data 是合法 plist 类型）；超大时写 App Group 文件传路径。
         switch makeRulesPayload(rules) {
         case .inline(let gz):  providerConfig["userRulesGZ"] = gz

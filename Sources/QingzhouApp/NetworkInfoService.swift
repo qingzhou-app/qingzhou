@@ -34,9 +34,16 @@ public actor NetworkInfoService {
               obj["success"] as? Bool == true,
               let ip = obj["ip"] as? String,
               IPv4Address(ip) != nil || IPv6Address(ip) != nil else { throw URLError(.cannotParseResponse) }
+        // ipwho.is 在同一次响应里还给了 country_code / timezone.id / 经纬度 ——
+        // 白拿的信息，用来对齐界面语言与时间显示，不额外发请求。
+        let tz = (obj["timezone"] as? [String: Any])?["id"] as? String
         return PublicIPInfo(ip: ip, country: obj["country"] as? String,
             region: obj["region"] as? String, city: obj["city"] as? String,
-            isp: (obj["connection"] as? [String: Any])?["isp"] as? String, fetchedAt: Date())
+            isp: (obj["connection"] as? [String: Any])?["isp"] as? String, fetchedAt: Date(),
+            countryCode: obj["country_code"] as? String,
+            timezoneID: tz,
+            latitude: obj["latitude"] as? Double,
+            longitude: obj["longitude"] as? Double)
     }
 }
 
@@ -85,6 +92,11 @@ extension AppState {
                 guard !Task.isCancelled, self.ipRefreshGeneration == token, self.measurementNetworkID == network,
                       self.isVPNRunning, self.appliedTunnelConfiguration?.id == configuration else { return }
                 self.proxyIPInfo = info; self.publicIPInfo = info
+                // 跟随出口地区：拿到出口时区后，请求 guard 改系统时区（root）。
+                // 只在用户开了开关且确实有出口时区时触发；拿到 nil 就不发指令。
+                if self.settings.followExitRegion, let tz = info.exitRegion.timezoneID {
+                    self.requestSystemTimeZone(tz)
+                }
             } catch {
                 guard self.ipRefreshGeneration == token, self.measurementNetworkID == network,
                       self.appliedTunnelConfiguration?.id == configuration else { return }

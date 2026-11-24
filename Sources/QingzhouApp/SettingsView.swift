@@ -10,12 +10,21 @@ public struct SettingsView: View {
     /// 跟随 App 语言设置的 locale（根视图注入），日期/相对时间格式化用
     @Environment(\.locale) private var locale
     @State private var filterEnabled = false
+    /// 名单查看器（sheet）。数据在打开时从 App Group 现读，避免长期占内存。
+    @State private var listsForDisplay: SplitExitLists?
+    @State private var showListsSheet = false
+    /// 点了「查看名单内容」但磁盘上还没有文件 —— 显示原因，而不是把按钮藏起来。
+    @State private var listsMissingHint = false
+    /// 断网开关的安装/拦截状态（命令面板展示用）。每次进页刷新一次。
+    @State private var guardStatus: GuardStatus = .checking
 
     public init(state: AppState) { self.state = state }
 
     public var body: some View {
         Form {
             proxySection
+            splitExitSection
+            guardSection
             autoSelectSection
             regionSection
             appearanceSection
@@ -33,6 +42,7 @@ public struct SettingsView: View {
         // 切 English 后「定时关闭」的值仍显示「关闭」）。静态 Text 靠 \.locale 环境值
         // 自动刷新不受影响，但 String 值内容不变时 cell 未必重渲染 —— id 直接换树。
         .id(state.settings.language)
+        .onAppear { refreshGuardStatus() }
         .navigationTitle(AppSection.settings.localizedTitle(language: state.settings.language))
         .formStyle(.grouped)
         // 「立即恢复」的版本选择 sheet。两条呈现纪律（复验 #18 两轮打回换来的）：
@@ -46,6 +56,11 @@ public struct SettingsView: View {
             state.presentPendingCloudRestoreOffer()
         }) {
             cloudVersionPicker
+        }
+        .sheet(isPresented: $showListsSheet) {
+            if let lists = listsForDisplay {
+                SplitExitListsView(lists: lists)
+            }
         }
     }
 
@@ -165,6 +180,259 @@ public struct SettingsView: View {
                 Text("INFO").tag("INFO")
                 Text("WARN").tag("WARN")
                 Text("ERROR").tag("ERROR")
+            }
+        }
+    }
+
+    /// 分流方案：「国内直连、其余全走海外出口」。
+    ///
+    /// 只放两个手选项 + 一个开关，不提供"自动"选项 —— 出口挂了就应该断网，
+    /// 任何自动择优/故障切换都会破坏这个语义（AppState 在开启期间也会跳过择优）。
+    private var splitExitSection: some View {
+        Section("分流方案") {
+            Toggle("国内直连、其余全走海外出口", isOn: Binding(
+                get: { state.settings.splitExitEnabled },
+                set: { state.setSplitExitEnabled($0) }
+            ))
+            if state.settings.splitExitEnabled {
+                nodePicker(
+                    title: "海外出口",
+                    selected: state.settings.splitExitExitNodeID,
+                    set: { state.setSplitExitExitNode($0) }
+                )
+                nodePicker(
+                    title: "跳板",
+                    selected: state.settings.splitExitHopNodeID,
+                    set: { state.setSplitExitHopNode($0) }
+                )
+                if let blocked = state.splitExitBlockedReason {
+                    Text(blocked).font(.caption2).foregroundStyle(.orange)
+                } else {
+                    Text("出口的手选节点挂了就是断网，不会自动换节点、不会回落到直连。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Text("出口自身的流量经「跳板」连出去；跳板不通时海外整体不通，国内直连不受影响。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Text("住宅 SOCKS5 的地址/端口/账号/密码请在「节点」里编辑该节点。")
+                    .font(.caption2).foregroundStyle(.secondary)
+
+                Divider()
+
+                Toggle("跟随出口地区（全局系统时区 + 界面语言）",
+                       isOn: state.setting(\.followExitRegion))
+                if state.settings.followExitRegion {
+                    if let region = state.exitRegion {
+                        Text("出口地区：\(region.summary)")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        if let lang = region.suggestedLanguage {
+                            Text("界面语言 → \(lang.rawValue)（仅连接期间生效，不改你的语言设置）")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        } else {
+                            Text("该地区没有对应的界面语言，语言保持你现在的选择。")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        // 系统时区现在由 guard（root 常驻进程）自动改：App 写指令到
+                        // App Group，guard 每 10 秒读一次并调 systemsetup。断开自动还原。
+                        if region.timezoneID != nil {
+                            Text("系统时区将自动切换为 \(region.summary)（由 guard 执行，断开 VPN 自动还原）。")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Text("注意：需要先安装并启用 guard（见下方「断网开关」）。系统语言不自动改（需注销登录，副作用大），浏览器语言仍由浏览器自己决定。")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    } else {
+                        Text("连上 VPN 并拿到出口信息后显示。")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+
+                Divider()
+
+                Toggle("经 root 中继出网", isOn: state.setting(\.guardRelayEnabled))
+                if state.settings.guardRelayEnabled {
+                    Text("所有出站先连 127.0.0.1 的 root 中继，由它拨号。断网开关（pf 只放行 root）必须依赖这一条，否则开拦截会连代理一起拦死。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Text("需要先安装 guard：sudo sh Tools/qingzhou-guard/install.sh。没装时打开此项会拒绝连接并提示。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+
+            }
+            // 国内名单：每天自动更新一次；这里给当前状态 + 手动更新入口。
+            // 没拉到名单也能用（退回内置 geosite:cn / geoip:cn），所以不做成阻断项。
+            HStack {
+                Text(splitExitListsText)
+                    .font(.caption2)
+                    .foregroundStyle(state.splitExitListsStatus.error == nil ? Color.secondary : Color.orange)
+                Spacer()
+                Button(state.splitExitListsStatus.isLoading ? "更新中…" : "更新名单") {
+                    Task { await state.refreshSplitExitLists(force: true) }
+                }
+                .buttonStyle(.borderless)
+                .font(.caption2)
+                .disabled(state.splitExitListsStatus.isLoading)
+            }
+            // 按钮**始终可见**：之前按「已加载」隐藏，导致用户根本找不到入口
+            //（名单还没下载时连提示都没有）。现在点了没文件就说明原因。
+            Button {
+                if let lists = SplitExitListsUpdater.loadCached(), !lists.isEmpty {
+                    listsForDisplay = lists
+                    showListsSheet = true
+                    listsMissingHint = false
+                } else {
+                    listsForDisplay = nil
+                    listsMissingHint = true
+                }
+            } label: {
+                Label("查看名单内容", systemImage: "list.bullet.rectangle")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            if listsMissingHint {
+                Text("磁盘上还没有名单文件。先点上面的「更新名单」，成功后再看。")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
+        }
+        .onAppear { state.loadSplitExitListsStatus() }
+    }
+
+    /// 断网开关：命令面板。root 操作没法在 App 内完成（sudo 密码框不允许预填），
+    /// 所以把命令摆出来让用户一键复制、到终端粘贴执行，并显示当前状态。
+    private var guardSection: some View {
+        Group {
+            Section {
+                statusRow("已安装（中继 + 守护进程）", ok: guardStatus.installed)
+                statusRow("拦截已启用", ok: guardStatus.enabled)
+                statusRow("中继在监听 10808", ok: guardStatus.relayListening)
+
+                if !guardStatus.installed {
+                    Text("尚未安装。先装 guard，再配分流 + 「经 root 中继出网」，确认能上网后开拦截。")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
+            } header: {
+                Text("断网开关")
+            } footer: {
+                Text("以下命令需要 root（sudo）。App 无法代替你敲密码，请点「复制」后到终端粘贴执行。")
+            }
+
+            Section("命令（复制到终端执行）") {
+                commandRow("安装 guard（只装不拦）", cmd: guardInstallCommand, danger: false)
+                commandRow("启用拦截", cmd: guardEnableCommand, danger: false)
+                commandRow("解除拦截（断网时急救）", cmd: guardOffCommand, danger: true)
+                commandRow("彻底卸载", cmd: guardUninstallCommand, danger: false)
+            }
+        }
+    }
+
+    /// 断网开关的运行状态（命令面板展示）。检测只读、不触发任何 root 操作。
+    private struct GuardStatus {
+        var installed = false
+        var enabled = false
+        var relayListening = false
+        static let checking = GuardStatus()
+    }
+
+    /// 只读检测断网开关三态：装没装（目录+守护进程）、开没开（enabled 标记）、
+    /// 中继在不在听（127.0.0.1:10808）。不做任何特权操作。
+    private func refreshGuardStatus() {
+        var s = GuardStatus()
+        let base = "/Library/Application Support/qingzhou-guard"
+        let fm = FileManager.default
+        s.installed = fm.fileExists(atPath: base + "/qingzhou-relay")
+            && fm.fileExists(atPath: "/Library/LaunchDaemons/com.sbraveyoung.qingzhou.guard.plist")
+        s.enabled = fm.fileExists(atPath: base + "/enabled")
+        // 探测 10808 是否在听（不产生副作用，连上就关）
+        s.relayListening = Self.isPortOpen(10808)
+        guardStatus = s
+    }
+
+    private static func isPortOpen(_ port: UInt16) -> Bool {
+        let sock = socket(AF_INET, SOCK_STREAM, 0)
+        guard sock >= 0 else { return false }
+        defer { close(sock) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        let r = withUnsafePointer(to: &addr) { p in
+            p.withMemoryRebound(to: sockaddr.self, capacity: 1) { sap in
+                connect(sock, sap, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return r == 0
+    }
+
+    private func statusRow(_ title: String, ok: Bool) -> some View {
+        HStack {
+            Image(systemName: ok ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(ok ? Color.green : Color.secondary)
+            Text(title).font(.caption)
+            Spacer()
+        }
+    }
+
+    private func commandRow(_ title: String, cmd: String, danger: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).fontWeight(.medium)
+            Text(cmd)
+                .font(.caption2.monospaced())
+                .foregroundStyle(danger ? Color.red : Color.secondary)
+                .textSelection(.enabled)
+            Button {
+                copyGuardCommand(cmd)
+            } label: {
+                Label("复制", systemImage: "doc.on.doc")
+                    .font(.caption2)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    private func copyGuardCommand(_ cmd: String) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(cmd, forType: .string)
+        #else
+        UIPasteboard.general.string = cmd
+        #endif
+    }
+
+    private static let guardBase = "/Library/Application Support/qingzhou-guard"
+
+    private var guardInstallCommand: String {
+        "sudo sh \"/Library/Application Support/qingzhou-guard/install.sh\""
+    }
+    private var guardEnableCommand: String {
+        "sudo sh \"/Library/Application Support/qingzhou-guard/enable.sh\""
+    }
+    private var guardOffCommand: String {
+        "sudo sh \"/Library/Application Support/qingzhou-guard/off.sh\""
+    }
+    private var guardUninstallCommand: String {
+        "sudo sh \"/Library/Application Support/qingzhou-guard/uninstall.sh\""
+    }
+
+    private var splitExitListsText: String {
+        let status = state.splitExitListsStatus
+        if let error = status.error { return L("国内名单不可用：\(error)") }
+        guard status.isLoaded else { return L("国内名单尚未下载，当前只用内置 geosite/geoip") }
+        let when = status.updatedAt.map { $0.formatted(.relative(presentation: .named).locale(locale)) } ?? "—"
+        // 截断后要显示「实收/源总数」，否则用户会以为 11 万条全生效了
+        let domainText = status.sourceDomainCount > status.domainCount
+            ? "\(status.domainCount)/\(status.sourceDomainCount)"
+            : "\(status.domainCount)"
+        let cidrText = status.sourceCIDRCount > status.cidrCount
+            ? "\(status.cidrCount)/\(status.sourceCIDRCount)"
+            : "\(status.cidrCount)"
+        return L("国内名单：\(domainText) 域名 / \(cidrText) 网段（\(when)）")
+    }
+
+    /// 节点下拉：`nil` 表示未选。列表用 `id` 作 tag，重名节点也不会串。
+    private func nodePicker(title: LocalizedStringKey,
+                            selected: UUID?,
+                            set: @escaping @Sendable (UUID?) -> Void) -> some View {
+        Picker(title, selection: Binding(get: { selected }, set: set)) {
+            Text("未选择").tag(UUID?.none)
+            ForEach(state.splitExitCandidates) { node in
+                Text("\(node.name)（\(node.protocolType.rawValue)）").tag(UUID?.some(node.id))
             }
         }
     }

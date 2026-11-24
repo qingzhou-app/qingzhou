@@ -101,6 +101,33 @@ public enum GeoDataBundle {
         if v.hasPrefix("!") { v.removeFirst() }
         return bundledGeoIPCategories.contains(v)
     }
+
+    /// 内置 geosite.dat 里已核实存在的分类（小写）。
+    ///
+    /// ⚠️ 这是**白名单**而不是全集：内置 geosite.dat 有 1469 个分类，把全部名字硬编码进
+    /// 二进制不划算。但 xray 对 routing 里引用了**不存在**的 geosite 分类会直接启动失败
+    /// （和 geoip 一样），一条手写错的规则就能让整机断网 —— 所以默认只放行核实过的分类，
+    /// 用户要引用其它分类时应该显式扩展这张表并同步跑一次真机启动验证。
+    public static let bundledGeoSiteCategories: Set<String> = [
+        // 分流骨架
+        "geolocation-!cn", "geolocation-cn", "cn",
+        // 需求里点名的直连对象
+        "bilibili", "tencent", "apple",
+        // 海外出口与拒绝
+        "anthropic", "category-ads-all",
+        // 常见站点分类（用户规则常用）
+        "google", "openai", "microsoft", "github", "telegram",
+        "netflix", "youtube", "spotify", "twitter", "facebook",
+        "category-games", "category-media", "category-communication"
+    ]
+
+    /// 该 GEOSITE 规则值是否被内置 geo 数据支持（大小写不敏感）。
+    /// 反转写法（`!cn`）在 xray 里没有等价语义，一律视为不支持。
+    public static func supportsGeoSite(_ value: String) -> Bool {
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !v.hasPrefix("!") else { return false }
+        return bundledGeoSiteCategories.contains(v)
+    }
 }
 
 /// 已下载的完整版 geo 数据的元信息。主 App（GeoDataManager）下载校验通过后写进

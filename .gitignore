@@ -38,3 +38,6 @@ build/
 .brooks-lint-history.json
 .planning/.active_plan
 .claude/worktrees/
+
+## 断网开关的编译产物（build-relay.sh 生成）
+Tools/qingzhou-guard/build/

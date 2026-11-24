@@ -95,6 +95,20 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// 默认 true（缺字段/旧配置也阻断，QUIC 经代理普遍不通，见 XrayConfigComposer / docs/QUIC.md）。
     private var blockQUIC = true
 
+    /// 分流方案的两个节点：出口（住宅 SOCKS5）+ 跳板。nil = 未启用分流，走原有单节点路径。
+    ///
+    /// 存在这里是因为 reconfigure / performTest 需要在不重新读 providerConfiguration 的
+    /// 情况下重建同一套配置；原地重配（reconfigure）在分流模式下会被**拒绝**（见下），
+    /// 所以这份状态主要给配置预检和状态展示用。
+    private struct SplitExitNodes: Sendable {
+        var exit: Node
+        var hop: Node
+    }
+    private let splitExitNodes = OSAllocatedUnfairLock(initialState: SplitExitNodes?.none)
+
+    /// 断网开关的 root 中继。非 nil 时所有出站都经它（详见 SplitExitPlan.RelayEndpoint）。
+    private let guardRelay = OSAllocatedUnfairLock<SplitExitPlan.RelayEndpoint?>(initialState: nil)
+
     // MARK: - 健康触发的故障切换（保守 MVP：检测 + 告警，首版**不自动切数据面**）
 
     /// 判死纯逻辑（QingzhouCore）。**只在 statsQueue 上碰**（随 reportXrayOutboundStats 喂样本），
@@ -143,7 +157,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let mode = ProxyMode(rawValue: modeRaw) ?? .global
         let nodeJSON = providerConfig?["nodeJSON"] as? String ?? ""
         let shareLink = providerConfig?["shareLink"] as? String ?? ""
-        guard mode == .direct || !nodeJSON.isEmpty || !shareLink.isEmpty else {
+        // 分流方案不需要 nodeJSON / shareLink：它的两个节点在 exitNodeJSON / hopNodeJSON 里。
+        let splitExitRequested = ((providerConfig?["splitExit"] as? NSNumber)?.boolValue
+            ?? (providerConfig?["splitExit"] as? Bool)) ?? false
+        guard mode == .direct || splitExitRequested || !nodeJSON.isEmpty || !shareLink.isEmpty else {
             let err = NSError(
                 domain: "com.sbraveyoung.qingzhou.tunnel",
                 code: 1001,
@@ -184,25 +201,52 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         // 转换 Node → outbounds JSON
         let xrayJSON: String
         do {
-            let outboundsJSON = mode == .direct ? "{}" : try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
-            // accessLogPath() 内部会清空旧日志 + 验证容器可写；返回 nil 时 compose 不配 access，
-            // VPN 照常起（只是没有连接日志）。让 xray 把连接日志写到 App Group，主 App 解析展示。
-            xrayJSON = try XrayConfigComposer.compose(
-                outboundsJSON: outboundsJSON,
-                mode: mode,
-                accessLogPath: TunnelAppGroup.accessLogPath(),
-                userRules: userRules,
-                hasFullGeoIP: geo.isFull,
-                metricsPort: self.metricsPort,
-                publicIPPort: publicIPPort.withLock { $0 },
-                blockQUIC: self.blockQUIC
-            )
+            // 分流方案优先：它自带完整 routing/dns，不吃 userRules（需求里规则顺序是固定的，
+            // 让自定义规则插进去会破坏 first-match 的优先级保证）。
+            let splitExit = try resolveSplitExit(providerConfig: providerConfig)
+            splitExitNodes.withLock { $0 = splitExit }
+            // 中继凭据：解不出来就当没有（不至于因此起不了 VPN），但会打日志。
+            let relayRaw = providerConfig?["guardRelayJSON"] as? String ?? ""
+            let relay = GuardRelayCredentials.decode(relayRaw).map {
+                SplitExitPlan.RelayEndpoint(host: $0.host, port: $0.port,
+                                            username: $0.username, password: $0.password)
+            }
+            guardRelay.withLock { $0 = relay }
+            if let relay {
+                os_log("split-exit: 出站经 root 中继 127.0.0.1:%d", log: log, type: .default, Int(relay.port))
+            }
+            if let splitExit {
+                os_log("startTunnel: split-exit 模式（出口 %{public}@ 经跳板 %{public}@）",
+                       log: log, type: .default, splitExit.exit.name, splitExit.hop.name)
+                xrayJSON = try composeSplitExit(splitExit,
+                                                accessLogPath: TunnelAppGroup.accessLogPath(),
+                                                tunInterfaceName: "utun")
+            } else {
+                let outboundsJSON = mode == .direct ? "{}" : try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
+                // accessLogPath() 内部会清空旧日志 + 验证容器可写；返回 nil 时 compose 不配 access，
+                // VPN 照常起（只是没有连接日志）。让 xray 把连接日志写到 App Group，主 App 解析展示。
+                xrayJSON = try XrayConfigComposer.compose(
+                    outboundsJSON: outboundsJSON,
+                    mode: mode,
+                    accessLogPath: TunnelAppGroup.accessLogPath(),
+                    userRules: userRules,
+                    hasFullGeoIP: geo.isFull,
+                    metricsPort: self.metricsPort,
+                    publicIPPort: publicIPPort.withLock { $0 },
+                    blockQUIC: self.blockQUIC
+                )
+            }
         } catch {
             os_log("share link → xray config 转换失败: %{public}@",
                    log: log, type: .error, error.localizedDescription)
             completionHandler(error)
             return
         }
+
+        // 把生效的配置写进 App Group：主 App 的 enable.sh 靠「配置里有没有 relay 出站」
+        // 来判断能否安全开启 pf 拦截。之前这个文件根本没人写（writeXrayConfig 是死代码），
+        // enable.sh 的检查永远是失败的。
+        TunnelAppGroup.writeXrayConfig(xrayJSON)
 
         // 2) 设置 TUN 网络参数
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
@@ -401,6 +445,87 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             code: 1004,
             userInfo: [NSLocalizedDescriptionKey:
                 "两条路径都失败：nodeJSON 解析失败且 shareLink 为空"]
+        )
+    }
+
+    /// 从 providerConfiguration 解出分流方案的两个节点。
+    ///
+    /// 语义刻意严格：
+    /// - `splitExit` 不是 true → 返回 nil，走原有单节点路径（老配置不受影响）；
+    /// - `splitExit` 是 true 但任一节点解不出来 / 缺失 → **抛错**，绝不回退到单节点。
+    ///   回退等于「海外出口变成从本机直连的住宅代理」——国内连不上，而且会把真实 IP
+    ///   暴露给住宅服务商。宁可连不上并告诉用户原因。
+    private func resolveSplitExit(providerConfig: [String: Any]?) throws -> SplitExitNodes? {
+        let enabled = (providerConfig?["splitExit"] as? NSNumber)?.boolValue
+            ?? (providerConfig?["splitExit"] as? Bool) ?? false
+        guard enabled else { return nil }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        func decode(_ key: String) throws -> Node {
+            guard let raw = providerConfig?[key] as? String, !raw.isEmpty,
+                  let data = raw.data(using: .utf8) else {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1010,
+                              userInfo: [NSLocalizedDescriptionKey: "分流方案缺少 \(key)"])
+            }
+            do { return try decoder.decode(Node.self, from: data) }
+            catch {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1011,
+                              userInfo: [NSLocalizedDescriptionKey: "分流方案的 \(key) 无法解析：\(error.localizedDescription)"])
+            }
+        }
+        let exit = try decode("exitNodeJSON")
+        let hop = try decode("hopNodeJSON")
+        guard exit.host != hop.host || exit.port != hop.port || exit.protocolType != hop.protocolType else {
+            throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1012,
+                          userInfo: [NSLocalizedDescriptionKey: "海外出口与跳板是同一个节点，会绕成死循环"])
+        }
+        os_log("split-exit: exit=%{public}@ hop=%{public}@",
+               log: log, type: .default, exit.protocolType.rawValue, hop.protocolType.rawValue)
+        return SplitExitNodes(exit: exit, hop: hop)
+    }
+
+    /// 读主 App 更新好的国内名单（direct.txt / cncidr.txt）。
+    ///
+    /// 为什么要限量：iOS 给 NE 扩展 50 MiB 的 jetsam 硬上限，几万条域名全塞进
+    /// routing 规则会实打实吃掉几 MB 常驻内存（Go 侧数组 + 字符串头）。这里按
+    /// 「保留前 N 条」截断并打日志 —— 名单本身按域名热度排过序，前 N 条覆盖绝大多数流量；
+    /// 剩下的仍由 `geosite:cn` / `geoip:cn` 兜。真机上量过内存再决定要不要放开。
+    private func loadSplitExitLists() -> SplitExitPlan.Lists {
+        guard let dir = TunnelAppGroup.ensureWorkingDirectory() else {
+            os_log("split-exit: App Group 不可用 → 名单只用 geosite/geoip", log: log, type: .error)
+            return .init()
+        }
+        let url = dir.appendingPathComponent(SplitExitListsFile.fileName)
+        guard let data = try? Data(contentsOf: url),
+              let lists = SplitExitListsFile.decode(data) else {
+            os_log("split-exit: 未找到名单文件 → 名单只用 geosite/geoip", log: log, type: .default)
+            return .init()
+        }
+        let domains = Array(lists.domains.prefix(SplitExitListsLimits.domains))
+        let keywords = Array(lists.domainKeywords.prefix(SplitExitListsLimits.keywords))
+        let cidrs = Array(lists.cidrs.prefix(SplitExitListsLimits.cidrs))
+        if domains.count < lists.domains.count || cidrs.count < lists.cidrs.count {
+            os_log("split-exit: 名单已截断 domains=%d/%d cidrs=%d/%d（NE 内存预算）",
+                   log: log, type: .default,
+                   domains.count, lists.domains.count, cidrs.count, lists.cidrs.count)
+        }
+        return .init(cnDomains: domains, cnDomainKeywords: keywords, cnCIDRs: cidrs)
+    }
+
+    /// 用分流方案生成完整 xray 配置。TUN 接口名与 access log 与老路径一致，
+    /// 这样连接页、流量统计、域名账本都不用改。
+    private func composeSplitExit(_ nodes: SplitExitNodes,
+                                  accessLogPath: String?,
+                                  tunInterfaceName: String) throws -> String {
+        let plan = SplitExitPlan(exitNode: nodes.exit, hopNode: nodes.hop,
+                                 lists: loadSplitExitLists(),
+                                 relay: guardRelay.withLock { $0 })
+        return try plan.composeJSON(
+            accessLogPath: accessLogPath,
+            tunInterfaceName: tunInterfaceName,
+            metricsPort: metricsPort,
+            publicIPPort: publicIPPort.withLock { $0 }
         )
     }
 
@@ -866,6 +991,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                              reply: @escaping (Error?) -> Void) {
         os_log("reconfigure → node=%{public}@ mode=%{public}@ userRules=%d",
                log: log, type: .default, nodeName, mode.rawValue, userRules.count)
+
+        // 分流方案不走原地重配：它的出口/跳板不在 reconfigure 的消息体里，用旧的两个节点
+        // 套新 mode 会得到一份「半新半旧」的配置。直接回错，让主 App 回退到全量重启
+        //（全量重启会重新走 configure() 带上完整的分流参数）。
+        if splitExitNodes.withLock({ $0 != nil }) {
+            reply(NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1013,
+                          userInfo: [NSLocalizedDescriptionKey: "分流方案下不支持原地重配，请重新连接"]))
+            return
+        }
         // 健康判死器：进入切换窗口，硬 guard 暂停喂样本（stop→start 计数跳变会虚假触发，F24）。
         let health = healthControl
         sessionInfo.withLock { _ in health.withLock { $0.isSwitching = true } }
@@ -931,6 +1065,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                             reply: @escaping (Error?) -> Void) {
         os_log("switchNode → node=%{public}@ (in-place, tunnel kept alive)",
                log: log, type: .default, nodeName)
+
+        // 分流方案的出口是手选的、且经跳板固定链路：原地把 proxy outbound 换成别的节点
+        // 等于绕开跳板，语义直接错掉。回错让主 App 回退全量重启。
+        if splitExitNodes.withLock({ $0 != nil }) {
+            reply(NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1014,
+                          userInfo: [NSLocalizedDescriptionKey: "分流方案下不支持原地换节点，请重新连接"]))
+            return
+        }
         // 健康判死器：进入切换窗口，硬 guard 暂停喂样本（F24）。
         let health = healthControl
         sessionInfo.withLock { _ in health.withLock { $0.isSwitching = true } }
@@ -1047,6 +1189,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private func performTest(nodeJSON: String, shareLink: String, mode: ProxyMode, userRules: [Rule]) -> Swift.Error? {
         let geo = resolveGeoData()
         do {
+            // 分流方案：预检必须与实跑同一份配置，否则「预检通过、真连失败」。
+            if let splitExit = splitExitNodes.withLock({ $0 }) {
+                let xrayJSON = try composeSplitExit(splitExit, accessLogPath: nil, tunInterfaceName: "utun9")
+                try XrayCore.testConfig(configJSON: xrayJSON, datDir: geo.dir)
+                return nil
+            }
             let outboundsJSON = mode == .direct ? "{}" : try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
             let xrayJSON = try XrayConfigComposer.compose(
                 outboundsJSON: outboundsJSON,
