@@ -41,6 +41,7 @@ install -m 644 -o root -g wheel "$HERE/pf/qingzhou-guard.conf" "$BASE/qingzhou-g
 install -m 755 -o root -g wheel "$HERE/guard-run.sh" "$BASE/guard-run.sh"
 install -m 755 -o root -g wheel "$HERE/off.sh" "$BASE/off.sh"
 install -m 755 -o root -g wheel "$HERE/enable.sh" "$BASE/enable.sh"
+install -m 755 -o root -g wheel "$HERE/uninstall.sh" "$BASE/uninstall.sh"
 printf '%s' "$PORT" > "$BASE/port"
 chmod 644 "$BASE/port"
 
