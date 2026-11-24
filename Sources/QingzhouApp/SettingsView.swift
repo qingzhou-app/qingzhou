@@ -15,6 +15,8 @@ public struct SettingsView: View {
     @State private var showListsSheet = false
     /// 点了「查看名单内容」但磁盘上还没有文件 —— 显示原因，而不是把按钮藏起来。
     @State private var listsMissingHint = false
+    /// 断网开关的安装/拦截状态（命令面板展示用）。每次进页刷新一次。
+    @State private var guardStatus: GuardStatus = .checking
 
     public init(state: AppState) { self.state = state }
 
@@ -22,6 +24,7 @@ public struct SettingsView: View {
         Form {
             proxySection
             splitExitSection
+            guardSection
             autoSelectSection
             regionSection
             appearanceSection
@@ -39,6 +42,7 @@ public struct SettingsView: View {
         // 切 English 后「定时关闭」的值仍显示「关闭」）。静态 Text 靠 \.locale 环境值
         // 自动刷新不受影响，但 String 值内容不变时 cell 未必重渲染 —— id 直接换树。
         .id(state.settings.language)
+        .onAppear { refreshGuardStatus() }
         .navigationTitle(AppSection.settings.localizedTitle(language: state.settings.language))
         .formStyle(.grouped)
         // 「立即恢复」的版本选择 sheet。两条呈现纪律（复验 #18 两轮打回换来的）：
@@ -294,6 +298,122 @@ public struct SettingsView: View {
             }
         }
         .onAppear { state.loadSplitExitListsStatus() }
+    }
+
+    /// 断网开关：命令面板。root 操作没法在 App 内完成（sudo 密码框不允许预填），
+    /// 所以把命令摆出来让用户一键复制、到终端粘贴执行，并显示当前状态。
+    private var guardSection: some View {
+        Group {
+            Section {
+                statusRow("已安装（中继 + 守护进程）", ok: guardStatus.installed)
+                statusRow("拦截已启用", ok: guardStatus.enabled)
+                statusRow("中继在监听 10808", ok: guardStatus.relayListening)
+
+                if !guardStatus.installed {
+                    Text("尚未安装。先装 guard，再配分流 + 「经 root 中继出网」，确认能上网后开拦截。")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
+            } header: {
+                Text("断网开关")
+            } footer: {
+                Text("以下命令需要 root（sudo）。App 无法代替你敲密码，请点「复制」后到终端粘贴执行。")
+            }
+
+            Section("命令（复制到终端执行）") {
+                commandRow("安装 guard（只装不拦）", cmd: guardInstallCommand, danger: false)
+                commandRow("启用拦截", cmd: guardEnableCommand, danger: false)
+                commandRow("解除拦截（断网时急救）", cmd: guardOffCommand, danger: true)
+                commandRow("彻底卸载", cmd: guardUninstallCommand, danger: false)
+            }
+        }
+    }
+
+    /// 断网开关的运行状态（命令面板展示）。检测只读、不触发任何 root 操作。
+    private struct GuardStatus {
+        var installed = false
+        var enabled = false
+        var relayListening = false
+        static let checking = GuardStatus()
+    }
+
+    /// 只读检测断网开关三态：装没装（目录+守护进程）、开没开（enabled 标记）、
+    /// 中继在不在听（127.0.0.1:10808）。不做任何特权操作。
+    private func refreshGuardStatus() {
+        var s = GuardStatus()
+        let base = "/Library/Application Support/qingzhou-guard"
+        let fm = FileManager.default
+        s.installed = fm.fileExists(atPath: base + "/qingzhou-relay")
+            && fm.fileExists(atPath: "/Library/LaunchDaemons/com.sbraveyoung.qingzhou.guard.plist")
+        s.enabled = fm.fileExists(atPath: base + "/enabled")
+        // 探测 10808 是否在听（不产生副作用，连上就关）
+        s.relayListening = Self.isPortOpen(10808)
+        guardStatus = s
+    }
+
+    private static func isPortOpen(_ port: UInt16) -> Bool {
+        let sock = socket(AF_INET, SOCK_STREAM, 0)
+        guard sock >= 0 else { return false }
+        defer { close(sock) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        let r = withUnsafePointer(to: &addr) { p in
+            p.withMemoryRebound(to: sockaddr.self, capacity: 1) { sap in
+                connect(sock, sap, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return r == 0
+    }
+
+    private func statusRow(_ title: String, ok: Bool) -> some View {
+        HStack {
+            Image(systemName: ok ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(ok ? Color.green : Color.secondary)
+            Text(title).font(.caption)
+            Spacer()
+        }
+    }
+
+    private func commandRow(_ title: String, cmd: String, danger: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).fontWeight(.medium)
+            Text(cmd)
+                .font(.caption2.monospaced())
+                .foregroundStyle(danger ? Color.red : Color.secondary)
+                .textSelection(.enabled)
+            Button {
+                copyGuardCommand(cmd)
+            } label: {
+                Label("复制", systemImage: "doc.on.doc")
+                    .font(.caption2)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    private func copyGuardCommand(_ cmd: String) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(cmd, forType: .string)
+        #else
+        UIPasteboard.general.string = cmd
+        #endif
+    }
+
+    private static let guardBase = "/Library/Application Support/qingzhou-guard"
+
+    private var guardInstallCommand: String {
+        "sudo sh \"/Library/Application Support/qingzhou-guard/install.sh\""
+    }
+    private var guardEnableCommand: String {
+        "sudo sh \"/Library/Application Support/qingzhou-guard/enable.sh\""
+    }
+    private var guardOffCommand: String {
+        "sudo sh \"/Library/Application Support/qingzhou-guard/off.sh\""
+    }
+    private var guardUninstallCommand: String {
+        "sudo sh \"/Library/Application Support/qingzhou-guard/uninstall.sh\""
     }
 
     private var splitExitListsText: String {
