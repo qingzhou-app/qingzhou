@@ -133,7 +133,16 @@ if ! ditto "$NEW_APP" "$APP_DST"; then
   exit 1
 fi
 xattr -dr com.apple.quarantine "$APP_DST" 2>/dev/null || true
-log "    OK"
+# 证明「跑起来的确实是我刚构建的这个二进制」：比签名 CDHash，而不是比版本号
+#（版本号这次没变，比版本号会得出"装成功了"的假结论）。
+NEW_HASH="$(codesign -dv --verbose=4 "$NEW_APP" 2>&1 | awk -F= '/^CDHash=/{print $2}')"
+DST_HASH="$(codesign -dv --verbose=4 "$APP_DST" 2>&1 | awk -F= '/^CDHash=/{print $2}')"
+log "    二进制指纹：新=${NEW_HASH:-?} 已装=${DST_HASH:-?}"
+if [ -n "$NEW_HASH" ] && [ "$NEW_HASH" = "$DST_HASH" ]; then
+  log "    OK（已安装的就是刚构建的产物）"
+else
+  log "⚠️ 指纹不一致，但仍继续验收（以最终能否上网为准）"
+fi
 
 # ---------- 6. 重启等 VPN ----------
 log "--- 6/7 重开轻舟并等待连接"
@@ -148,21 +157,36 @@ done
 log "    VPN 连接：$([ "$CONNECTED" -eq 1 ] && echo 是 || echo 否)（等了 $((j*4))s）"
 
 # ---------- 7. 验收 ----------
+#
+# 判据用「专门测连通性的探针」，而不是 claude.ai：
+# claude.ai 对裸 curl（无浏览器头）返回 403（Cloudflare 挑战页）——
+# 那恰恰说明请求**到达了服务器**，网络是通的。上一版把它当失败，误触发回滚。
+# generate_204 / api.ipify.org 不带任何头也返回 204 / 200，没有歧义。
 log "--- 7/7 验收（普通用户身份、清空代理变量）"
-HTTP="000"
+PROBE_PRIMARY="https://www.gstatic.com/generate_204"
+PROBE_IP="https://api.ipify.org"
+CLEAN_ENV="env -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy -u HTTP_PROXY -u HTTPS_PROXY"
+
+CODE="000"
 if [ "$CONNECTED" -eq 1 ]; then
   attempt=1
   while [ "$attempt" -le 3 ]; do
-    HTTP="$(env -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy \
-      curl -sS --noproxy '*' -m 12 -o /dev/null -w '%{http_code}' https://claude.ai/ 2>/dev/null)"
-    [ -z "$HTTP" ] && HTTP="000"
-    [ "$HTTP" = "200" ] && break
+    CODE="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 -o /dev/null -w '%{http_code}' "$PROBE_PRIMARY" 2>/dev/null)"
+    [ -z "$CODE" ] && CODE="000"
+    [ "$CODE" = "204" ] && break
     attempt=$((attempt+1)); sleep 5
   done
 fi
-log "    https://claude.ai/ → $HTTP"
+log "    $PROBE_PRIMARY → $CODE（期望 204）"
 
-if [ "$CONNECTED" -eq 1 ] && [ "$HTTP" = "200" ]; then
+if [ "$CODE" = "204" ]; then
+  EXIT_IP="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 "$PROBE_IP" 2>/dev/null)"
+  log "    出口 IP：${EXIT_IP:-取不到}"
+  CLAUDE_CODE="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 -o /dev/null -w '%{http_code}' https://claude.ai/ 2>/dev/null)"
+  log "    参考：https://claude.ai/ → ${CLAUDE_CODE:-000}（403 通常是 Cloudflare 挑战，说明已到达服务器）"
+fi
+
+if [ "$CONNECTED" -eq 1 ] && [ "$CODE" = "204" ]; then
   log "===== 安装成功 ====="
   log "旧版本备份：$BACKUP_ROOT/Qingzhou.app"
   log "回滚：pkill -f Qingzhou.app; ditto \"$BACKUP_ROOT/Qingzhou.app\" \"$APP_DST\"; open \"$APP_DST\""
@@ -170,7 +194,7 @@ if [ "$CONNECTED" -eq 1 ] && [ "$HTTP" = "200" ]; then
 fi
 
 # ---------- 失败回滚 ----------
-log "❌ 验收未通过（VPN=$CONNECTED HTTP=${HTTP}），开始回滚"
+log "❌ 验收未通过（VPN=$CONNECTED 探针=${CODE}），开始回滚"
 osascript -e 'tell application "Qingzhou" to quit' >/dev/null 2>&1 || true
 sleep 2
 pkill -f "Qingzhou.app/Contents/MacOS/Qingzhou" >/dev/null 2>&1 || true
