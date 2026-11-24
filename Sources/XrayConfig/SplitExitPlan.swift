@@ -215,16 +215,27 @@ public struct SplitExitPlan {
             outbounds.append(relayOutbound)
         }
 
-        var direct: [String: Any] = [
+        // 国内直连也是「从本机发出去的包」。不串中继的话，断网开关会把国内直连一起拦掉。
+        //
+        // ⚠️ 经中继时**必须去掉 ForceIP**：ForceIP 让 xray 在拨号前把域名解析成 IP，
+        // 而解析走我们自己的 DNS（fakedns）→ 返回的是假 IP → SOCKS5 CONNECT 带着
+        // 假 IP 交给 relay → root 从物理网卡拨一个只存在于 TUN 里的假 IP → 包绕回
+        // TUN 再进 xray → 死循环（线上实测：30 个 CONNECT 全部挂起，整机断网）。
+        // 不解析、把域名原样交给 relay，由 root 用系统 DNS 解析 —— 国内域名这正是对的。
+        var directSockopt: [String: Any] = [:]
+        if relay != nil {
+            directSockopt["dialerProxy"] = Tag.relay
+        } else {
+            directSockopt["domainStrategy"] = "ForceIP"
+            directSockopt["happyEyeballs"] = ["prioritizeIPv6": true, "tryDelayMs": 250,
+                                              "interleave": 1, "maxConcurrentTry": 4]
+        }
+        let direct: [String: Any] = [
             "tag": Tag.direct,
             "protocol": "freedom",
             "settings": ["domainStrategy": "AsIs"] as [String: Any],
-            "streamSettings": ["sockopt": ["domainStrategy": "ForceIP"]] as [String: Any]
+            "streamSettings": ["sockopt": directSockopt] as [String: Any]
         ]
-        // 国内直连也是「从本机发出去的包」。不串中继的话，断网开关会把国内直连一起拦掉。
-        if relay != nil {
-            direct = Self.attachDialerProxy(Tag.relay, to: direct)
-        }
         outbounds.append(direct)
 
         outbounds.append(["tag": Tag.reject, "protocol": "blackhole", "settings": [:] as [String: Any]])

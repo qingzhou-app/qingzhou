@@ -345,5 +345,18 @@ final class SplitExitPlanTests: XCTestCase {
         let direct = try XCTUnwrap(outbounds.first { $0["tag"] as? String == "direct" })
         let sockopt = (direct["streamSettings"] as? [String: Any])?["sockopt"] as? [String: Any]
         XCTAssertNil(sockopt?["dialerProxy"])
+        XCTAssertEqual(sockopt?["domainStrategy"] as? String, "ForceIP")
+    }
+
+    /// 经中继时 direct 绝不能 ForceIP：ForceIP 会把域名解析成假 IP（fakedns），
+    /// SOCKS5 CONNECT 带着假 IP → root 从物理网卡拨一个只存在于 TUN 里的地址
+    /// → 包绕回 TUN 死循环。线上实测：30 个 CONNECT 全挂起、整机断网。
+    func testRelayDirectMustNotForceIP() throws {
+        let outbounds = try planWithRelay().outbounds()
+        let direct = try XCTUnwrap(outbounds.first { $0["tag"] as? String == "direct" })
+        let sockopt = try XCTUnwrap((direct["streamSettings"] as? [String: Any])?["sockopt"] as? [String: Any])
+        XCTAssertEqual(sockopt["dialerProxy"] as? String, "relay")
+        XCTAssertNil(sockopt["domainStrategy"], "ForceIP 会把假 IP 塞进 CONNECT，必须去掉")
+        XCTAssertNil(sockopt["happyEyeballs"], "经过 SOCKS5 中继的拨号没有 Happy Eyeballs 的意义")
     }
 }

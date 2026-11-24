@@ -243,6 +243,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             return
         }
 
+        // 把生效的配置写进 App Group：主 App 的 enable.sh 靠「配置里有没有 relay 出站」
+        // 来判断能否安全开启 pf 拦截。之前这个文件根本没人写（writeXrayConfig 是死代码），
+        // enable.sh 的检查永远是失败的。
+        TunnelAppGroup.writeXrayConfig(xrayJSON)
+
         // 2) 设置 TUN 网络参数
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
         let ipv4 = NEIPv4Settings(addresses: ["10.0.10.1"], subnetMasks: ["255.255.255.0"])
