@@ -10,6 +10,9 @@ public struct RulesView: View {
     @State private var newTarget: RuleTarget = .proxy
     @State private var addError: String?
     @State private var refreshing = false
+    /// 远程规则一次渲染多少条。远程规则动辄几千上万条，一次性铺开会卡住列表；
+    /// 但"只能看前 200 条"也说不过去 —— 所以给「再显示 N 条」和「全部显示」。
+    @State private var remoteLimit = 200
 
     public init(state: AppState) { self.state = state }
 
@@ -261,15 +264,33 @@ public struct RulesView: View {
                 Text(state.remoteRules.isEmpty ? "尚未加载远程规则" : "无匹配规则")
                     .foregroundStyle(.secondary).font(.caption)
             } else {
-                ForEach(filtered.prefix(200)) { rule in
+                ForEach(filtered.prefix(remoteLimit)) { rule in
                     ruleRow(rule, isCustom: false)
                 }
-                if filtered.count > 200 {
-                    Text("已展示前 200 条，共 \(filtered.count) 条匹配。")
+                if filtered.count > remoteLimit {
+                    Text("已显示 \(remoteLimit) / \(filtered.count) 条")
                         .font(.caption2).foregroundStyle(.secondary)
+                    Button {
+                        remoteLimit += 200
+                    } label: {
+                        Label("再显示 200 条", systemImage: "chevron.down")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    // 全部展开是把上万行一次性塞进 List，会明显卡顿；先用文字说清代价，
+                    // 让用户自己决定要不要。
+                    Button {
+                        remoteLimit = filtered.count
+                    } label: {
+                        Label("全部显示（\(filtered.count) 条，可能卡顿）", systemImage: "list.bullet")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
         }
+        // 搜索词变了就回到 200 条，否则上一次"全部显示"会让下一次搜索也铺满全表
+        .onChange(of: searchText) { _, _ in remoteLimit = 200 }
     }
 
     /// 内置 geoip.dat 是精简版（仅 cn/private，给 NE 扩展 50MB 内存预算省地）——

@@ -10,6 +10,9 @@ public struct SettingsView: View {
     /// 跟随 App 语言设置的 locale（根视图注入），日期/相对时间格式化用
     @Environment(\.locale) private var locale
     @State private var filterEnabled = false
+    /// 名单查看器（sheet）。数据在打开时从 App Group 现读，避免长期占内存。
+    @State private var listsForDisplay: SplitExitLists?
+    @State private var showListsSheet = false
 
     public init(state: AppState) { self.state = state }
 
@@ -47,6 +50,11 @@ public struct SettingsView: View {
             state.presentPendingCloudRestoreOffer()
         }) {
             cloudVersionPicker
+        }
+        .sheet(isPresented: $showListsSheet) {
+            if let lists = listsForDisplay {
+                SplitExitListsView(lists: lists)
+            }
         }
     }
 
@@ -215,6 +223,16 @@ public struct SettingsView: View {
                     .buttonStyle(.borderless)
                     .font(.caption2)
                     .disabled(state.splitExitListsStatus.isLoading)
+                }
+                if state.splitExitListsStatus.isLoaded {
+                    Button {
+                        listsForDisplay = SplitExitListsUpdater.loadCached()
+                        showListsSheet = listsForDisplay != nil
+                    } label: {
+                        Label("查看名单内容", systemImage: "list.bullet.rectangle")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
         }
