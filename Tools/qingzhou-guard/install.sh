@@ -104,15 +104,30 @@ chmod 644 "$PLIST"
 chown root:wheel "$PLIST"
 
 echo "==> 加载（仅启动中继，不加载 pf 规则）"
+# bootout 是异步的：紧接着 bootstrap 会撞上"正在注销"而失败。
+# 必须等服务真的从 launchd 消失，再引导，且失败重试 —— 重复安装时尤其容易踩。
 launchctl bootout system "$PLIST" 2>/dev/null || true
-launchctl bootstrap system "$PLIST" 2>/dev/null || launchctl load -w "$PLIST"
+for i in 1 2 3 4 5; do
+  launchctl print system/com.sbraveyoung.qingzhou.guard >/dev/null 2>&1 || break
+  sleep 1
+done
+
+LOADED=0
+for i in 1 2 3; do
+  if launchctl bootstrap system "$PLIST" 2>/dev/null; then LOADED=1; break; fi
+  launchctl load -w "$PLIST" 2>/dev/null && { LOADED=1; break; }
+  sleep 2
+done
 
 sleep 2
 if launchctl print system/com.sbraveyoung.qingzhou.guard >/dev/null 2>&1; then
   echo "    服务已加载"
+  LOADED=1
 else
   echo "    ⚠️ 服务未加载，检查 /var/log/qingzhou-guard.log" >&2
+  echo "    手动补一次：sudo launchctl bootstrap system "$PLIST"" >&2
 fi
+[ "$LOADED" -eq 1 ] || exit 1
 
 echo
 echo "中继监听：127.0.0.1:${PORT}（凭据见 $BASE/relay-auth）"
