@@ -79,8 +79,15 @@ while kill -0 "$RELAY" 2>/dev/null; do
   # 这里读出来，有变化就调用 timezone-follow.sh（root 权限执行 systemsetup）。
   # App 只能写自己的 App Group 容器（沙箱），guard 是 root 能读任意用户目录，
   # 所以直接读 App Group 里的指令文件，不做中间桥接。
+  #
+  # ⚠️ 不能 `eval echo ~$TARGET_USER`：macOS 上短用户名（sbrave）和 home 目录名
+  # （sbraveyoung）可能不一致，`~sbrave` 会展开成不存在的 /Users/sbrave。
+  # 用 dscl 查真实 home 目录，查不到再退回 /Users/<短名>。
   TARGET_USER="$(stat -f %Su /dev/console 2>/dev/null)"
-  TARGET_HOME="$(eval echo "~${TARGET_USER}" 2>/dev/null)"
+  TARGET_HOME="$(dscl . -read "/Users/${TARGET_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  if [ -z "$TARGET_HOME" ]; then
+    TARGET_HOME="/Users/${TARGET_USER}"
+  fi
   TZ_FILE="$TARGET_HOME/Library/Group Containers/group.com.sbraveyoung.qingzhou/follow-timezone.request"
   if [ -f "$TZ_FILE" ]; then
     TZ_VALUE="$(cat "$TZ_FILE" 2>/dev/null)"

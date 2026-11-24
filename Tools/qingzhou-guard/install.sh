@@ -64,7 +64,11 @@ fi
 # App 读不到，所以另写一份到该用户的 App Group 容器（属主=用户，600）。
 echo "==> 把凭据同步给 App（App Group）"
 TARGET_USER="${SUDO_USER:-$(stat -f %Su /dev/console)}"
-TARGET_HOME="$(eval echo "~$TARGET_USER")"
+# ⚠️ 不能用 `eval echo ~$TARGET_USER`：短用户名（sbrave）≠ home 目录名（sbraveyoung）
+TARGET_HOME="$(dscl . -read "/Users/${TARGET_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+if [ -z "$TARGET_HOME" ]; then
+  TARGET_HOME="/Users/${TARGET_USER}"
+fi
 GROUP_DIR="$TARGET_HOME/Library/Group Containers/group.com.sbraveyoung.qingzhou"
 if [ -d "$GROUP_DIR" ]; then
   U="$(grep -v '^#' "$BASE/relay-auth" | head -1 | cut -d: -f1)"

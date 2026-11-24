@@ -44,7 +44,11 @@ echo "    OK：$TUN"
 echo "==> 3/5 确认代理真的在经中继出网（不做这步就开拦截 = 整机断网）"
 # 证据一：App 生效的 xray 配置里有 relay 出站（app 配置时写进 App Group）
 TARGET_USER="${SUDO_USER:-$(stat -f %Su /dev/console)}"
-TARGET_HOME="$(eval echo "~${TARGET_USER}")"
+# ⚠️ 不能用 `eval echo ~$TARGET_USER`：短用户名（sbrave）≠ home 目录名（sbraveyoung）
+TARGET_HOME="$(dscl . -read "/Users/${TARGET_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+if [ -z "$TARGET_HOME" ]; then
+  TARGET_HOME="/Users/${TARGET_USER}"
+fi
 XRAY_CFG="$TARGET_HOME/Library/Group Containers/group.com.sbraveyoung.qingzhou/xray-config.json"
 if [ ! -f "$XRAY_CFG" ] || ! grep -q '"relay"' "$XRAY_CFG" 2>/dev/null; then
   echo "    App 生效的配置里没有 relay 出站。" >&2
