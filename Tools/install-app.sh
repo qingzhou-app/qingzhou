@@ -167,17 +167,34 @@ PROBE_PRIMARY="https://www.gstatic.com/generate_204"
 PROBE_IP="https://api.ipify.org"
 CLEAN_ENV="env -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy -u HTTP_PROXY -u HTTPS_PROXY"
 
+# 刚换完 App 的头一两分钟，扩展可能还挂在旧会话上（系统会立刻显示"已连接"，
+# 但 xray 没真正跑起来）—— 实测出现过：连接状态是"已连接"、国内通、海外全 000，
+# 几分钟后自行恢复。所以这里不急着判失败：先耐心探，再强制重启一次隧道。
 CODE="000"
+SVC_ID="$(scutil --nc list 2>/dev/null | awk '/Qingzhou/ {for (i=1;i<=NF;i++) if ($i ~ /^[0-9A-F-]{36}$/) {print $i; exit}}')"
+
+probe() {
+  CODE="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 -o /dev/null -w '%{http_code}' "$PROBE_PRIMARY" 2>/dev/null)"
+  [ -z "$CODE" ] && CODE="000"
+  [ "$CODE" = "204" ]
+}
+
 if [ "$CONNECTED" -eq 1 ]; then
   attempt=1
-  while [ "$attempt" -le 3 ]; do
-    CODE="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 -o /dev/null -w '%{http_code}' "$PROBE_PRIMARY" 2>/dev/null)"
-    [ -z "$CODE" ] && CODE="000"
-    [ "$CODE" = "204" ] && break
-    attempt=$((attempt+1)); sleep 5
+  while [ "$attempt" -le 6 ]; do
+    probe && break
+    # 第 3 次还不行，且拿得到服务 ID：停掉隧道让它重新完整启动一次
+    if [ "$attempt" -eq 3 ] && [ -n "$SVC_ID" ]; then
+      log "    探针未通，重启隧道一次（${SVC_ID}）"
+      scutil --nc stop "$SVC_ID" >/dev/null 2>&1 || true
+      sleep 3
+      open "$APP_DST"
+      sleep 8
+    fi
+    attempt=$((attempt+1)); sleep 10
   done
 fi
-log "    $PROBE_PRIMARY → $CODE（期望 204）"
+log "    $PROBE_PRIMARY → ${CODE}（期望 204）"
 
 if [ "$CODE" = "204" ]; then
   EXIT_IP="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 "$PROBE_IP" 2>/dev/null)"
