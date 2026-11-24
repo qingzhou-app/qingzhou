@@ -111,7 +111,7 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
     /// `autoStopSeconds`：定时自动关闭（防忘关），秒，0 = 不启用。倒计时在扩展进程里生效
     /// —— iOS 主 App 随时会被系统回收，主 App 侧 Timer 靠不住。
     public func configure(
-        node: Node,
+        node: Node?,
         mode: ProxyMode,
         shareLink: String,
         rules: [Rule] = [],
@@ -119,13 +119,15 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         blockQUIC: Bool = true,
         description: String = "VPN"
     ) async throws {
+        guard mode == .direct || node != nil else { throw TunnelError.noCurrentNode }
+        let node = mode == .direct ? nil : node
         if manager == nil { try await load() }
         guard let manager = manager else { throw TunnelError.managerNotLoaded }
 
         let proto = NETunnelProviderProtocol()
         proto.providerBundleIdentifier = providerBundleId
         // serverAddress 只是给系统设置 UI 用的 display 字段，不参与真实连接
-        proto.serverAddress = node.host
+        proto.serverAddress = node?.host ?? "Direct"
 
         // 把 Node 序列化成 JSON 字符串 —— providerConfiguration 是 plist 字典，不接受
         // 任意 Swift Codable。先 encode 到 Data 再转 String。
@@ -148,8 +150,8 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
             "requestID": UUID().uuidString,
             "nodeJSON": nodeJSON,
             "shareLink": shareLink,  // fallback 通道
-            "nodeId": node.id.uuidString,
-            "nodeName": node.name,
+            "nodeId": node?.id.uuidString ?? "",
+            "nodeName": node?.name ?? L("直连"),
             "proxyMode": mode.rawValue,
             // 定时自动关闭（秒，0=不启用）。**始终写**（而不是 >0 才写）——
             // 覆盖掉上一次连接残留的旧值，否则关掉定时后旧配置还会到点断 VPN。
@@ -189,7 +191,7 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
             try await manager.saveToPreferences()
             try await manager.loadFromPreferences()  // 重读，否则 connection 是旧的
             configuredRequestID = (providerConfig["requestID"] as? String).flatMap(UUID.init(uuidString:))
-            logger?.info("Saved tunnel configuration: \(node.name)", category: "tunnel")
+            logger?.info("Saved tunnel configuration: \(node?.name ?? "direct")", category: "tunnel")
         } catch let error as NSError {
             throw Self.translate(error)
         }
@@ -289,10 +291,10 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
     /// （扩展 handleAppMessage "testNode"）。
     /// - 扩展明确回「配置非法」→ 抛 `TunnelError.configRejected(可读错误)`；
     /// - 预检本身没跑成（无会话 / 超时）→ 抛其他错误 —— 调用方应视为「无法预检」尽力继续。
-    public func testNodeConfig(node: Node, mode: ProxyMode, shareLink: String, rules: [Rule] = []) async throws {
+    public func testNodeConfig(node: Node?, mode: ProxyMode, shareLink: String, rules: [Rule] = []) async throws {
         var msg: [String: String] = [
             "command": "testNode",
-            "nodeJSON": Self.encodeNodeJSON(node),
+            "nodeJSON": node.map(Self.encodeNodeJSON) ?? "",
             "shareLink": shareLink,
             "proxyMode": mode.rawValue
         ]

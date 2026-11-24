@@ -49,6 +49,16 @@ public struct DomainTrafficMonth: Codable, Sendable, Equatable {
     public var timeZoneIdentifier: String
     fileprivate var domains: [String: DomainTrafficRow] = [:]
     public var rows: [DomainTrafficRow] { domains.values.sorted { $0.domain < $1.domain } }
+    fileprivate mutating func add(_ delta: DomainTrafficBytes, domain: String, route: String) {
+        var domain = domain
+        if domains[domain] == nil && domain != DomainTrafficLedger.unknownDomain && domain != DomainTrafficLedger.otherDomain {
+            let named = domains.keys.filter { $0 != DomainTrafficLedger.unknownDomain && $0 != DomainTrafficLedger.otherDomain }.count
+            if named >= 512 { domain = DomainTrafficLedger.otherDomain }
+        }
+        var row = domains[domain] ?? .init(domain: domain)
+        if route == "proxy" { row.proxy.add(delta) } else { row.direct.add(delta) }
+        domains[domain] = row
+    }
 }
 
 /// 单写者（隧道扩展）账本。按采样时刻归档本地自然月，最多6个月/每月512主域名。
@@ -58,6 +68,11 @@ public struct DomainTrafficLedger: Codable, Sendable, Equatable {
     public static let unknownDomain = "__unknown__"
     public static let otherDomain = "__other__"
     public private(set) var months: [String: DomainTrafficMonth] = [:]
+    // Optional storage preserves decoding of older monthly-only ledgers.
+    private var daysStorage: [String: DomainTrafficMonth]?
+    public var days: [String: DomainTrafficMonth] { daysStorage ?? [:] }
+    public private(set) var currentSession: DomainTrafficMonth?
+    public private(set) var vpnSessionID: String?
     public private(set) var lastObservedAt: Date?
     private var session: String?
     private var baseline: [String: DomainTrafficBytes] = [:]
@@ -66,6 +81,10 @@ public struct DomainTrafficLedger: Codable, Sendable, Equatable {
     public static func monthKey(_ date: Date, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month], from: date)
         return String(format: "%04d-%02d", c.year ?? 0, c.month ?? 0)
+    }
+    public static func dayKey(_ date: Date, calendar: Calendar = .current) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
     private static func domain(_ raw: String) -> String {
         if raw == unknownDomain || raw == otherDomain { return raw }
@@ -76,7 +95,7 @@ public struct DomainTrafficLedger: Codable, Sendable, Equatable {
     }
 
     @discardableResult
-    public mutating func ingest(_ snapshot: DomainTrafficSnapshot, at date: Date, calendar: Calendar = .current) -> Bool {
+    public mutating func ingest(_ snapshot: DomainTrafficSnapshot, at date: Date, calendar: Calendar = .current, vpnSessionID: String? = nil) -> Bool {
         guard !snapshot.session.isEmpty, snapshot.session.count < 128, snapshot.entries.count <= 1024,
               lastObservedAt.map({ date > $0 }) ?? true,
               snapshot.entries.allSatisfy({ $0.upload >= 0 && $0.download >= 0 && $0.domain.count <= 253
@@ -91,6 +110,15 @@ public struct DomainTrafficLedger: Codable, Sendable, Equatable {
         let monthKey = Self.monthKey(date, calendar: calendar)
         var month = months[monthKey] ?? .init(firstObservedAt: date, lastObservedAt: date,
                                              timeZoneIdentifier: calendar.timeZone.identifier)
+        let dayKey = Self.dayKey(date, calendar: calendar)
+        var day = days[dayKey] ?? .init(firstObservedAt: date, lastObservedAt: date,
+                                       timeZoneIdentifier: calendar.timeZone.identifier)
+        let vpnID = vpnSessionID ?? snapshot.session
+        if self.vpnSessionID != vpnID || currentSession == nil {
+            currentSession = .init(firstObservedAt: date, lastObservedAt: date,
+                                   timeZoneIdentifier: calendar.timeZone.identifier)
+            self.vpnSessionID = vpnID
+        }
         // 排序固定容量边界；达到上限后归其他，保留代理/直连总数。
         for key in normalized.keys.sorted() {
             guard let current = normalized[key] else { continue }
@@ -101,17 +129,21 @@ public struct DomainTrafficLedger: Codable, Sendable, Equatable {
             baseline[key] = .init(upload: max(old.upload, current.upload), download: max(old.download, current.download))
             guard delta.total > 0 else { continue }
             let pieces = key.split(separator: "\u{1f}")
-            var domain = String(pieces[0]); let route = pieces[1]
-            if month.domains[domain] == nil && domain != Self.unknownDomain && domain != Self.otherDomain {
-                let named = month.domains.keys.filter { $0 != Self.unknownDomain && $0 != Self.otherDomain }.count
-                if named >= 512 { domain = Self.otherDomain }
-            }
-            var row = month.domains[domain] ?? .init(domain: domain)
-            if route == "proxy" { row.proxy.add(delta) } else { row.direct.add(delta) }
-            month.domains[domain] = row
+            let domain = String(pieces[0]); let route = String(pieces[1])
+            month.add(delta, domain: domain, route: route)
+            day.add(delta, domain: domain, route: route)
+            currentSession?.add(delta, domain: domain, route: route)
         }
         month.lastObservedAt = date
         months[monthKey] = month
+        day.lastObservedAt = date
+        if daysStorage == nil { daysStorage = [:] }
+        daysStorage?[dayKey] = day
+        currentSession?.lastObservedAt = date
+        if let cutoffDate = calendar.date(byAdding: .day, value: -30, to: date) {
+            let cutoff = Self.dayKey(cutoffDate, calendar: calendar)
+            daysStorage = days.filter { $0.key >= cutoff && $0.key <= dayKey }
+        }
         session = snapshot.session
         lastObservedAt = date
         if let cutoffDate = calendar.date(byAdding: .month, value: -5, to: date) {

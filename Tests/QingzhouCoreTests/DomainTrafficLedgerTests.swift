@@ -7,6 +7,56 @@ final class DomainTrafficLedgerTests: XCTestCase {
     func snapshot(_ up: Int64, _ down: Int64, session: String = "A", host: String = "video.example.com", route: String = "proxy") -> DomainTrafficSnapshot {
         .init(session: session, entries: [.init(domain: host, route: route, upload: up, download: down)])
     }
+    func testVPNSessionSurvivesCoreRestartAndCodingButNewVPNResets() throws {
+        var ledger = DomainTrafficLedger(); let t = date("2026-10-20T00:00:00Z")
+        ledger.ingest(snapshot(100, 200), at: t, calendar: calendar, vpnSessionID: "vpn-1")
+        ledger = try JSONDecoder().decode(DomainTrafficLedger.self, from: JSONEncoder().encode(ledger))
+        ledger.ingest(snapshot(130, 260), at: t.addingTimeInterval(10), calendar: calendar, vpnSessionID: "vpn-1")
+        ledger.ingest(snapshot(10, 20, session: "B"), at: t.addingTimeInterval(20), calendar: calendar, vpnSessionID: "vpn-1")
+        XCTAssertEqual(ledger.currentSession?.rows.first?.all.total, 420)
+        ledger.ingest(snapshot(5, 10, session: "C"), at: t.addingTimeInterval(30), calendar: calendar, vpnSessionID: "vpn-2")
+        XCTAssertEqual(ledger.currentSession?.rows.first?.all.total, 15)
+        XCTAssertEqual(ledger.months["2026-10"]?.rows.first?.all.total, 435)
+        XCTAssertEqual(ledger.days["2026-10-20"]?.rows.first?.all.total, 435)
+    }
+    func testDayBoundaryDoesNotResetSessionOrDoubleCount() {
+        var ledger = DomainTrafficLedger()
+        ledger.ingest(snapshot(100, 200), at: date("2026-10-20T15:59:59Z"), calendar: calendar, vpnSessionID: "vpn")
+        ledger.ingest(snapshot(110, 220), at: date("2026-10-20T16:00:01Z"), calendar: calendar, vpnSessionID: "vpn")
+        XCTAssertEqual(ledger.days["2026-10-20"]?.rows.first?.all.total, 300)
+        XCTAssertEqual(ledger.days["2026-10-21"]?.rows.first?.all.total, 30)
+        XCTAssertEqual(ledger.currentSession?.rows.first?.all.total, 330)
+    }
+    func testOldLedgerDoesNotInventHistoricalDayOrSessionBytes() throws {
+        var ledger = DomainTrafficLedger(); let t = date("2026-10-20T00:00:00Z")
+        ledger.ingest(snapshot(100, 200), at: t, calendar: calendar)
+        var root = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(ledger)) as? [String: Any])
+        for key in ["daysStorage", "currentSession", "vpnSessionID"] { root.removeValue(forKey: key) }
+        ledger = try JSONDecoder().decode(DomainTrafficLedger.self, from: JSONSerialization.data(withJSONObject: root))
+        XCTAssertTrue(ledger.days.isEmpty)
+        XCTAssertNil(ledger.currentSession)
+        ledger.ingest(snapshot(110, 220), at: t.addingTimeInterval(10), calendar: calendar)
+        XCTAssertEqual(ledger.days["2026-10-20"]?.rows.first?.all.total, 30)
+        XCTAssertEqual(ledger.currentSession?.rows.first?.all.total, 30)
+        XCTAssertEqual(ledger.months["2026-10"]?.rows.first?.all.total, 330)
+    }
+    func testDailyRetentionAndCapacityPreserveTotals() {
+        var ledger = DomainTrafficLedger(); let t = date("2026-09-01T00:00:00Z")
+        for i in 0..<40 {
+            ledger.ingest(snapshot(Int64(i + 1), 0), at: t.addingTimeInterval(Double(i) * 86400), calendar: calendar)
+        }
+        XCTAssertEqual(ledger.days.count, 31)
+        XCTAssertEqual(ledger.currentSession?.rows.first?.all.total, 40)
+    }
+
+    func testLedgerPersistsDailyAndCurrentSessionBuckets() throws {
+        var ledger = DomainTrafficLedger()
+        ledger.ingest(snapshot(100, 200), at: date("2026-10-20T00:00:00Z"), calendar: calendar)
+        ledger = try JSONDecoder().decode(DomainTrafficLedger.self, from: JSONEncoder().encode(ledger))
+        XCTAssertEqual(ledger.days["2026-10-20"]?.rows.first?.all.total, 300)
+        XCTAssertEqual(ledger.currentSession?.rows.first?.all.total, 300)
+    }
+
     func testCumulativeSnapshotsDeduplicateAndSurviveCoding() throws {
         var ledger = DomainTrafficLedger()
         let t = date("2026-10-20T00:00:00Z")

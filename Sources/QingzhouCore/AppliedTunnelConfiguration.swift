@@ -6,9 +6,9 @@ import CryptoKit
 public struct AppliedTunnelConfiguration: Codable, Sendable, Equatable {
     public let id: UUID
     public let requestID: UUID?
-    public let nodeID: UUID
+    public let nodeID: UUID?
     public let nodeName: String
-    public let protocolType: ProxyProtocol
+    public let protocolType: ProxyProtocol?
     public let identityDigest: String
     public let mode: ProxyMode
     public let blockQUIC: Bool
@@ -26,6 +26,13 @@ public struct AppliedTunnelConfiguration: Codable, Sendable, Equatable {
         self.mode = mode
         self.blockQUIC = blockQUIC
         self.rulesDigest = rulesDigest
+    }
+
+    /// A real direct configuration, without a fabricated node or credentials.
+    public init(directRequestID: UUID? = nil, rulesDigest: String? = nil) {
+        id = UUID(); requestID = directRequestID; nodeID = nil
+        nodeName = "直连"; protocolType = nil; identityDigest = "direct"
+        mode = .direct; blockQUIC = false; self.rulesDigest = rulesDigest
     }
 
     public func matches(_ node: Node) -> Bool {

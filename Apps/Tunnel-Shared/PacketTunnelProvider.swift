@@ -139,9 +139,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         //    fallback 留着是为了万一 NodeConverter 有覆盖不到的字段映射，至少能切回原路径，
         //    稳定一段时间后会移除 libXray.convertShareLinks 调用。
         let providerConfig = (self.protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration
+        let modeRaw = (providerConfig?["proxyMode"] as? String) ?? ProxyMode.global.rawValue
+        let mode = ProxyMode(rawValue: modeRaw) ?? .global
         let nodeJSON = providerConfig?["nodeJSON"] as? String ?? ""
         let shareLink = providerConfig?["shareLink"] as? String ?? ""
-        guard !nodeJSON.isEmpty || !shareLink.isEmpty else {
+        guard mode == .direct || !nodeJSON.isEmpty || !shareLink.isEmpty else {
             let err = NSError(
                 domain: "com.sbraveyoung.qingzhou.tunnel",
                 code: 1001,
@@ -155,8 +157,6 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let nodeName = (providerConfig?["nodeName"] as? String) ?? "node"
         // 健康判死器：记住当前节点名（信号 + 通知用）；首采样自会建 baseline + 起 grace。
         healthControl.withLock { $0.nodeName = nodeName }
-        let modeRaw = (providerConfig?["proxyMode"] as? String) ?? ProxyMode.global.rawValue
-        let mode = ProxyMode(rawValue: modeRaw) ?? .global
         // 定时自动关闭（秒，0/缺省 = 不启用）。plist 里的数字取回来是 NSNumber。
         let autoStopSeconds = (providerConfig?["autoStopSeconds"] as? NSNumber)?.doubleValue ?? 0
         // 阻断 QUIC（reject UDP 443）：缺字段/旧配置默认 true。存实例属性供 reconfigure/performTest 复用。
@@ -184,7 +184,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         // 转换 Node → outbounds JSON
         let xrayJSON: String
         do {
-            let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
+            let outboundsJSON = mode == .direct ? "{}" : try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
             // accessLogPath() 内部会清空旧日志 + 验证容器可写；返回 nil 时 compose 不配 access，
             // VPN 照常起（只是没有连接日志）。让 xray 把连接日志写到 App Group，主 App 解析展示。
             xrayJSON = try XrayConfigComposer.compose(
@@ -239,7 +239,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                         rulesDigest: AppliedTunnelConfiguration.digestRules(userRules))
                     self.sessionInfo.withLock { current in
                         current = TunnelSessionInfo(startedAt: Date(), autoStopSeconds: autoStopSeconds,
-                            appliedConfiguration: applied)
+                            appliedConfiguration: applied, trafficSessionID: UUID().uuidString)
                         // 热切换后旧连接可能继续使用同名 proxy counter，不能将它们算给新节点。
                         self.healthControl.withLock { $0.bandwidthConfigurationID = applied?.id }
                     }
@@ -544,7 +544,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         // 始终写会话标记（含 0）—— 覆盖上一次会话的残留，主 App 才不会拿旧 deadline 画倒计时
         sessionInfo.withLock { current in
             let info = TunnelSessionInfo(startedAt: Date(), autoStopSeconds: max(0, seconds),
-                appliedConfiguration: current?.appliedConfiguration)
+                appliedConfiguration: current?.appliedConfiguration, trafficSessionID: current?.trafficSessionID)
             current = info
             Self.writeSessionInfo(info)
         }
@@ -673,7 +673,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
             }
             if let data = expvar.data(using: .utf8), let snapshot = DomainTrafficSnapshot.parseMetrics(data) {
-                do { try domainTrafficRecorder?.record(snapshot, at: now) }
+                do { try domainTrafficRecorder?.record(snapshot, at: now, vpnSessionID: sessionInfo.withLock { $0?.trafficSessionID }) }
                 catch { os_log("Monthly domain history write failed; next sample will retry", log: log, type: .error) }
             }
         }
@@ -880,7 +880,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         publicIPPort.withLock { $0 = diagnosticPorts.count > 1 ? diagnosticPorts[1] : nil }
         let xrayJSON: String
         do {
-            let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
+            let outboundsJSON = mode == .direct ? "{}" : try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
             xrayJSON = try XrayConfigComposer.compose(
                 outboundsJSON: outboundsJSON,
                 mode: mode,
@@ -1047,7 +1047,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private func performTest(nodeJSON: String, shareLink: String, mode: ProxyMode, userRules: [Rule]) -> Swift.Error? {
         let geo = resolveGeoData()
         do {
-            let outboundsJSON = try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
+            let outboundsJSON = mode == .direct ? "{}" : try resolveOutboundsJSON(nodeJSON: nodeJSON, shareLink: shareLink)
             let xrayJSON = try XrayConfigComposer.compose(
                 outboundsJSON: outboundsJSON,
                 mode: mode,
@@ -1070,6 +1070,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private static func appliedConfiguration(nodeJSON: String, mode: ProxyMode,
                                              blockQUIC: Bool, requestID: UUID? = nil,
                                              rulesDigest: String? = nil) -> AppliedTunnelConfiguration? {
+        if mode == .direct {
+            return AppliedTunnelConfiguration(directRequestID: requestID, rulesDigest: rulesDigest)
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let data = nodeJSON.data(using: .utf8), let node = try? decoder.decode(Node.self, from: data) else {

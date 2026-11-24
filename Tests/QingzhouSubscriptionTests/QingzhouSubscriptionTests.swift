@@ -231,4 +231,47 @@ final class QingzhouSubscriptionTests: XCTestCase {
         XCTAssertEqual(payload.nodes[0].subscriptionId, updated.id)
         XCTAssertEqual(payload.nodes[1].subscriptionId, updated.id)
     }
+
+    /// 同一 URL 按 UA 返回不同内容：首个 UA 只给 1 条占位节点时，应继续试下一个 UA。
+    struct UAAwareHTTPClient: HTTPClient {
+        let bodiesByUA: [String: String]
+
+        func get(_ url: URL) async throws -> (Data, [String: String]) {
+            try await get(url, userAgent: SubscriptionFetcher.userAgentCandidates[0])
+        }
+
+        func get(_ url: URL, userAgent: String) async throws -> (Data, [String: String]) {
+            let body = bodiesByUA[userAgent] ?? ""
+            return (Data(body.utf8), [:])
+        }
+    }
+
+    func testFetcherFallsBackToUAWithMoreNodes() async throws {
+        let one = "trojan://pw@a.com:443#A"
+        let many = "trojan://pw@a.com:443#A\ntrojan://pw@b.com:443#B"
+        let client = UAAwareHTTPClient(bodiesByUA: [
+            SubscriptionFetcher.userAgentCandidates[0]: one,
+            SubscriptionFetcher.userAgentCandidates[1]: many
+        ])
+        let fetcher = SubscriptionFetcher(client: client)
+        let sub = Subscription(name: "S", url: URL(string: "https://example.com/sub")!)
+
+        let (updated, payload) = try await fetcher.refresh(sub)
+        XCTAssertEqual(payload.nodes.count, 2)
+        XCTAssertEqual(updated.nodeCount, 2)
+    }
+
+    func testFetcherKeepsSingleNodeSubscriptionWhenAllUAsAgree() async throws {
+        let one = "trojan://pw@a.com:443#A"
+        let client = UAAwareHTTPClient(bodiesByUA: [
+            SubscriptionFetcher.userAgentCandidates[0]: one,
+            SubscriptionFetcher.userAgentCandidates[1]: one,
+            SubscriptionFetcher.userAgentCandidates[2]: one
+        ])
+        let fetcher = SubscriptionFetcher(client: client)
+        let sub = Subscription(name: "S", url: URL(string: "https://example.com/sub")!)
+
+        let (_, payload) = try await fetcher.refresh(sub)
+        XCTAssertEqual(payload.nodes.count, 1)
+    }
 }

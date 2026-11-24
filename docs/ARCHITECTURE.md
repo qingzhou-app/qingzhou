@@ -52,6 +52,7 @@
 - **职责**：拉取订阅 → 解析为节点列表 + 流量元数据。
 - `HTTPClient` 是 protocol，默认实现 `URLSessionHTTPClient`；单测里用 `MockHTTPClient` 避免真实出网。
 - `SubscriptionParser` 是纯函数（无 IO），便于离线测试；`SubscriptionFetcher` 是 actor，把网络 + 解析 + 日志串起来。
+- **UA 协商**：机场常按 User-Agent 对同一 URL 下发不同订阅（`ClashforWindows` 给精简占位、`Clash Verge` 给完整 Clash YAML、浏览器给 base64 全量链接）。刷新时按 `SubscriptionFetcher.userAgentCandidates` 顺序尝试，首个拿到 >1 节点的结果即采用；只有 0/1 节点才继续尝试其他 UA，避免真·单节点订阅反复请求。其他复用 `HTTPClient` 的服务仍用历史 UA。
 - `SubscriptionUserInfo` 解析 `Subscription-Userinfo` 响应头，分隔符兼容 `;` 和 `,`，字段缺失时部分填充。
 
 ### QingzhouRules

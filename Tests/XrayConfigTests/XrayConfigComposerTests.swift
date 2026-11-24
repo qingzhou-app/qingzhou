@@ -28,6 +28,18 @@ final class XrayConfigComposerTests: XCTestCase {
 
     // MARK: - 结构性测试
 
+    func testDirectModeNeedsNoProxyAndIgnoresInvalidProxyConfiguration() throws {
+        for input in ["{\"outbounds\":[]}", "invalid unused node"] {
+            let config = try parse(XrayConfigComposer.compose(outboundsJSON: input, mode: .direct, publicIPPort: 12345))
+            let outbounds = config["outbounds"] as! [[String: Any]]
+            XCTAssertFalse(outbounds.contains { $0["tag"] as? String == "proxy" })
+            XCTAssertEqual(outbounds.first?["tag"] as? String, "direct")
+            let inbounds = config["inbounds"] as! [[String: Any]]
+            XCTAssertFalse(inbounds.contains { $0["tag"] as? String == "public-ip-in" })
+        }
+        XCTAssertThrowsError(try XrayConfigComposer.compose(outboundsJSON: "{\"outbounds\":[]}", mode: .rule))
+    }
+
     func testTunInterfaceNameDefaultAndOverride() throws {
         // 真连接默认用 "utun"（xray 靠 fd 拿接口、忽略名字）
         let real = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global))
@@ -65,12 +77,9 @@ final class XrayConfigComposerTests: XCTestCase {
         let proxy = outs.first(where: { $0["tag"] as? String == "proxy" })!
         XCTAssertEqual(proxy["protocol"] as? String, "trojan")
 
-        // direct 出站必须 UseIPv4：fakedns 给无真实 AAAA 的域名也发假 IPv6，浏览器 IPv6
-        // 优先会走 IPv6 死路（cbs-u.sports.cctv.com 案）。UseIPv4 让直连出站一律用 IPv4。
         let direct = outs.first(where: { $0["tag"] as? String == "direct" })!
-        let settings = direct["settings"] as? [String: Any]
-        XCTAssertEqual(settings?["domainStrategy"] as? String, "UseIPv4",
-                       "direct 出站必须 domainStrategy=UseIPv4，避免无 AAAA 域名的 IPv6 死路")
+        XCTAssertEqual((direct["settings"] as? [String: Any])?["domainStrategy"] as? String, "AsIs")
+
     }
 
     func testRoutingRulesGlobalSendsAllToProxy() throws {
@@ -191,28 +200,45 @@ final class XrayConfigComposerTests: XCTestCase {
         }
     }
 
+    func testDirectDialerCanRaceBothRealAddressFamilies() throws {
+        for mode in [ProxyMode.direct, .rule, .global] {
+            let json = try parse(XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: mode))
+            let direct = (json["outbounds"] as! [[String: Any]]).first { $0["tag"] as? String == "direct" }!
+            XCTAssertEqual((direct["settings"] as? [String: Any])?["domainStrategy"] as? String, "AsIs")
+            let socket = (direct["streamSettings"] as? [String: Any])?["sockopt"] as? [String: Any]
+            XCTAssertEqual(socket?["domainStrategy"] as? String, "ForceIP")
+            let race = socket?["happyEyeballs"] as? [String: Any]
+            XCTAssertEqual(race?["prioritizeIPv6"] as? Bool, true)
+            XCTAssertEqual(race?["tryDelayMs"] as? Int, 250)
+        }
+    }
+
+    func testDualStackDNSPreservesFakeAddressAttribution() throws {
+        for mode in [ProxyMode.direct, .rule, .global] {
+            let json = try parse(XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: mode))
+            XCTAssertEqual((json["dns"] as! [String: Any])["queryStrategy"] as? String, "UseIP")
+            let pools = json["fakedns"] as! [[String: Any]]
+            XCTAssertTrue(pools.contains { $0["ipPool"] as? String == "fc00::/18" })
+        }
+    }
+
+    func testDNSInterceptionCannotRecaptureUpstreamQueries() throws {
+        for mode in [ProxyMode.direct, .rule, .global] {
+            let json = try parse(XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: mode))
+            let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
+            let intercept = rules.first { $0["outboundTag"] as? String == "dns-out" }!
+            XCTAssertEqual(intercept["inboundTag"] as? [String], ["tun-in"])
+            XCTAssertEqual(intercept["network"] as? String, "tcp,udp")
+        }
+    }
+
     func testDNSGlobalUsesPublicServers() throws {
         let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: .global))
         let dns = json["dns"] as! [String: Any]
         let servers = dns["servers"] as! [Any]
         XCTAssertEqual(servers.first as? String, "fakedns", "fakedns 拦在最前，才能给域名分配假 IP")
         XCTAssertTrue(servers.contains { $0 as? String == "8.8.8.8" }, "真实 DNS 仍在，用于实际连接解析")
-        // UseIPv4：不解析 AAAA，避免 fakedns 给无真实 IPv6 的域名发假 IPv6 → 浏览器 IPv6 死路
-        XCTAssertEqual(dns["queryStrategy"] as? String, "UseIPv4")
-    }
-
-    /// fakedns 只配 IPv4 池：配 IPv6 池会对无真实 AAAA 的域名也发假 IPv6，浏览器 IPv6 优先
-    /// 走死路（cbs-u.sports.cctv.com 案）。三个模式都不应出现 fc00:: 池。
-    func testFakeDNSIPv4Only() throws {
-        for mode in [ProxyMode.global, .rule, .direct] {
-            let json = try parse(try XrayConfigComposer.compose(outboundsJSON: fakeTrojanOutbounds, mode: mode))
-            let pools = json["fakedns"] as! [[String: Any]]
-            XCTAssertEqual(pools.count, 1, "\(mode) fakedns 只应有 IPv4 一个池")
-            XCTAssertEqual(pools.first?["ipPool"] as? String, "198.18.0.0/15")
-            XCTAssertFalse(pools.contains { ($0["ipPool"] as? String)?.contains("fc00") ?? false },
-                           "\(mode) fakedns 不应有 IPv6 池")
-            XCTAssertEqual((json["dns"] as! [String: Any])["queryStrategy"] as? String, "UseIPv4")
-        }
+        XCTAssertEqual(dns["queryStrategy"] as? String, "UseIP")
     }
 
     /// FakeDNS：让 access log/路由拿到真域名而不是 IP（SNI 常被 ECH 加密，纯 sniffing 只见 IP）。
@@ -437,7 +463,7 @@ final class XrayConfigComposerTests: XCTestCase {
         let inbounds = json["inbounds"] as! [[String: Any]]
         XCTAssertEqual(inbounds.count, 1)
         let rules = (json["routing"] as! [String: Any])["rules"] as! [[String: Any]]
-        XCTAssertNil(rules.first?["inboundTag"], "没开 metrics 时不该有 inboundTag 规则")
+        XCTAssertFalse(rules.contains { ($0["inboundTag"] as? [String])?.contains("metrics-in") == true }, "没开 metrics 时不应有 metrics 入口规则")
     }
 
     // MARK: - 错误路径

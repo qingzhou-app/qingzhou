@@ -15,6 +15,16 @@ final class AppliedTunnelStateTests: XCTestCase {
         return state
     }
 
+    func testRunningNodeLessDirectCannotSwitchToProxyMode() {
+        let state = makeState()
+        state.settings.proxyMode = .direct
+        state.isVPNRunning = true
+        state.setProxyMode(.rule)
+        XCTAssertEqual(state.settings.proxyMode, .direct)
+        XCTAssertNotNil(state.tunnelError)
+        state.persistence.waitForPendingWritesForTesting()
+    }
+
     func testUnconfirmedTrafficDoesNotCreditSelectedNode() {
         let state = makeState()
         let selected = Node(name: "selected", protocolType: .trojan, host: "example.com", port: 443, password: "pw")

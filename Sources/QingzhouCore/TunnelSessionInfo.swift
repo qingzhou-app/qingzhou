@@ -17,10 +17,12 @@ public struct TunnelSessionInfo: Codable, Sendable, Equatable {
     /// 扩展按定时自停的时刻。nil = 还没到点（或没启用定时）。
     public var stoppedAt: Date?
     /// 只有扩展成功启动/换节点后才能提交；旧扩展的标记没有此字段，解码仍兼容。
+    public var trafficSessionID: String?
     public var appliedConfiguration: AppliedTunnelConfiguration?
 
     public init(startedAt: Date, autoStopSeconds: TimeInterval, stoppedAt: Date? = nil,
-                appliedConfiguration: AppliedTunnelConfiguration? = nil) {
+                appliedConfiguration: AppliedTunnelConfiguration? = nil, trafficSessionID: String? = nil) {
+        self.trafficSessionID = trafficSessionID
         self.startedAt = startedAt
         self.autoStopSeconds = autoStopSeconds
         self.stoppedAt = stoppedAt

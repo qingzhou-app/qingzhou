@@ -2,6 +2,15 @@ import XCTest
 @testable import QingzhouCore
 
 final class AppliedTunnelConfigurationTests: XCTestCase {
+    func testDirectConfigurationHasNoNodeAndRoundTrips() throws {
+        let direct = AppliedTunnelConfiguration(directRequestID: UUID())
+        XCTAssertNil(direct.nodeID)
+        XCTAssertNil(direct.protocolType)
+        XCTAssertEqual(direct.mode, .direct)
+        XCTAssertFalse(direct.blockQUIC)
+        XCTAssertEqual(try JSONDecoder().decode(AppliedTunnelConfiguration.self, from: JSONEncoder().encode(direct)), direct)
+    }
+
     func testIdentityTracksTransportButDoesNotPublishCredentials() throws {
         let node = Node(name: "A", protocolType: .trojan, host: "a.example", port: 443, password: "private-password-123")
         let applied = AppliedTunnelConfiguration(node: node, mode: .global, blockQUIC: true)

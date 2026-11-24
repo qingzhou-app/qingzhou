@@ -48,6 +48,22 @@ final class PublicIPAttributionTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         return AppState(persistence: Persistence(directory: dir))
     }
+    func testDirectTunnelDoesNotProbeOrDisplayNodeExit() async {
+        let app = make()
+        app.isVPNRunning = true
+        let applied = AppliedTunnelConfiguration(directRequestID: UUID())
+        app.syncAppliedConfiguration(session: .init(startedAt: Date(), autoStopSeconds: 0, appliedConfiguration: applied), status: .connected)
+        var proxyCalls = 0
+        await app.refreshPublicIPInfo(direct: { PublicIPInfo(ip: "203.0.113.1") }, proxy: { _ in
+            proxyCalls += 1
+            return PublicIPInfo(ip: "203.0.113.2")
+        })
+        XCTAssertEqual(proxyCalls, 0)
+        XCTAssertNil(app.proxyIPInfo)
+        XCTAssertFalse(app.proxyIPFailed)
+        XCTAssertEqual(app.publicIPInfo?.ip, "203.0.113.1")
+    }
+
     func testContradictingHeartbeatClearsAlreadyDisplayedProxyExit() throws {
         let app = make()
         try app.addNode(fromURL: "trojan://pw@example.com:443#test")
@@ -95,7 +111,7 @@ final class PublicIPAttributionTests: XCTestCase {
         try? app.addNode(fromURL: "trojan://pw@example.com:443#test")
         let node = app.nodes[0]
         app.isVPNRunning = true
-        let applied = AppliedTunnelConfiguration(node: node, mode: .direct, blockQUIC: true)
+        let applied = AppliedTunnelConfiguration(node: node, mode: .rule, blockQUIC: true)
         app.syncAppliedConfiguration(session: TunnelSessionInfo(startedAt: Date(), autoStopSeconds: 0, appliedConfiguration: applied), status: .connected)
         await app.refreshPublicIPInfo(direct: { PublicIPInfo(ip: "203.0.113.1") }, proxy: { id in
             XCTAssertEqual(id, applied.id); return PublicIPInfo(ip: "203.0.113.2")

@@ -1,3 +1,4 @@
+import XrayConfig
 import XCTest
 @testable import XrayCore
 
@@ -5,6 +6,12 @@ import XCTest
 final class XrayStatsAndProbeTests: XCTestCase {
 
     // MARK: - parseOutboundStats（纯解析，不碰 LibXray）
+
+    func testNodeLessDirectConfigurationBuildsInRealCore() throws {
+        let config = try XrayConfigComposer.compose(outboundsJSON: "{}", mode: .direct,
+            metricsPort: 32125, publicIPPort: 32126, tunInterfaceName: "utun9")
+        XCTAssertNoThrow(try XrayCore.testConfig(configJSON: config, datDir: ""))
+    }
 
     func testParseOutboundStatsExtractsPerTagCounters() {
         let expvar = #"""

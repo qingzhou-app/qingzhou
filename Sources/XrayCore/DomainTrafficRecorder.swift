@@ -12,9 +12,9 @@ public final class DomainTrafficRecorder {
             ledger = try decoder.decode(DomainTrafficLedger.self, from: Data(contentsOf: url))
         } else { ledger = .init() }
     }
-    public func record(_ snapshot: DomainTrafficSnapshot, at date: Date, calendar: Calendar = .current) throws {
+    public func record(_ snapshot: DomainTrafficSnapshot, at date: Date, calendar: Calendar = .current, vpnSessionID: String? = nil) throws {
         var candidate = ledger
-        guard candidate.ingest(snapshot, at: date, calendar: calendar) else { return }
+        guard candidate.ingest(snapshot, at: date, calendar: calendar, vpnSessionID: vpnSessionID) else { return }
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(candidate)
         #if os(iOS)

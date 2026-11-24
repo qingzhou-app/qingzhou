@@ -50,7 +50,7 @@ public struct ConnectionsView: View {
         .toolbar {
             ToolbarItem(placement: .secondaryAction) {
                 Button { showMonthlyTraffic = true } label: {
-                    Label("月度域名流量", systemImage: "chart.bar.xaxis")
+                    Label("域名流量分析", systemImage: "chart.bar.xaxis")
                 }
             }
             // 统一「筛选」菜单：路由单选 + 忽略 IP / 隐藏 DNS（收自原顶部那行两个 button）
@@ -152,7 +152,7 @@ public struct ConnectionsView: View {
             // 详细域名 + 说明在日志页（docs/IPV6.md）。
             if !state.ipv6OnlyHosts.isEmpty {
                 filterHint(icon: "6.circle",
-                           text: L("仅 IPv6 站点（无 IPv4 地址、直连不可达）：\(state.ipv6OnlyHosts.sorted().joined(separator: "、"))"))
+                           text: L("仅 IPv6 站点（直连需要 IPv6 网络）：\(state.ipv6OnlyHosts.sorted().joined(separator: "、"))"))
             }
             // 过滤生效时的轻提示：避免用户忘了开着过滤，以为数据丢了
             if let routeHint = routeFilter.filterHintText {
@@ -221,7 +221,7 @@ public struct ConnectionsView: View {
                     .frame(width: 8, height: 8)
                 Text(c.targetHost).font(.headline)
                 Spacer()
-                // 「仅 IPv6」标注：该域名没有 IPv4 地址，全 IPv4 链路直连不可达 ——
+                // 「仅 IPv6」标注：该域名没有 IPv4 地址，直连需要 IPv6 网络 ——
                 // 用户遇到时一眼看懂是站点地址族问题，不是轻舟坏了（docs/IPV6.md）
                 if state.ipv6OnlyHosts.contains(c.targetHost) {
                     Text("仅 IPv6")
@@ -230,7 +230,7 @@ public struct ConnectionsView: View {
                         .background(Color.orange.opacity(0.18))
                         .foregroundStyle(.orange)
                         .clipShape(Capsule())
-                        .help("该站点只有 IPv6 地址（无 A 记录）。轻舟为保护按域名分流走全 IPv4 链路，这类站点直连不可达；走代理时由节点解析、或可正常。详见 docs/IPV6.md")
+                        .help("该站点只有 IPv6 地址（无 A 记录）。直连需要当前网络支持 IPv6；代理访问取决于节点出口。")
                 }
                 // DNS 查询标注：一眼区分「隧道解析查询」和「用户主动访问」
                 if c.isDNSQuery {

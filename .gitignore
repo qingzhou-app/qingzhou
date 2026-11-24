@@ -33,3 +33,8 @@ Frameworks/LibXray.xcframework
 
 # xcodebuild -derivedDataPath 产物（本地构建/安装用，绝不入库）
 build/
+
+## 本地临时状态（不进库，但保留在磁盘上）
+.brooks-lint-history.json
+.planning/.active_plan
+.claude/worktrees/

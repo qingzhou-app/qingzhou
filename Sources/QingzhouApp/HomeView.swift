@@ -128,10 +128,12 @@ public struct HomeView: View {
                         }
                     }
                     if state.isVPNRunning, let applied = state.appliedTunnelConfiguration {
-                        Text("\(applied.nodeName) · \(applied.protocolType.rawValue.uppercased())")
+                        Text("\(applied.nodeName) · \((applied.protocolType?.rawValue ?? "direct").uppercased())")
                             .font(.caption).foregroundStyle(.secondary)
                     } else if state.isVPNRunning {
                         Text("正在确认实际连接").font(.caption).foregroundStyle(.secondary)
+                    } else if state.settings.proxyMode == .direct {
+                        Text("直连 · 无需节点").font(.caption).foregroundStyle(.secondary)
                     } else if let n = state.currentNode {
                         Text("\(n.name) · \(n.protocolType.rawValue.uppercased())")
                             .font(.caption).foregroundStyle(.secondary)
@@ -368,10 +370,12 @@ public struct HomeView: View {
         Card(title: "公网 IP", systemImage: "globe") {
             // 按连接状态切换：未连接时不显示「节点出口」——那栏留着只会摆上一次会话的
             // 缓存或直连 IP，误导用户以为还在走节点。连上了才有「节点出口」的语义。
-            if state.isVPNRunning {
+            if state.isVPNRunning, state.appliedTunnelConfiguration?.mode != .direct {
                 ipRow(title: "节点出口", info: state.proxyIPInfo, tint: .blue, failed: state.proxyIPFailed)
                 Divider().padding(.vertical, 4)
                 ipRow(title: "直连（不走节点）", info: state.directIPInfo, tint: .green, failed: state.directIPFailed)
+            } else if state.isVPNRunning {
+                ipRow(title: "直连 IP", info: state.directIPInfo, tint: .green, failed: state.directIPFailed)
             } else {
                 ipRow(title: "直连 IP（VPN 未连接）", info: state.directIPInfo, tint: .green, failed: state.directIPFailed)
             }
@@ -435,7 +439,7 @@ public struct HomeView: View {
                                 + (xs.proxyShare.map { String(format: L("（代理 %.0f%%）"), $0 * 100) } ?? ""))
                 }
                 Button { showMonthlyTraffic = true } label: {
-                    Label("月度域名流量", systemImage: "chart.bar.xaxis")
+                    Label("域名流量分析", systemImage: "chart.bar.xaxis")
                 }.buttonStyle(.borderless)
                 #if os(iOS)
                 // 连接页在 iOS 上不占 tab，从这里 push（macOS 侧栏有独立「连接」项，不重复放）

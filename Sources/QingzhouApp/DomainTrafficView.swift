@@ -5,11 +5,16 @@ import QingzhouCore
 struct DomainTrafficView: View {
     @Bindable var state: AppState
     @State private var monthKey = DomainTrafficLedger.monthKey(Date())
-    @State private var route = Route.proxy
+    @State private var dayKey = DomainTrafficLedger.dayKey(Date())
+    @State private var period = Period.session
+    @State private var route = Route.all
     @State private var order = Order.total
     @State private var search = ""
     @Environment(\.dismiss) private var dismiss
 
+    private enum Period: String, CaseIterable {
+        case session = "本次", daily = "日度", monthly = "月度"
+    }
     private enum Route: String, CaseIterable {
         case proxy = "代理", direct = "直连", all = "全部"
         func bytes(_ row: DomainTrafficRow) -> DomainTrafficBytes {
@@ -22,7 +27,21 @@ struct DomainTrafficView: View {
             switch self { case .total: bytes.total; case .download: bytes.download; case .upload: bytes.upload }
         }
     }
-    private var month: DomainTrafficMonth? { state.domainTrafficHistory?.months[monthKey] }
+    private var month: DomainTrafficMonth? {
+        guard let ledger = state.domainTrafficHistory else { return nil }
+        switch period {
+        case .monthly: return ledger.months[monthKey]
+        case .daily: return ledger.days[dayKey]
+        case .session:
+            if !state.isVPNRunning { return ledger.currentSession }
+            guard !state.isSwitchingTunnel,
+                  let id = state.activeTrafficSessionID, ledger.vpnSessionID == id else { return nil }
+            return ledger.currentSession
+        }
+    }
+    private var days: [String] {
+        Set((state.domainTrafficHistory?.days.keys.map { $0 } ?? []) + [DomainTrafficLedger.dayKey(Date()), dayKey]).sorted(by: >)
+    }
     private var months: [String] {
         Set((state.domainTrafficHistory?.months.keys.map { $0 } ?? []) + [DomainTrafficLedger.monthKey(Date()), monthKey]).sorted(by: >)
     }
@@ -48,12 +67,24 @@ struct DomainTrafficView: View {
     var body: some View {
         List {
             Section {
-                Picker("月份", selection: $monthKey) {
-                    ForEach(months, id: \.self) { Text($0).tag($0) }
+                Picker("统计周期", selection: $period) {
+                    ForEach(Period.allCases, id: \.self) { Text(L10n.lookup($0.rawValue)).tag($0) }
+                }.pickerStyle(.segmented)
+                if period == .monthly {
+                    Picker("月份", selection: $monthKey) {
+                        ForEach(months, id: \.self) { Text($0).tag($0) }
+                    }
+                } else if period == .daily {
+                    Picker("日期", selection: $dayKey) {
+                        ForEach(days, id: \.self) { Text($0).tag($0) }
+                    }
                 }
                 Picker("流量范围", selection: $route) {
                     ForEach(Route.allCases, id: \.self) { Text(L10n.lookup($0.rawValue)).tag($0) }
                 }.pickerStyle(.segmented)
+                if period == .session, !state.isVPNRunning, month != nil {
+                    Text("VPN 未连接，显示最近一次会话。").font(.footnote).foregroundStyle(.secondary)
+                }
                 if month != nil {
                     LabeledContent("总流量", value: ByteFormatter.format(total.total))
                     LabeledContent("上传", value: ByteFormatter.format(total.upload))
@@ -78,7 +109,7 @@ struct DomainTrafficView: View {
             }
             Section {
                 if month == nil {
-                    ContentUnavailableView("这个月还没有流量记录", systemImage: "chart.bar", description: Text("安装此版本并重新开启 VPN 后开始记录，无法补回此前的域名流量。"))
+                    ContentUnavailableView("当前周期暂无流量记录", systemImage: "chart.bar", description: Text(period == .session ? L("开启 VPN 后开始记录本次流量；重新开启隧道会开始新一轮，重开主 App 不清零。") : (period == .daily ? L("从此版本开始记录日度流量，无法从月度总量补回历史每日用量。") : L("安装此版本并重新开启 VPN 后开始记录，无法补回此前的域名流量。"))))
                 } else {
                     Picker("排序", selection: $order) {
                         ForEach(Order.allCases, id: \.self) { Text(L10n.lookup($0.rawValue)).tag($0) }
@@ -110,17 +141,20 @@ struct DomainTrafficView: View {
                 }
             } header: { Text("域名流量排行") }
             Section("记录范围与计费差异") {
+                if period == .session {
+                    Text("本次统计以 VPN 隧道会话为准。关闭再开启、模式或规则变更引发的隧道重启都会开始新一轮；仅重开主 App 不清零。")
+                }
                 if let month {
                     LabeledContent("开始记录", value: month.firstObservedAt.formatted(date: .abbreviated, time: .shortened))
                     LabeledContent("最近更新", value: month.lastObservedAt.formatted(date: .abbreviated, time: .shortened))
                     LabeledContent("归档时区", value: month.timeZoneIdentifier)
                 }
-                Text("按主域名合并，保留最近 6 个月，仅存本机，不参与云同步。无法识别域名或超出记录上限的流量仍计入总量。")
-                Text("关闭主窗口仍会记录，约每 10 秒保存一次。月份按保存时的本地时间划分，跨月附近可能有少量偏差；隧道停止时最后数秒可能尚未保存。")
+                Text("按主域名合并，日度保留最近 31 天，月度保留最近 6 个月，仅存本机，不参与云同步。无法识别域名或超出记录上限的流量仍计入总量。")
+                Text("关闭主窗口仍会记录，约每 10 秒保存一次。日期和月份按保存时的本地时间划分，跨日/月附近可能有少量偏差；隧道停止时最后数秒可能尚未保存。")
                 Text("这里统计应用载荷，不等于订阅账单。节点倍率、加密封装、重传和其他设备的用量，可能让账单更高；没有经过轻舟的流量不在这里。")
             }.font(.footnote)
         }
-        .navigationTitle("月度域名流量")
+        .navigationTitle("域名流量分析")
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         .task { await state.refreshDomainTrafficHistory() }
         #if os(macOS)

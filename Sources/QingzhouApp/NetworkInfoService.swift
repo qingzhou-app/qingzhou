@@ -62,7 +62,7 @@ extension AppState {
         let token = UUID()
         ipRefreshGeneration = token
         let network = measurementNetworkID
-        let configuration = isVPNRunning ? appliedTunnelConfiguration?.id : nil
+        let configuration = isVPNRunning && appliedTunnelConfiguration?.mode != .direct ? appliedTunnelConfiguration?.id : nil
         directIPInfo = nil; proxyIPInfo = nil; publicIPInfo = nil
         directIPFailed = false; proxyIPFailed = false
         // Both requests run independently; failure of one never substitutes the other's result.
@@ -71,7 +71,7 @@ extension AppState {
                 let info = try await direct()
                 guard !Task.isCancelled, self.ipRefreshGeneration == token, self.measurementNetworkID == network else { return }
                 self.directIPInfo = info
-                if !self.isVPNRunning { self.publicIPInfo = info }
+                if !self.isVPNRunning || self.appliedTunnelConfiguration?.mode == .direct { self.publicIPInfo = info }
             } catch {
                 guard self.ipRefreshGeneration == token, self.measurementNetworkID == network else { return }
                 self.directIPFailed = true

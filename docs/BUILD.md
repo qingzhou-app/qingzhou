@@ -48,6 +48,26 @@ swift test --parallel                      # 并行（默认就是并行）
 
 ## 跨平台编译
 
+### 已安装 iPhone App 的交互验收
+
+`Apps/DeviceAcceptance` 是独立 XCUITest 工程，按 bundle ID 打开手机上已安装的轻舟，不重新构建主 App 或替换配置。生成源为该目录的 `project.yml`。当前用例要求简体中文界面、已有本月流量记录；公网 IP 用例还要求 VPN 已连接，且测试线路的节点出口与物理出口不同。
+
+系统验收包含真实网络操作：`testWiFiCellularRoundTrip` 要求初始Wi-Fi已连接，会切到蜂窝后恢复；`testLockScreenWidgetAndLiveActivityLifecycle` 要求已有锁屏矩形Widget、实时活动开启，会停止并重新连接VPN。仅做页面回归时使用 `-only-testing` 选择相应用例。临时系统界面探索与添加/移除控件脚本不纳入日常测试集，其执行成功不单独计功能通过。通知中心截图可能包含私人通知，应仅在本机检查与保存。
+
+```bash
+xcodegen generate --spec Apps/DeviceAcceptance/project.yml
+xcodebuild -project Apps/DeviceAcceptance/QingzhouDeviceAcceptance.xcodeproj \
+  -scheme QingzhouDeviceAcceptance -destination 'id=<设备 UDID>' \
+  -derivedDataPath /private/tmp/qingzhou-device-acceptance \
+  -resultBundlePath /private/tmp/qingzhou-device-acceptance.xcresult \
+  -allowProvisioningUpdates -parallel-testing-enabled NO \
+  -collect-test-diagnostics never test
+```
+
+结果路径每轮使用新目录。真机截图、界面树可能包含 IP、域名和节点信息，只保留本机，不提交到 Git。用例会重开主 App；VPN 扩展由系统独立管理。测试驱动安装成功或 `TEST BUILD SUCCEEDED` 不代表页面通过；若出现 `code 74 / IDE disconnection` 且尚未执行测试方法，应记录为测试通道阻塞、0 用例完成。2026-10-27 已在 iPhone 14 Pro 的 build36 上完成两条用例，0失败；具体证据见 `docs/ACCEPTANCE.md`。
+
+若日志同时出现 `Results channel was never configured`，先核对有线连接、锁定状态和开发镜像，再检查 Mac CoreDevice 与手机 testmanagerd 的会话日志。本次仅重建 Mac 当前用户的 CoreDeviceService 后恢复，Mac VPN 保持开启也能完整通过。重建前必须核对进程所有者及可执行路径，只终止当前用户对应服务，随后确认新 PID 与设备连接状态；不要盲目杀全部同名服务或修改 VPN 路由。code74 本身不能证明 VPN、签名或轻舟业务代码存在问题。
+
 ### iOS（device + simulator）
 
 ```bash

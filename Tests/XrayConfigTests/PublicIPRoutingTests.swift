@@ -4,7 +4,7 @@ import QingzhouCore
 
 final class PublicIPRoutingTests: XCTestCase {
     func testIPProbeAlwaysUsesProxyBeforeUserAndModeRules() throws {
-        for mode in [ProxyMode.rule, .global, .direct] {
+        for mode in [ProxyMode.rule, .global] {
             let json = try XrayConfigComposer.compose(outboundsJSON: #"{"outbounds":[{"protocol":"freedom"}]}"#, mode: mode, publicIPPort: 32123)
             let root = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
             let inbound = try XCTUnwrap((root["inbounds"] as? [[String: Any]])?.first { $0["tag"] as? String == "public-ip-in" })

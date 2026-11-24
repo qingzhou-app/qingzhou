@@ -1,5 +1,98 @@
 # 轻舟 — 待验收清单 / Acceptance Checklist
 
+## 2026-10-29 build37：无节点直连与会话/日度流量
+
+- 直连启动不再要求节点，不生成代理出口，也不探测“节点出口 IP”；规则/全局仍需节点。无节点时不能把运行中的直连切成代理模式，保持原模式并提示。仅选择未来代理节点不重启直连隧道。
+- 首页及连接页统一入口“域名流量分析”，周期为“本次 / 日度 / 月度”，默认本次、全部路由。会话以 VPN 隧道生命周期为准；主 App 重开不清零，隧道全量重启新开一轮，原地换节点/调整定时不清零。关闭后可查看最近一次会话；新会话未采样时不显示旧会话数字。
+- 日度保留31天，月度保留6个月；每周期512主域名及未知/其他桶。旧月账和去重基线兼容，不回填历史每日字节，不加入云同步。
+- 新增10项测试（原实现失败证据已记录），最终全量1070项：1069通过、1项缺历史真实回放输入跳过、0失败。包含真实libXray无节点直连配置预检、跨日增量、会话重启、序列化去重、旧账本兼容和直连IP归属。
+- iOS/macOS最终产物签名构建及严格签名校验通过。Mac已覆盖安装build37，旧包备份至`/private/tmp/qingzhou-before-build37.app`，尚未重新启动主App。iPhone安装被锁屏阻止（CoreDevice 12040/10003：无法挂载开发镜像），已请求解锁，尚未安装。桌面CUA仍报native pipe startup failed，不能把编译/内核预检算成真机开关与页面交互通过。
+- 待真机：无节点直连启停/网页、代理与直连切换、本次会话新增/清零/重开App保持、三周期筛选搜索、系统Widget与实际连接一致。
+
+证据：`/private/tmp/qz-session-red.log`、`qz-direct-ip-red.log`、`qz-direct-mode-red.log`、`qz-build37-tests-final.log`、`qz-build37-{ios,mac}-final.log`。
+
+## 2026-10-27 19时后系统功能继续验收
+
+- **切网恢复通过**：`system-settled.xcresult` 中 `testWiFiCellularRoundTrip` 完整通过（51.400秒）。系统设置实际关闭Wi-Fi、蜂窝阶段VPN与两路不同IP通过；重新开启Wi-Fi并等待网络勾选标记，回App刷新后VPN与两路不同IP再次通过。最后Wi-Fi保持开启并已入网。此用例重开主App读取状态，证明切网后恢复可用，**不证明已有下载/通话零中断**。
+- 首轮恢复点击在跨App激活时未生效，独立`restore-wifi.xcresult`已恢复并验证入网及公网IP。验收脚本改为重新打开系统设置，并将异常清理移到XCTest `tearDown`，避免只依赖Swift `defer`。
+- **系统显示证据**：真实灵动岛出现轻舟连接图标与计时；通知中心有实时活动卡片；用户锁屏区域已有矩形及圆形轻舟Widget，矩形显示已连接。未添加/移动用户桌面组件，截图只保留本机。
+- **停止状态通过、快速重连尚有问题**：`system-lifecycle.xcresult`实测关闭VPN后矩形Widget变为未连接、实时活动消失；重新连接后实时活动恢复，但矩形Widget在20秒内仍显示未连接。该场景未通过，不以App首页已连接替代Widget状态。
+- 后续对照`system-settled.xcresult`中，重连后留在前台完成网络探测再进通知中心，Widget和实时活动均显示已连接；但该生命周期用例有初始实时活动未等待创建、IP分次读取遇到界面刷新竞态两处失败，不能把整个结果包标为通过。IP读取改为一次AX快照，实时活动启动改为有界等待，继续复验。快速退出前台的刷新问题保留独立待修复，尚未断言系统节流或应用轮询是唯一根因。
+- **正常连接生命周期通过**：`control-lifecycle.xcresult`中的生命周期用例通过（58.994秒），包括初始Widget/实时活动显示、停止后Widget未连接与活动消失、重新连接且网络探测成功后两者恢复。快速退后台场景单独保留`testQuickBackgroundWidgetAfterReconnect`回归，不被正常流程通过覆盖。
+- **控制中心启停通过**：控件库搜索找到轻舟VPN，临时添加一项后执行`testTemporaryControlToggleAndRemove`（48.947秒、0失败，`control-toggle.xcresult`）。控件关闭→App确认VPN未连接；控件开启→显示已连接；随后删除本次新增控件，断言其已不存在，回App确认VPN已连接且两路有效IP不同。未操作系统通用VPN按钮，未移动其他控件。
+- 一次性观察/添加/删除控件代码已从日常验收类移除，保存在本机证据目录`exploration-tests.swift`；保留页面、切网、正常系统生命周期和快速退出缺陷回归。系统截图含私人信息，仅本机保存。本轮产品build36未改动，不将验收脚本修正称为产品修复。
+
+当前剩余边界：Mac状态栏路径仍需用户实际点击反馈（CUA会重新激活窗口，无法证明该入口）；快速退后台Widget显示问题、两条失败节点均为已测试但未通过；真实跨月/长期耗电、最低系统/小屏、已有长连接无中断、隔离环境的多设备云恢复及故障注入仍不宣称通过。没有把“正常流程通过”扩大为这些场景也通过。
+
+证据目录仍为 `/private/tmp/qingzhou-build36-ui-acceptance/`。`testObserveSystemSurfaces`仅为观察采集，不计功能通过；锁屏/通知中心附件可能有私人通知，不提交版本库。
+
+## 2026-10-27 晚间补验：手动 iCloud 与问题节点
+
+- iPhone 14 Pro build36、真实用户数据、USB。新增独立验收用例进入设置，打开“立即恢复 iCloud 数据”，等待“云端当前版本”实际出现后截图，再取消、确认版本页消失并回首页。首轮打开/取消通过；补强列表加载断言后再次通过（30.827秒）。未选择任何恢复版本，未覆盖配置；普通启动没有自动恢复提醒。
+- 两个问题节点再次定向诊断：第一条 TCP timeout、代理 probeFailed；第二条 TCP connected（409ms）、代理 probeFailed；两者备用目标均未完成。**仍未通过代理可用性验收**，未将错误归因于服务商、凭据或特定协议实现。没有切换用户当前选择节点。
+- 诊断初始IP刷新两路均成功且不同；诊断结束时两路结果均空、失败标记亦均false，不能当作双路径通过或失败，随后用普通启动的独立首页UI刷新复验。
+- 18:48组合复跑：iCloud列表加载/取消通过30.827秒，月度交互通过32.182秒；公网IP测试误把纯数字规则数`2209`识别为IPv4简写，出现3个地址的断言失败。失败界面树实际有一个点分IPv4和一个IPv6；已收紧测试查询格式，排除纯数字，不能把该轮报为全通过，也不能据此认定产品显示了第三个IP。
+- 18:49严格格式独立复跑公网IP通过（18.101秒、1测试0失败、`TEST EXECUTE SUCCEEDED`，`strict-ip.xcresult`），刷新结束显示两路有效且不同的地址。三项分别取得通过证据；未声称之前的组合结果包全绿。本轮未改产品代码，未再出现code74；Mac收尾VPN为Connected。
+- Mac CUA 可读取首页，但关闭窗口后查询界面会重新激活窗口；SystemUIServer入口超时、键盘状态栏入口未获得可操作菜单。故状态栏路径仍未验收，已请用户补一次关闭→状态栏“打开主窗口”的真实结果。不能把工具重新打开窗口算作该入口通过。
+- Widget/Live Activity完整系统状态、完整切网、真实跨月、长期耗电与最低系统仍保留；本轮没有模拟或伪造这些结果。
+
+本机证据：`/private/tmp/qingzhou-build36-ui-acceptance/cloud-manual.xcresult`、`evening-full.xcresult`、`nodes-evening.json`。截图和界面树仅保留本机，不提交版本库。
+
+## 2026-10-27 18:35 code 74 定位与 Mac 开发服务恢复
+
+- 同步采集 Mac CoreDevice/remoted 与手机 testmanagerd/Runner 日志：初始设备服务连接成功，失败发生在 IDE 向测试进程移交序列化通道后；手机报告 `Results channel was never configured`，随后 `Exiting due to IDE disconnection`。runner74 是该测试基础设施退出结果，不是轻舟业务错误码，也不是签名安装失败。
+- 核对进程身份后，仅终止当前用户的 Mac CoreDeviceService（旧 PID3803）；系统重新创建 PID4612，设备仍 wired/paired/connected。未终止 root 服务，未改 VPN 路由、节点、系统代理或安全设置。
+- Mac VPN 保持开启，下一轮两个测试方法均实际进入 App，越过此前启动握手失败点。该轮仍因月度页面点击后未打开、公网 IP 全界面逐标签读取超时而断言失败；**恢复执行不等于 UI 用例通过**。界面树包含两路不同的有效 IP。测试侧收窄 IP 查询并调整点击方式，继续重复验证。
+- 当前结论为 Mac 侧开发会话异常、重建服务后恢复执行的证据；Apple 内部导致会话异常的深层原因尚未证明。前面的 VPN 关闭对照不能认定唯一根因。
+
+本机证据：`/private/tmp/qingzhou-build36-ui-acceptance/phone-test-channel.log`、`mac-test-channel.log`、`recreated-coredevice.xcresult`。原始界面树和截图仅保留本机。
+
+### 18:40 复测结论：两条完整真机 UI 用例通过
+
+Mac VPN 全程 Connected，未再次重启 CoreDeviceService。修正测试侧点击方式（按已定位元素中心点击）和 IP 标签查询范围后，`coredevice-repeat.xcresult` 返回 `TEST EXECUTE SUCCEEDED`、退出0：
+
+- 月度流量：打开、默认代理、直连/全部/代理切换、完整关键词搜索、无匹配提示、搜索前后总流量不变、清空搜索、完成返回，整条通过（31.566秒）。使用设备已有真实账本。
+- 公网 IP：刷新后两路有效 IPv4/IPv6 地址成功显示、地址不同、无查询失败提示，整条通过。未将其中一路硬编码为 IPv4。
+- 两次连续启动均已越过此前 code74 阶段，第二轮两条用例完整结束。当前阻塞已解除；可复现的恢复操作是重建 Mac 当前用户的 CoreDevice 服务。未据此声称 Apple 内部缺陷根因已完全确定，也不保证以后不会复发。
+- 产品 build36 未改动，本轮仅调整独立验收脚本。iCloud启动提示检查也通过；手动恢复流程及其他系统级待验收项仍单独保留。
+
+## 2026-10-27 18:10 Mac VPN 有界对照：测试通道进入用例
+
+- 用户明确授权短暂断开 Mac 轻舟 VPN、约30秒后恢复。先启动恢复保障脚本，再经 App 正常开关停止；确认 Disconnected 后启动相同已签名的 iPhone XCUITest。27.00秒后请求恢复，脚本及 Mac UI 均确认 Connected，实际与选择节点一致。未延长停用时间，未修改节点或路由设置。
+- **关闭 Mac VPN 时一次成功进入用例（后续未稳定复现）**：此前开启时均在测试方法前退出；本次关闭后进入 `testMonthlyTrafficRoutesSearchAndDismiss`，成功启动轻舟、读取首页、滑动、点击“月度域名流量”。恢复 Mac VPN 后测试通道立即断开，退出65/runner74。本次测试方法已开始，但完整用例未结束，不能记为用例通过；后续关闭状态仍失败，不能据单次对照认定唯一根因。
+- **月度页面打开与真实数据呈现通过**：18:15通过设备截图独立确认手机停留在月度域名流量页，月份2026-10、代理范围选中，总量/上传/下载/排行/搜索框/完成按钮可见。筛选切换、搜索及关闭仍待执行。页面目前记录的代理流量1.41 GB，首项约占72.8%；这是已采集范围，不代表补回完整自然月。原图保留本机，不写入版本库。
+- 进一步只读检查：CoreDevice IPv6 peer 在独立utun6上，Mac VPN默认IPv6路由在utun7；当前隧道access log中未找到该peer、CoreDevice域名或link-local目标，**尚未确定具体受影响的数据路径**。源码没有显式启用 includeAllNetworks/enforceRoutes。不能据此盲目放开所有局域网或修改系统路由；Apple TN3158仅作为设备通信受VPN影响的背景，非此项目具体根因证明。
+- 手机截图仍显示5G；用户此前为排查关闭了Wi-Fi。两路IP的蜂窝运行验收见下节。完整两条交互用例需要比本次30秒更长的窗口，未擅自再次断开 Mac VPN。
+
+本机证据：`/private/tmp/qingzhou-build36-ui-acceptance/approved-mac-off-control.json`、`approved-mac-off.log`、`approved-mac-off-at-restore.log`、`approved-mac-off.xcresult`、`after-approved-comparison.png`。Apple参考：https://developer.apple.com/documentation/technotes/tn3158-resolving-xcode-15-device-connection-issues 。
+
+### 18:19 后续对照修正
+
+用户另行允许最多3分钟停用。测试在 Mac VPN 断开状态下仍未进入用例，runner74；21.65秒即请求恢复，确认 Connected。失败后手机仍 wired、无密码锁定。此前“Mac VPN确实影响通道”的口头结论过强，已告知用户修正：目前是一次成功启动与多次失败，尚不能确认唯一根因或稳定恢复条件。旧 testmanagerd PID12076一直未变；本轮使用SIGKILL后独立进程查询确认它已退出，随后保持 Mac VPN 连接验证新测试会话。
+
+- 新测试服务、Mac VPN开启时仍runner74；在本轮剩余预算内，再做“Mac VPN断开后终止并重新创建手机testmanagerd”的组合对照，22.38秒后同样失败并恢复。两轮测试停用合计约44秒，没有用满3分钟，0条完整UI用例通过。证据 `three-minute-control.json`、`three-minute.xcresult`、`fresh-off-control.json`、`fresh-off.xcresult`、`new-testmanager.xcresult`。
+- 收尾通过App正常停止/启动恢复连接流程（stop会关闭On-Demand，不能只把CLI启动的Connected等同于完整恢复）；预先设置20秒自动恢复保护，实际正常App重连成功，保护脚本未触发兜底。最后UI显示Connected、实际节点与选择一致、公网IP双路径均有数据，CLI状态亦Connected。含收尾的累计停用仍小于本轮3分钟授权，未再启动测试。
+- 收尾时短暂出现本机7897系统代理提示，后续只读查询无HTTP/SOCKS启用字段、无该端口监听，提示也消失；仅记录瞬时现象，未调整其他代理，也不能据此确定根因。停止重复试验，保留测试通道故障与完整UI验收待办；不为消除code74盲改VPN路由或放宽安全策略。
+
+## 2026-10-27 下午 USB 真机复验
+
+**已通过：VPN 停止/恢复、恢复后的节点一致性、关闭 Wi-Fi 后的公网 IP 双路径运行、静默启动、月度账本继续累计。UI 自动化仍未进入测试方法，不能标页面通过。**
+
+- 用户接好 iPhone 14 Pro，CoreDevice 确认 `wired / paired / connected`、手机无密码锁定。用户随后在设置关闭 Wi-Fi 并确认 UI 自动化已开启；纯 USB 重跑仍在进入用例前 `code 74 / IDE disconnection`，0 条完成。开发镜像 `27A266a` 检查兼容且可用，未出现签名安装失败。
+- 手机 VPN 对照：17:35 停止后取得16个状态样本，终态 disconnected，进程列表无轻舟 Tunnel；此条件下 XCTest 仍失败。17:36 恢复，终态 connected、实际节点与选择一致。不能据这次通道失败归因轻舟节点或手机隧道。
+- 17:46 仅重开主 App 后重新记录16次状态，后14次 connected 且节点匹配，自动恢复提示0次。两路 IP 均新鲜获取、无失败、出口不同（完成于17:46:24）；当时用户已关闭 Wi-Fi。与17:36恢复轮相比，代理账本新增7,530字节、直连新增7,016,402字节；这段增量涵盖期间后台活动，不归因为测试请求用量，也不等于完整切网无中断验收。
+- 测试服务收到 SIGTERM，但后续仍显示同一 PID，未将该操作认定为服务已重启。Mac 侧 `scutil --nc stop` 未能取得稳定断开状态，脚本未启动对照测试并确认最后 Connected；不能据此排除 Mac VPN 的影响。尝试正常 UI 停止时自动审批要求本轮明确确认，已另行询问，当前保留连接。
+- 新增独立验收驱动覆盖公网 IP 刷新、月度页面切换/搜索/关闭；断言同时识别 IPv4/IPv6、要求完整搜索词和真实字节值，避免只凭标签或部分输入误报。`TEST BUILD SUCCEEDED`；控件定位仍待真机执行确认，暂不宣称这两条 UI 用例可通过。
+
+本机证据：`/private/tmp/qingzhou-build36-ui-acceptance/`。结果包 `wired.xcresult`、`vpn-off.xcresult`、`usb-only.xcresult`；有效运行记录 `vpn-stopped-state.json`、`restore-state.json`、`cellular-state.json`、`cellular-network.json`。17:36首次启动的网络记录未完成配置采认、没有 IP，不作为双路径失败或通过证据。
+
+## 2026-10-27 直接真机 UI 验收准备（用户要求暂停至次日）
+
+- 用户明确跳过镜像，改用直接真机验收。新增独立 XcodeGen 验收工程 `Apps/DeviceAcceptance/project.yml`，面向已安装的轻舟 App，不依赖或重新安装主 App；没有启用示例数据、恢复云配置或修改节点。
+- XCUITest 驱动签名编译和 iPhone 安装成功，但 02:34 在测试方法执行前退出：`code 74`、`IDE disconnection`、`XCTestDriverInterface:XCTestManager_IDEInterface` 通道请求被拒绝。**0 条 UI 用例完成，不能将此轮计为页面通过，也不能据此判定轻舟功能失败。** 新增测试的控件定位及断言仍需实际运行验证。
+- CoreDevice 查询确认已配对、Developer Mode 已开启、连接为 `localNetwork`，锁定状态 `passcodeRequired=false`。保留本机日志和结果包 `/private/tmp/qingzhou-build36-ui-acceptance/first.xcresult`；诊断未对外发送。
+- 已请求改用支持数据传输的 USB 线。用户随后要求等明天，停止继续测试。下次先确认 USB 设备连接，再运行月度流量筛选/搜索/关闭、公网 IP 双路径刷新；原有已通过运行验收结论保持，未完成条目继续保留。
+
 ## 2026-10-27 build36 iPhone 14 Pro解锁后运行验收
 
 ### 工具恢复补记（02:16后）
@@ -25,17 +118,17 @@
 时间为北京时间。证据位于`/private/tmp/qingzhou-build35-acceptance/`：`ios36-current-apps.json`、`ios36-fresh-state.json`、`ios36-fresh-network.json`、`ios36-nodes-final.json`、`ios36-nodes-state.json`、`ios36-nodes-processes.json`、`ios36-recheck-final.json`。旧34文件`ios36-unlocked-initial.json`仅用于说明排除了陈旧证据，不计为本轮通过。
 
 
-## 2026-10-27 build36 逐项验收结论
+## 2026-10-27 build36 逐项验收结论（按晚间复验更新）
 
 | 优先级 / 项目 | 本轮结论 | 仍需补齐 |
 |---|---|---|
-| P0 公网IP | **Mac通过**：首页曾实际显示物理直连中国北京与节点出口荷兰阿姆斯特丹；最终36运行记录再次确认两路均成功、IP不同、VPN运行、配置回执有效。 | iPhone新版本运行验证仍被Locked阻断。 |
-| P1 TCP测速 | **Mac通过**：最终生产探针31/31 TCP节点成功，含两条IPv6-only；3个Hysteria2使用UDP，不纳入TCP失败。 | iPhone物理接口实测。 |
+| P0 公网IP | **Mac通过**：首页曾实际显示物理直连中国北京与节点出口荷兰阿姆斯特丹；最终36运行记录再次确认两路均成功、IP不同、VPN运行、配置回执有效。 | iPhone运行与首页刷新、两路不同地址的UI用例已通过。 |
+| P1 TCP测速 | **Mac通过**：最终生产探针31/31 TCP节点成功，含两条IPv6-only；3个Hysteria2使用UDP，不纳入TCP失败。 | iPhone整轮32/33 TCP成功；晚间两条问题节点复查分别超时和409ms，不能把代理失败等同TCP失败。 |
 | P1 代理可用性 | **部分通过**：首轮32个代理请求成功，复测补齐1个，共33/34有成功证据；剩余1个重复TCP成功、默认代理目标失败。 | 该节点第二目标也未完成，仅作辅助线索，不据此断言凭据、出口或服务端根因。 |
-| P1 Mac状态栏恢复 | **未验收**：唯一主窗口/openWindow修复已存在并通过构建。 | CUA再次报native pipe startup failed；读取窗口会激活App，不能替代关闭后点击状态栏的真实测试。 |
-| P1 手机网页/视频、切网、月度详情 | **待设备可操作**。原34的账本新增/主App退出后持续采集已通过，不能替代本轮UI。 | 14 Pro已安装36，启动仍被系统Locked拒绝；需要解锁亮屏后继续。 |
-| P2 Widget / Live Activity | **工程覆盖通过、完整系统交互未验收**。 | 真实添加、开关/异常/停止状态转换。 |
-| P2 多设备云冲突 / 历史恢复 | **工程回归通过、真实恢复未验收**。 | 隔离测试数据和可操作的两端；未覆盖或恢复用户私有配置。 |
+| P1 Mac状态栏恢复 | **未验收**：唯一主窗口/openWindow修复已存在并通过构建。 | CUA已可读主窗口，但读窗口会重新激活App、系统状态栏入口不可用，不能替代关闭后点击状态栏的真实测试。 |
+| P1 手机网页/视频、切网、月度详情 | **部分通过**：build36基础网页/短视频、真实月度页面的筛选/搜索/关闭已通过。 | Wi-Fi→蜂窝→Wi-Fi恢复可用已通过；现有长连接零中断和长视频仍待验收。 |
+| P2 Widget / Live Activity | **正常连接→停止→重连系统生命周期通过；快速退后台的Widget刷新未通过**。 | 快速重连显示延迟、异常/无响应场景；控制中心专项结果见最新补记。 |
+| P2 多设备云冲突 / 历史恢复 | **工程回归通过、手动版本列表加载和取消通过、真实恢复未验收**。 | 隔离测试数据和可操作的两端；未覆盖或恢复用户私有配置。 |
 | P2 跨月 / 耗电 / 兼容性 | **保留待验收**。账本边界回归通过。 | 真实跨月与长时间观测；最低系统、小屏、动态字体实际环境。 |
 
 ### TCP修复和验证范围

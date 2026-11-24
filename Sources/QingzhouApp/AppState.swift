@@ -59,6 +59,7 @@ public final class AppState {
     /// （`Self.domainHistoryFile`），**不进 Persistence.Snapshot**，绝不被 iCloud vault 镜像。
     public private(set) var domainHistory = DomainDailyHistory()
     /// 扩展拥有的本地月度账本；主App只读，不写配置快照/云备份。
+    public private(set) var activeTrafficSessionID: String?
     public private(set) var domainTrafficHistory: DomainTrafficLedger?
     public private(set) var domainTrafficReadFailed = false
     private var domainTrafficReadAt = Date.distantPast
@@ -104,7 +105,7 @@ public final class AppState {
     private var loggedUnexpectedTunnelDeath = false
 
     /// 已判定为「仅 IPv6」的域名（只有 AAAA、没有 A）。连接页据此打「仅 IPv6」徽标 ——
-    /// 轻舟全链路 IPv4（保护 fakedns 分流，见 docs/IPV6.md），这类站点直连不可达，
+    /// 这类站点直连需要物理网络提供 IPv6（见 docs/IPV6.md），
     /// 标注出来让用户遇到时不迷惑。
     public private(set) var ipv6OnlyHosts: Set<String> = []
     private let ipv6Prober = IPv6OnlyProber()
@@ -516,6 +517,10 @@ public final class AppState {
     /// 切换代理模式。改值 + 副作用 + 持久化；若 VPN 在跑则热重启隧道使新模式即时生效。
     public func setProxyMode(_ mode: ProxyMode) {
         guard settings.proxyMode != mode else { return }
+        guard !isVPNRunning || mode == .direct || currentNode != nil else {
+            tunnelError = VPNTunnelManager.TunnelError.noCurrentNode.errorDescription
+            return
+        }
         settings.proxyMode = mode
         applySettingsSideEffects()
         persist()
@@ -1030,20 +1035,20 @@ public final class AppState {
             tunnelError = nil
             return
         }
-        guard let node = currentNode else {
+        let node = settings.proxyMode == .direct ? nil : currentNode
+        guard settings.proxyMode == .direct || node != nil else {
             tunnelError = VPNTunnelManager.TunnelError.noCurrentNode.errorDescription
             isVPNRunning = false
             return
         }
-
-        guard let shareLink = NodeEncoder.shareLink(node) else {
+        let link = node.flatMap(NodeEncoder.shareLink)
+        guard settings.proxyMode == .direct || link != nil else {
             tunnelError = L("无法把节点编码成分享链接")
             isVPNRunning = false
             return
         }
-
-        // QUIC 三档 → 当前节点有效阻断值（auto 下 hysteria2 放行、其余挡）。routing 按它构建。
-        let effBlockQUIC = effectiveBlockQUIC(for: node)
+        let shareLink = link ?? ""
+        let effBlockQUIC = node.map { effectiveBlockQUIC(for: $0) } ?? false
         do {
             // description 带节点名，方便用户在「系统设置 → 网络 → VPN」里识别
             try await tunnelManager.configure(
@@ -1053,13 +1058,14 @@ public final class AppState {
                 rules: effectiveUserRules,
                 autoStopSeconds: settings.autoStopSeconds,
                 blockQUIC: effBlockQUIC,
-                description: L("轻舟 · \(node.name)")
+                description: L("轻舟 · \((node?.name ?? L("直连")))")
             )
             try await tunnelManager.start()
+            activeTrafficSessionID = nil
             tunnelSession.startSubmitted(at: Date(), requestID: tunnelManager.configuredRequestID)
             isVPNRunning = true
             tunnelError = nil
-            logger.info("Tunnel started for node \(node.name)", category: "tunnel")
+            logger.info("Tunnel started for node \((node?.name ?? L("直连")))", category: "tunnel")
             #if DEBUG
             AcceptanceTrace.record(.startSubmitted)
             #endif
@@ -1331,9 +1337,17 @@ public final class AppState {
     }
 
     private func performReapply(scope: ReapplyScope) async {
-        guard isVPNRunning,
-              let node = currentNode,
-              let shareLink = NodeEncoder.shareLink(node) else { return }
+        guard isVPNRunning else { return }
+        // Selecting a future proxy node does not change a direct tunnel.
+        if scope == .nodeOnly && settings.proxyMode == .direct { return }
+        let node = settings.proxyMode == .direct ? nil : currentNode
+        guard settings.proxyMode == .direct || node != nil else {
+            tunnelError = VPNTunnelManager.TunnelError.noCurrentNode.errorDescription
+            return
+        }
+        let link = node.flatMap(NodeEncoder.shareLink)
+        guard settings.proxyMode == .direct || link != nil else { return }
+        let shareLink = link ?? ""
         #if DEBUG
         AcceptanceTrace.record(scope == .full ? .reapplyFullStarted : .reapplyNodeStarted)
         #endif
@@ -1348,7 +1362,7 @@ public final class AppState {
             WidgetRefresher.reload()
         }
         // 新节点在当前 QUIC 策略下的有效阻断值。
-        let effBlockQUIC = effectiveBlockQUIC(for: node)
+        let effBlockQUIC = node.map { effectiveBlockQUIC(for: $0) } ?? false
         // 配置预检：趁旧隧道还在跑，先让扩展用同款构建流程校验新节点的配置（libXray
         // TestXray）。配置非法 → 不拆在跑的隧道，直接报错返回 —— 否则坏配置会把好隧道
         // 换成起不来的新会话，用户直接断网。预检本身没跑成（超时等）不拦：尽力而为继续切。
@@ -1358,7 +1372,7 @@ public final class AppState {
             )
         } catch VPNTunnelManager.TunnelError.configRejected(let reason) {
             tunnelError = L("已保持当前节点连接不变。切换目标节点配置无效：\(reason)")
-            logger.error("Pre-switch config test rejected \(node.name): \(reason)", category: "tunnel")
+            logger.error("Pre-switch config test rejected \((node?.name ?? L("直连"))): \(reason)", category: "tunnel")
             return   // 旧隧道原样保留
         } catch {
             logger.warn("Pre-switch config test unavailable (\(error)) — continuing switch", category: "tunnel")
@@ -1371,7 +1385,7 @@ public final class AppState {
         // ⚠️ 但原地换出口**不重建 routing** —— 若新节点有效阻断值与当前隧道 routing 所用的
         // （扩展确认的blockQUIC）不一致（如 trojan[挡]→hysteria2[放行]，或反向），原地切会留下
         // 过期的 QUIC 路由。此时降级为全量重启（下方路径重建 routing）。一致时才走零断流快路径。
-        if scope == .nodeOnly, let applied = appliedTunnelConfiguration,
+        if scope == .nodeOnly, let node, let applied = appliedTunnelConfiguration,
            applied.mode == mode, applied.blockQUIC == effBlockQUIC {
             do {
                 // 先落盘新节点配置：扩展若之后被系统回收再由 On-Demand 拉起，用的是
@@ -1417,7 +1431,7 @@ public final class AppState {
                 // 从头再数）。不带旧剩余时间过去 —— 语义简单、扩展侧无需额外状态。
                 autoStopSeconds: autoStopSeconds,
                 blockQUIC: effBlockQUIC,   // 全量重启会重建 routing，带上新有效阻断值
-                description: L("轻舟 · \(node.name)")
+                description: L("轻舟 · \((node?.name ?? L("直连")))")
             )
             // 切换窗口先关 On-Demand 再 stop：connect 规则匹配所有流量，stop 后系统
             // 会被任意流量触发抢跑重连 —— 复用半死的旧扩展进程（正是下面轮询要避免的
@@ -1434,6 +1448,7 @@ public final class AppState {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             try await tunnelManager.start()
+            activeTrafficSessionID = nil
             tunnelSession.startSubmitted(at: Date(), requestID: tunnelManager.configuredRequestID)
             // start() 只等"启动请求提交成功"，不等隧道真连上 —— 到这里就收窗口的话，
             // 开关会在 xray 还没就绪时就滑回"开"（规则模式加载 geo 那几秒尤其明显）。
@@ -1456,7 +1471,7 @@ public final class AppState {
                 try? await tunnelManager.setOnDemandEnabled(true)
             }
             verifyTunnelConnectivity()   // 热切换后同样要哨兵：配置合法 ≠ 节点真的可用
-            logger.info("Clean-restart switched tunnel to \(node.name) / \(mode.rawValue)", category: "tunnel")
+            logger.info("Clean-restart switched tunnel to \((node?.name ?? L("直连"))) / \(mode.rawValue)", category: "tunnel")
             #if DEBUG
             AcceptanceTrace.record(.cleanRestart)
             #endif
@@ -2362,7 +2377,7 @@ public final class AppState {
             // 查一次会让这批连接永远顶着裸 IP（按域名搜不到、开「忽略 IP」时整行被藏）。
             backfillDomainNames()
             // 「仅 IPv6」标注：对新出现的域名后台查一次真实 A/AAAA（DoH 绕开 fakedns
-            // 假 IP）。只有 AAAA 的站点在全 IPv4 链路下直连不可达 —— 打标 + 记日志，
+            // 假 IP）。只有 AAAA 的站点需要 IPv6 网络 —— 打标 + 记日志，
             // 用户遇到时连接页能看懂原因（docs/IPV6.md）。
             probeIPv6OnlyCandidates()
             #if os(macOS)
@@ -2605,7 +2620,7 @@ public final class AppState {
         }
         let traffic = trafficHistory.latest ?? TrafficStats()
         let state = QingzhouActivityContentState(phase: phase, connectedSince: connectedSince, traffic: traffic)
-        liveActivity.start(nodeName: applied.nodeName, protocolName: applied.protocolType.rawValue, state: state)
+        liveActivity.start(nodeName: applied.nodeName, protocolName: applied.protocolType?.rawValue ?? "direct", state: state)
     }
 
     /// appex 经 App Group 上报的真实 `TrafficStats` 喂进波形窗口。UI 观察 `trafficHistory` 自动重绘。
@@ -2740,7 +2755,7 @@ public final class AppState {
                     self.ipv6OnlyHosts.insert(host)
                     self.logger.warn(
                         "检测到仅 IPv6 站点 \(host)：该域名没有 IPv4 地址（只有 AAAA）。"
-                        + "轻舟当前全 IPv4 链路（保护按域名分流）直连不可达；走代理时由节点解析、或可正常。"
+                        + "直连需要当前网络具有可用 IPv6；代理访问取决于节点出口。"
                         + "设计取舍见 docs/IPV6.md",
                         category: "app")
                 }
@@ -2786,6 +2801,12 @@ public final class AppState {
         // 文件名与 XrayCore.TunnelAppGroup.tunnelSessionName 一致（两模块互不依赖）
         let session = AppGroupStorage.read(TunnelSessionInfo.self, from: "tunnel-session")
         syncAppliedConfiguration(session: session, status: tunnelManager.status)
+        if isVPNRunning, let applied = appliedTunnelConfiguration,
+           session?.appliedConfiguration?.id == applied.id {
+            activeTrafficSessionID = session?.trafficSessionID
+        } else {
+            activeTrafficSessionID = nil
+        }
 
         if isVPNRunning, let s = session, s.stoppedAt == nil,
            let deadline = s.deadline, deadline > Date() {

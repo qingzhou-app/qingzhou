@@ -63,12 +63,16 @@ public enum XrayConfigComposer {
         tunInterfaceName: String = "utun",
         blockQUIC: Bool = true
     ) throws -> String {
-        guard let data = outboundsJSON.data(using: .utf8),
-              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw Error.invalidOutboundJSON
+        // Direct tunnels have no upstream node, even when an old selected node is invalid.
+        var outbounds: [[String: Any]] = []
+        if mode != .direct {
+            guard let data = outboundsJSON.data(using: .utf8),
+                  let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw Error.invalidOutboundJSON
+            }
+            outbounds = (root["outbounds"] as? [[String: Any]]) ?? []
+            guard !outbounds.isEmpty else { throw Error.noProxyOutbound }
         }
-        var outbounds = (root["outbounds"] as? [[String: Any]]) ?? []
-        guard !outbounds.isEmpty else { throw Error.noProxyOutbound }
 
         // libXray 把 share link 的 fragment（节点显示名）误填进 sendThrough，
         // 而 sendThrough 本意是本地绑定 IP，xray-core 当 net.IP 解析必失败 →
@@ -87,18 +91,18 @@ public enum XrayConfigComposer {
         }
 
         // libXray 给的第一个 outbound 就是用户那条链接对应的协议。打 "proxy" tag。
-        outbounds[0]["tag"] = "proxy"
+        if !outbounds.isEmpty { outbounds[0]["tag"] = "proxy" }
         // 之后所有规则 / 全局走 "proxy"，直连走 "direct"，拒绝走 "reject"。
-        // direct 出站强制 `domainStrategy: UseIPv4`：fakedns 对每个域名（含 AAAA 查询）都
-        // 分配假 IP，浏览器（IPv6 优先 / Happy Eyeballs）会优先用 IPv6 假 IP 发起连接。
-        // 但很多国内域名**只有 A、没有真实 AAAA**（实测 cbs-u.sports.cctv.com）——
-        // 此时 freedom 默认 AsIs 会尝试 IPv6 出站、解析真实 AAAA 失败 → 连接失败，
-        // 表现为「浏览器整个域名连不上（no-cors 也失败）、curl 用 IPv4 却正常、页面部分内容缺失」
-        // （真机 cctv 世界杯赛程 API 定位）。UseIPv4 让直连出站一律用域名的 IPv4 地址，
-        // 无论浏览器用 v4/v6 连接都能落地。代价：有真实 IPv6 的域名直连时也走 IPv4
-        //（双栈站点 IPv4 都可用，无感）。proxy 出站是节点协议、解析在服务端，不受影响。
+        // Resolve real A + AAAA at the socket dialer, independently of the FakeDNS address.
+        // Resolving in freedom.settings first would collapse the list to one IP and disable
+        // Happy Eyeballs. Prefer IPv6, then race IPv4 after 250 ms; IPv4-only still works.
         outbounds.append(["tag": "direct", "protocol": "freedom",
-                          "settings": ["domainStrategy": "UseIPv4"] as [String: Any]])
+                          "settings": ["domainStrategy": "AsIs"] as [String: Any],
+                          "streamSettings": ["sockopt": [
+                            "domainStrategy": "ForceIP",
+                            "happyEyeballs": ["prioritizeIPv6": true, "tryDelayMs": 250,
+                                               "interleave": 1, "maxConcurrentTry": 4]
+                          ]] as [String: Any]])
         outbounds.append(["tag": "reject", "protocol": "blackhole", "settings": [:] as [String: Any]])
         // dns outbound：DNS 查询被路由到这里，交给 xray 的 dns 段（含 fakedns）处理，
         // 而不是当普通流量转发到真实 DNS。**没有它 fakedns 永远不会触发**。
@@ -145,7 +149,7 @@ public enum XrayConfigComposer {
 
         // Fixed-target diagnostic inlet: cannot forward arbitrary destinations. It deliberately
         // precedes mode/user routing so "node exit" always measures the active proxy outbound.
-        if let publicIPPort, (1...65535).contains(publicIPPort) {
+        if mode != .direct, let publicIPPort, (1...65535).contains(publicIPPort) {
             inbounds.append([
                 "tag": "public-ip-in", "protocol": "dokodemo-door",
                 "listen": "127.0.0.1", "port": publicIPPort,
@@ -174,14 +178,11 @@ public enum XrayConfigComposer {
             // sniffing 的 fakedns 反查回真域名，于是 access log / 路由都拿到域名，**不依赖 TLS SNI**
             //（SNI 越来越多被 ECH 加密，纯 sniffing 只能看到 IP，这就是"连接页全是 IP"的根因）。
             //
-            // ⚠️ 只配 IPv4 假 IP 池、不配 IPv6：配了 IPv6 池（fc00::/18）会对**任何**域名的
-            // AAAA 查询都返回假 IPv6，浏览器（IPv6 优先 / Happy Eyeballs）随即优先用假 IPv6
-            // 发起连接。但很多国内域名**只有 A、没有真实 AAAA**（实测 cbs-u.sports.cctv.com），
-            // 出站解析真实 AAAA 落空 → 整个域名在浏览器里连不上、页面内容缺失（cctv 世界杯案）。
-            // 配合下面 DNS 的 queryStrategy=UseIPv4（不解析 AAAA），全链路只走 IPv4 —— 双栈
-            // 站点 IPv4 都可用，无感；纯 IPv6 站点极少。
+            // Both address families remain synthetic, preserving domain routing even with ECH.
+            // The direct dialer resolves the real domain independently (including A-only sites).
             "fakedns": [
-                ["ipPool": "198.18.0.0/15", "poolSize": 65535] as [String: Any]
+                ["ipPool": "198.18.0.0/15", "poolSize": 65535] as [String: Any],
+                ["ipPool": "fc00::/18", "poolSize": 65535] as [String: Any]
             ]
         ]
 
@@ -248,7 +249,7 @@ public enum XrayConfigComposer {
             var rules: [[String: Any]] = [
                 // DNS 查询（udp 53）→ dns-out，交给 fakedns 处理。必须在最前，否则被下面
                 // "tcp,udp→proxy" 抢走当普通流量转发，fakedns 永远不触发。
-                ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"]
+                ["type": "field", "inboundTag": ["tun-in"], "port": 53, "network": "tcp,udp", "outboundTag": "dns-out"]
             ]
             if blockQUIC { rules.append(quicRejectRule) }
             rules += [
@@ -275,7 +276,7 @@ public enum XrayConfigComposer {
                 ["type": "field", "inboundTag": ["dns-module"], "outboundTag": "direct"],
                 // DNS 查询 → dns-out（fakedns 处理）—— 这拦的是 **App 发来的** DNS 查询
                 // （inboundTag=tun-in，不匹配上面的 dns-module），劫持到 fakedns。
-                ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"]
+                ["type": "field", "inboundTag": ["tun-in"], "port": 53, "network": "tcp,udp", "outboundTag": "dns-out"]
             ]
             // QUIC 阻断紧跟 DNS 之后、用户规则之前 —— 强制 UDP 443 回退 TCP，先于任何走代理规则。
             if blockQUIC { rules.append(quicRejectRule) }
@@ -320,7 +321,7 @@ public enum XrayConfigComposer {
                 "domainStrategy": "AsIs",
                 "rules": [
                     // DNS 查询 → dns-out（fakedns 处理），必须在最前
-                    ["type": "field", "port": 53, "network": "udp", "outboundTag": "dns-out"],
+                    ["type": "field", "inboundTag": ["tun-in"], "port": 53, "network": "tcp,udp", "outboundTag": "dns-out"],
                     ["type": "field", "network": "tcp,udp", "outboundTag": "direct"]
                 ]
             ]
@@ -334,7 +335,7 @@ public enum XrayConfigComposer {
         case .global, .direct:
             return [
                 "servers": ["fakedns", "8.8.8.8", "1.1.1.1"],
-                "queryStrategy": "UseIPv4"
+                "queryStrategy": "UseIP"
             ]
         case .rule:
             // `tag`：给 dns 模块发出的**上游查询**打标，routing 里用 inboundTag=dns-module
@@ -372,7 +373,7 @@ public enum XrayConfigComposer {
                     "8.8.8.8",
                     "1.1.1.1"
                 ],
-                "queryStrategy": "UseIPv4"
+                "queryStrategy": "UseIP"
             ]
         }
     }
