@@ -1,0 +1,185 @@
+{
+  "date": "2026-11-12",
+  "root": "/Users/sbraveyoung/code/src/github.com/sbraveyoung/qingzhou",
+  "branch": "main",
+  "head": "f3925d6dc34fe0e95b781ae7d92f24d7e9c4557c",
+  "status_before_manifest": " M Apps/App-Shared/Localizable.xcstrings\n M Apps/Tunnel-Shared/PacketTunnelProvider.swift\n M Apps/project.yml\n M Sources/QingzhouApp/AppState.swift\n M Sources/QingzhouApp/ConnectionsView.swift\n M Sources/QingzhouApp/DomainTrafficView.swift\n M Sources/QingzhouApp/HomeView.swift\n M Sources/QingzhouApp/NetworkInfoService.swift\n M Sources/QingzhouApp/VPNTunnelManager.swift\n M Sources/QingzhouCore/AppliedTunnelConfiguration.swift\n M Sources/QingzhouCore/DomainTrafficLedger.swift\n M Sources/QingzhouCore/TunnelSessionInfo.swift\n M Sources/XrayConfig/XrayConfigComposer.swift\n M Sources/XrayCore/DomainTrafficRecorder.swift\n M Tests/QingzhouAppTests/AppliedTunnelStateTests.swift\n M Tests/QingzhouAppTests/PublicIPTests.swift\n M Tests/QingzhouCoreTests/AppliedTunnelConfigurationTests.swift\n M Tests/QingzhouCoreTests/DomainTrafficLedgerTests.swift\n M Tests/XrayConfigTests/PublicIPRoutingTests.swift\n M Tests/XrayConfigTests/XrayConfigComposerTests.swift\n M Tests/XrayCoreTests/XrayStatsAndProbeTests.swift\n M docs/ACCEPTANCE.md\n M docs/BUILD.md\n M docs/DOMAIN-TRAFFIC.md\n?? .brooks-lint-history.json\n?? .planning/\n?? AGENTS.md\n?? Apps/DeviceAcceptance/\n?? docs/HANDOFF-CLAUDE-CODE.md\n?? docs/SHADOWROCKET-FEATURE-COMPARISON.md\n",
+  "scope": "Modified tracked files and handoff-relevant untracked source/documents; excludes generated Xcode projects, build products and private runtime data. Not a backup.",
+  "files": [
+    {
+      "path": ".brooks-lint-history.json",
+      "bytes": 227,
+      "sha256": "3361d82f6a06731dd36ed064bc0a1a410cc84e54b41e68f81a9e8cdc86dd2a23"
+    },
+    {
+      "path": ".planning/2026-10-12-project-health-audit/2026-10-20-followup-plan.md",
+      "bytes": 4380,
+      "sha256": "8d6f413a74482b40a26a765a3ecc7a71018ea07afea91d1681c3688cdeeb2048"
+    },
+    {
+      "path": ".planning/2026-10-12-project-health-audit/2026-10-20-monthly-traffic-plan.md",
+      "bytes": 2409,
+      "sha256": "5e1995683e31545ef2728827e0edf5d3fc8f73b0a2e1e723a30882e4a2bc0618"
+    },
+    {
+      "path": ".planning/2026-10-12-project-health-audit/findings.md",
+      "bytes": 24781,
+      "sha256": "fd841ad6709d30a3de59b2c766b74a09198f2efdec993497f34a4fdf8fc48924"
+    },
+    {
+      "path": ".planning/2026-10-12-project-health-audit/progress.md",
+      "bytes": 57350,
+      "sha256": "b2cf387dd52f00a43a55f10e9e62b6bb17eb81ec591caa84157cfe6bbcb0f9ed"
+    },
+    {
+      "path": ".planning/2026-10-12-project-health-audit/task_plan.md",
+      "bytes": 21434,
+      "sha256": "6a9f4eca277b3d9da7ce02bc1c3982a64c86c0dab05a06b975105d6ecdd3597e"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 6691,
+      "sha256": "1374772aae7e568c134d6db1d93bf31c33f16ef762954a3ab589c79de303e197"
+    },
+    {
+      "path": "Apps/App-Shared/Localizable.xcstrings",
+      "bytes": 433789,
+      "sha256": "40465da0c62e3d9bfe245ec5f1ca424c9db377cbaf40809ba132efb74df58ee0"
+    },
+    {
+      "path": "Apps/DeviceAcceptance/Tests/DeviceAcceptanceTests.swift",
+      "bytes": 13825,
+      "sha256": "91368d0b3a1df98eaf974c6cad42e511e18ebe1176818804a0ff709108c77d83"
+    },
+    {
+      "path": "Apps/DeviceAcceptance/project.yml",
+      "bytes": 773,
+      "sha256": "b068e054d237e8c1f7dcac3fe94adaff45aa5d25e2861741983e943f51dfa862"
+    },
+    {
+      "path": "Apps/Tunnel-Shared/PacketTunnelProvider.swift",
+      "bytes": 67622,
+      "sha256": "9a610b5489d81915c2d2dafc2d6f5a03025e13fc67c2641fa9e8c74de9e109cf"
+    },
+    {
+      "path": "Apps/project.yml",
+      "bytes": 24498,
+      "sha256": "655114d2f77a29de77b148a72b22d7927cfbba361fae17b44cdc897532ecc137"
+    },
+    {
+      "path": "Sources/QingzhouApp/AppState.swift",
+      "bytes": 168527,
+      "sha256": "3455a1f9e82e8391db2055bcaddf4b12c047b17dc24011ac13a08a2443a3e068"
+    },
+    {
+      "path": "Sources/QingzhouApp/ConnectionsView.swift",
+      "bytes": 15399,
+      "sha256": "762b8c188102df8d193266841fbcb82a0f96be5d519c9fe4b62088c3e4cb266c"
+    },
+    {
+      "path": "Sources/QingzhouApp/DomainTrafficView.swift",
+      "bytes": 9407,
+      "sha256": "d4b1726976528478ebd94464788e9cf01685652aac3f59232cb5df6d4ab6ddb5"
+    },
+    {
+      "path": "Sources/QingzhouApp/HomeView.swift",
+      "bytes": 32959,
+      "sha256": "dc8d393df684a2a7b53b766bc6765e0d79f5bca0fcb0e3475b746c7548fc9bb7"
+    },
+    {
+      "path": "Sources/QingzhouApp/NetworkInfoService.swift",
+      "bytes": 5160,
+      "sha256": "a33f58e7ea06b0d569f55d76c4bb66ad82891781daa8bcfa0f5c267f37b87ca9"
+    },
+    {
+      "path": "Sources/QingzhouApp/VPNTunnelManager.swift",
+      "bytes": 27161,
+      "sha256": "f6e3192af341b5605d175266237c37e8bd42a0661d54565ce1a443b2132dee99"
+    },
+    {
+      "path": "Sources/QingzhouCore/AppliedTunnelConfiguration.swift",
+      "bytes": 2386,
+      "sha256": "e5578490d6ec3afc4149c07d21ecd89f8ecf3adb82ef302dcfa702e9aca7f1e5"
+    },
+    {
+      "path": "Sources/QingzhouCore/DomainTrafficLedger.swift",
+      "bytes": 8504,
+      "sha256": "d589a77e246c2eaa65918ac8764b30f9f4230635f0ff45d50db7b6a5427be38a"
+    },
+    {
+      "path": "Sources/QingzhouCore/TunnelSessionInfo.swift",
+      "bytes": 1922,
+      "sha256": "77fbbfeba270a30c57cab0497d9587331211ba716ee4cf40711ef0156a5c7275"
+    },
+    {
+      "path": "Sources/XrayConfig/XrayConfigComposer.swift",
+      "bytes": 22785,
+      "sha256": "7b5e879242a22d0556625ea17f835cf0e32b3de34a18244d2490bf7ec794f6c8"
+    },
+    {
+      "path": "Sources/XrayCore/DomainTrafficRecorder.swift",
+      "bytes": 1383,
+      "sha256": "b36d6837784af826e65cb97eb552e70dcf4fc67755a579cccfabea06d07d04ce"
+    },
+    {
+      "path": "Tests/QingzhouAppTests/AppliedTunnelStateTests.swift",
+      "bytes": 11819,
+      "sha256": "57253f220926b8ae0c0b445166674bb547d82a3accb19dbb86f1e3b9e352d227"
+    },
+    {
+      "path": "Tests/QingzhouAppTests/PublicIPTests.swift",
+      "bytes": 7543,
+      "sha256": "65d2337e43cc49cfc6fca883ec29fab0914b88ad72788a6002c10251c13ed1ae"
+    },
+    {
+      "path": "Tests/QingzhouCoreTests/AppliedTunnelConfigurationTests.swift",
+      "bytes": 3202,
+      "sha256": "23d2a3a19bdbb531ffeb7f6510c529a122dae13d5076ca8d9e0cf33b566a9032"
+    },
+    {
+      "path": "Tests/QingzhouCoreTests/DomainTrafficLedgerTests.swift",
+      "bytes": 7913,
+      "sha256": "966248f0cb0215f592e9caeb53f324924e0ff1b1cb1185b21c0817e7c089bb7c"
+    },
+    {
+      "path": "Tests/XrayConfigTests/PublicIPRoutingTests.swift",
+      "bytes": 1245,
+      "sha256": "75660317b2584120b9ef8c1ba5f5b1f19ce8e1c4d65aad0fe27e6fd70ed677b0"
+    },
+    {
+      "path": "Tests/XrayConfigTests/XrayConfigComposerTests.swift",
+      "bytes": 26584,
+      "sha256": "a45b32ccb3d740f0840498fc50a44fd2099e6c5da63abec242af97d90673f0cd"
+    },
+    {
+      "path": "Tests/XrayCoreTests/XrayStatsAndProbeTests.swift",
+      "bytes": 3440,
+      "sha256": "d15a9bed26cc128ac55e4b3eb99a6ab3855c65da4557cdd2a1da7f688e1d7be9"
+    },
+    {
+      "path": "docs/ACCEPTANCE.md",
+      "bytes": 85141,
+      "sha256": "3c863900c8c58d736c5792979261fe5c5aaa2cab0709d2ab75c79032d76fcdfa"
+    },
+    {
+      "path": "docs/BUILD.md",
+      "bytes": 8609,
+      "sha256": "d3e9eba6058943ca6d9fb328a3f2ce2e841ae7ae480097c4681d247e1dd7cc9c"
+    },
+    {
+      "path": "docs/DOMAIN-TRAFFIC.md",
+      "bytes": 4349,
+      "sha256": "c7cbc72be54a08036f3ddaa169ebe80e891f02a2a39470cc3a8b77dafbba6110"
+    },
+    {
+      "path": "docs/HANDOFF-CLAUDE-CODE.md",
+      "bytes": 14828,
+      "sha256": "908fb22d8be950df414533b4e1a8754680604055f6b55bd43632844a92cebc11"
+    },
+    {
+      "path": "docs/SHADOWROCKET-FEATURE-COMPARISON.md",
+      "bytes": 14682,
+      "sha256": "d62e0e34575ccb3b0746eb5c1ac57033e351feb33ca98059683aacd749f48465"
+    }
+  ]
+}
