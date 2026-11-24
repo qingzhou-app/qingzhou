@@ -15,8 +15,9 @@ let package = Package(
         .library(name: "QingzhouSpeedTest",    targets: ["QingzhouSpeedTest"]),
         .library(name: "QingzhouLogging",      targets: ["QingzhouLogging"]),
         .library(name: "QingzhouApp",          targets: ["QingzhouApp"]),
-        .library(name: "XrayConfig",      targets: ["XrayConfig"]),
-        .library(name: "XrayCore",        targets: ["XrayCore"])
+        .library(name: "XrayConfig",           targets: ["XrayConfig"]),
+        .library(name: "XrayCore",             targets: ["XrayCore"]),
+        .library(name: "QingzhouGuardRelayCore", targets: ["QingzhouGuardRelayCore"])
     ],
     dependencies: [
         // Yams：Swift YAML 解析器，用于 Clash / Mihomo / Stash 配置导入。
@@ -57,6 +58,10 @@ let package = Package(
         // 不会拖进 85 MB Go runtime。
         .target(name: "XrayConfig", dependencies: ["QingzhouCore"]),
 
+        // QingzhouGuardRelayCore: 断网开关 root 中继核心逻辑（无 QingzhouApp / XrayCore 依赖），
+        // 供 Tools/qingzhou-guard/relay/main.swift 与单元测试共用。
+        .target(name: "QingzhouGuardRelayCore", dependencies: []),
+
         .testTarget(name: "QingzhouCoreTests",         dependencies: ["QingzhouCore"]),
         .testTarget(name: "QingzhouProtocolsTests",    dependencies: ["QingzhouProtocols"]),
         .testTarget(name: "QingzhouSubscriptionTests", dependencies: ["QingzhouSubscription"]),
@@ -64,7 +69,8 @@ let package = Package(
         .testTarget(name: "QingzhouSpeedTestTests",    dependencies: ["QingzhouSpeedTest"]),
         .testTarget(name: "QingzhouLoggingTests",      dependencies: ["QingzhouLogging"]),
         .testTarget(name: "QingzhouAppTests",          dependencies: ["QingzhouApp", "QingzhouSpeedTest"]),
-        .testTarget(name: "XrayConfigTests",      dependencies: ["XrayConfig"]),
+        .testTarget(name: "XrayConfigTests",           dependencies: ["XrayConfig"]),
+        .testTarget(name: "QingzhouGuardRelayCoreTests", dependencies: ["QingzhouGuardRelayCore"]),
 
         // ─────────────────────────────────────────────────────────────────────
         // XrayCore：Swift 包装 LibXray.xcframework（xray-core 的 MIT 移动端 binding）。

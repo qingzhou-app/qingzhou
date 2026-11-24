@@ -870,66 +870,153 @@ public final class AppState {
     /// （实测：guard-run.sh 在 FDA 列表里是灰的，无法授权）。网络连接不受 TCC 限制，
     /// 所以改用回环 TCP 控制端口，由 root 的中继直接执行 systemsetup。
     public func requestSystemTimeZone(_ timezoneID: String?) {
-        guard let creds = GuardRelayCredentials.load() else { return }
+        guard let creds = GuardRelayCredentials.load(),
+              creds.hasValidControlCredentials else { return }
         let command = timezoneID.map { "SET-TZ \($0)" } ?? "RESTORE"
-        let port = GuardRelayCredentials.controlPort
-        Task.detached(priority: .utility) { [weak self] in
+        let log = self.logger
+        Task.detached(priority: .utility) {
             do {
-                try await Self.sendControlCommand(command, creds: creds, port: port)
+                try await Self.sendControlCommand(command, creds: creds)
             } catch {
-                await self?.logger.warn("时区指令发送失败：\(error.localizedDescription)", category: "region")
+                log.warn("时区指令发送失败：\(error.localizedDescription)", category: "region")
             }
         }
     }
 
-    /// 连控制端口 → AUTH → 发一条命令 → 读到单行响应。
-    nonisolated private static func sendControlCommand(_ command: String,
-                                                      creds: GuardRelayCredentials,
-                                                      port: UInt16) async throws {
-        let url = URL(string: "http://127.0.0.1:\(port)/")!
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 5
-        // 用 URLSession 走不了这段裸协议，这里改用原始 socket：
-        _ = request
+    /// 连控制端口 → 校验分离控制凭据 → AUTH → 发一条命令 → 严格要求单行响应为 "OK"。
+    nonisolated static func sendControlCommand(_ command: String,
+                                               creds: GuardRelayCredentials,
+                                               port: UInt16? = nil,
+                                               timeoutSeconds: TimeInterval = 3) async throws {
+        guard let control = creds.validatedControlCredentials() else {
+            throw URLError(.userAuthenticationRequired)
+        }
+        guard !control.username.contains(where: \.isWhitespace),
+              !control.password.contains(where: { $0 == "\n" || $0 == "\r" }),
+              !command.contains(where: { $0 == "\n" || $0 == "\r" }) else {
+            throw URLError(.badURL)
+        }
+        let targetPort = port ?? control.port
+        guard targetPort > 0 else { throw URLError(.cannotConnectToHost) }
+        let host = creds.host.isEmpty ? "127.0.0.1" : creds.host
+        let timeout = max(0.1, timeoutSeconds)
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    try Self.performControlCommandSync(
+                        command,
+                        host: host,
+                        port: targetPort,
+                        username: control.username,
+                        password: control.password,
+                        timeoutSeconds: timeout
+                    )
+                    cont.resume(returning: ())
+                } catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    nonisolated private static func performControlCommandSync(
+        _ command: String,
+        host: String,
+        port: UInt16,
+        username: String,
+        password: String,
+        timeoutSeconds: TimeInterval
+    ) throws {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw URLError(.cannotConnectToHost) }
-        defer { close(fd) }
-        var tv = timeval(tv_sec: 3, tv_usec: 0)
+        defer { Darwin.close(fd) }
+
+        let totalTimeoutNs = UInt64(max(0.1, timeoutSeconds) * 1_000_000_000)
+        let deadlineNs = DispatchTime.now().uptimeNanoseconds &+ totalTimeoutNs
+
+        func remainingTimeval() throws -> timeval {
+            let nowNs = DispatchTime.now().uptimeNanoseconds
+            guard nowNs < deadlineNs else { throw URLError(.timedOut) }
+            let remainingUs = max(UInt64(1), (deadlineNs - nowNs) / 1_000)
+            return timeval(
+                tv_sec: Int(remainingUs / 1_000_000),
+                tv_usec: Int32(remainingUs % 1_000_000)
+            )
+        }
+
+        var tv = try remainingTimeval()
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var noSigPipe: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = port.bigEndian
-        addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        guard inet_pton(AF_INET, host, &addr.sin_addr) == 1 else {
+            throw URLError(.cannotFindHost)
+        }
         let connected = withUnsafePointer(to: &addr) { p in
             p.withMemoryRebound(to: sockaddr.self, capacity: 1) { sap in
-                connect(fd, sap, socklen_t(MemoryLayout<sockaddr_in>.size))
+                Darwin.connect(fd, sap, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         guard connected == 0 else { throw URLError(.cannotConnectToHost) }
 
-        func writeLine(_ s: String) throws {
+        func writeAll(_ s: String) throws {
             let data = Array((s + "\n").utf8)
-            let n = data.withUnsafeBytes { write(fd, $0.baseAddress, data.count) }
-            guard n == data.count else { throw URLError(.cannotWriteToFile) }
+            var offset = 0
+            while offset < data.count {
+                var sndTv = try remainingTimeval()
+                setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &sndTv, socklen_t(MemoryLayout<timeval>.size))
+                let n = data.withUnsafeBytes { raw -> Int in
+                    guard let base = raw.baseAddress else { return -1 }
+                    return Darwin.write(fd, base.advanced(by: offset), data.count - offset)
+                }
+                if n > 0 {
+                    offset += n
+                } else if n < 0 && errno == EINTR {
+                    continue
+                } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    throw URLError(.timedOut)
+                } else {
+                    throw URLError(.cannotWriteToFile)
+                }
+            }
         }
+
         func readLine() throws -> String {
             var bytes: [UInt8] = []
             var one: UInt8 = 0
-            while read(fd, &one, 1) == 1 {
-                if one == 0x0A { break }
-                bytes.append(one)
-                if bytes.count > 256 { break }
+            while true {
+                var rcvTv = try remainingTimeval()
+                setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &rcvTv, socklen_t(MemoryLayout<timeval>.size))
+                let n = Darwin.read(fd, &one, 1)
+                if n == 1 {
+                    if one == 0x0A { break }
+                    if one != 0x0D { bytes.append(one) }
+                    if bytes.count > 1024 { throw URLError(.badServerResponse) }
+                } else if n == 0 {
+                    throw bytes.isEmpty ? URLError(.zeroByteResource) : URLError(.networkConnectionLost)
+                } else {
+                    if errno == EINTR { continue }
+                    if errno == EAGAIN || errno == EWOULDBLOCK {
+                        throw URLError(.timedOut)
+                    }
+                    throw URLError(.cannotLoadFromNetwork)
+                }
             }
             return String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespaces)
         }
 
-        try writeLine("AUTH \(creds.username) \(creds.password)")
+        try writeAll("AUTH \(username) \(password)")
         let authReply = try readLine()
         guard authReply == "OK" else { throw URLError(.userAuthenticationRequired) }
 
-        try writeLine(command)
+        try writeAll(command)
         let reply = try readLine()
-        guard reply == "OK" || reply.isEmpty else { throw URLError(.badServerResponse) }
+        guard reply == "OK" else { throw URLError(.badServerResponse) }
     }
 
     /// 当前真正可用的分流节点对；开关关着或配置不完整时 nil。

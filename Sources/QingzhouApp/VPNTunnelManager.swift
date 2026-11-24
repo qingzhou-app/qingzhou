@@ -177,8 +177,8 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         providerConfig["splitExit"] = NSNumber(value: splitExitActive)
         providerConfig["exitNodeJSON"] = splitExitActive ? encodeNode(splitExitExit) : ""
         providerConfig["hopNodeJSON"] = splitExitActive ? encodeNode(splitExitHop) : ""
-        // root 中继凭据。同样**始终写**（空串表示不用），避免上一轮的凭据残留。
-        providerConfig["guardRelayJSON"] = (splitExitActive ? guardRelay?.jsonString : nil) ?? ""
+        // root 中继凭据（只传转发凭据，不传控制凭据）。同样**始终写**（空串表示不用），避免上一轮的凭据残留。
+        providerConfig["guardRelayJSON"] = (splitExitActive ? guardRelay?.forwardingOnly.jsonString : nil) ?? ""
         // 用户规则：压缩内联（Data 是合法 plist 类型）；超大时写 App Group 文件传路径。
         switch makeRulesPayload(rules) {
         case .inline(let gz):  providerConfig["userRulesGZ"] = gz

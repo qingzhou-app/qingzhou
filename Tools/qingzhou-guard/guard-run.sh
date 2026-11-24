@@ -1,16 +1,21 @@
 #!/bin/sh
 # 由 LaunchDaemon com.sbraveyoung.qingzhou.guard 以 root 运行：
 #   1) 启动 root 中继（供代理出站使用）
-#   2) 若存在 enabled 标记，把 pf 规则灌进锚点，并每 10 秒补一次
-#      （别的程序清掉 pf 规则时自动补回 —— 需求里要求的"被清掉会自己补回来"）
+#   2) 若存在 enabled 标记：
+#      - utun（10.0.10.1）未就绪时加载「fail-closed 基础规则」（仅放行 lo0 / 局域网 / root，
+#        去掉 __TUN_DEV__ 放行行），消除启动与重连窗口的泄漏；
+#      - utun 就绪时加载完整规则（含 pass out quick on utunN all）；
+#      - 以 <= 1s 轮询监听状态或接口名变化，仅在变化或规则缺失时重载 pf。
 #
 # 没有任何 `enabled` 标记时不碰 pf：装好但没启用的状态下，机器网络保持原样。
 
 set -u
 BASE="/Library/Application Support/qingzhou-guard"
 PORT="$(cat "$BASE/port" 2>/dev/null || echo 10808)"
+CONTROL_PORT="$(cat "$BASE/control-port" 2>/dev/null || echo 10809)"
 ANCHOR="com.apple/qingzhou_guard"
 RENDERED="$BASE/qingzhou-guard.rendered.conf"
+LAST_STATE=""
 
 log() { echo "$(date '+%F %T') [guard-run] $*"; }
 
@@ -29,52 +34,84 @@ find_tun_dev() {
   return 1
 }
 
-apply_rules() {
-  dev="$(find_tun_dev)"
-  if [ -z "$dev" ]; then
-    # 找不到隧道设备 = 轻舟没连上。此时**不能**把规则灌进去：
-    # 没有「放行 utun」的规则，连正常上网都会被拦，等于把机器锁死。
-    log "未找到轻舟的 utun（10.0.10.1），本轮不加载规则"
-    return 1
+enable_pf_with_token() {
+  if [ -s "$BASE/pf-token" ]; then
+    if pfctl -s info 2>/dev/null | grep -q 'Status: Enabled'; then
+      return 0
+    fi
+    rm -f "$BASE/pf-token"
   fi
-  sed "s/__TUN_DEV__/${dev}/g" "$BASE/qingzhou-guard.conf" > "$RENDERED" 2>/dev/null || return 1
+  E_OUT="$(pfctl -E 2>&1 || true)"
+  TOKEN="$(printf '%s\n' "$E_OUT" | sed -n 's/.*Token[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -1)"
+  if [ -n "$TOKEN" ]; then
+    printf '%s' "$TOKEN" > "$BASE/pf-token"
+    chmod 600 "$BASE/pf-token"
+  fi
+}
+
+render_rules() {
+  dev="$1"
+  if [ -n "$dev" ]; then
+    sed "s/__TUN_DEV__/${dev}/g" "$BASE/qingzhou-guard.conf" > "$RENDERED" 2>/dev/null || return 1
+  else
+    # 无 utun 时剥离 __TUN_DEV__ 规则行（保留文件头注释与 lo0 / 局域网 / root / block out quick all）
+    sed '/^pass .*__TUN_DEV__/d' "$BASE/qingzhou-guard.conf" > "$RENDERED" 2>/dev/null || return 1
+  fi
   chmod 600 "$RENDERED"
+  return 0
+}
+
+apply_rules() {
+  dev="$(find_tun_dev || true)"
+  render_rules "$dev" || return 1
+  if [ -n "$dev" ]; then
+    new_state="tun:${dev}"
+  else
+    new_state="none"
+  fi
   pfctl -a "$ANCHOR" -f "$RENDERED" >/dev/null 2>&1 || { log "pfctl 加载失败"; return 1; }
-  pfctl -E >/dev/null 2>&1 || true
+  enable_pf_with_token
+  LAST_STATE="$new_state"
   return 0
 }
 
 if [ -f "$BASE/enabled" ]; then
   if apply_rules; then
-    log "pf 规则已加载（锚点 ${ANCHOR}，中继端口 ${PORT}）"
+    log "pf 规则已加载（锚点 ${ANCHOR}，状态 ${LAST_STATE}，中继端口 ${PORT}）"
   fi
 else
   log "未启用断网开关（无 enabled 标记），只启动中继"
 fi
 
-"$BASE/qingzhou-relay" --port "$PORT" --control-port 10809 --auth-file "$BASE/relay-auth" --log /var/log/qingzhou-relay.log &
+"$BASE/qingzhou-relay" --port "$PORT" --control-port "$CONTROL_PORT" --auth-file "$BASE/relay-auth" --log /var/log/qingzhou-relay.log &
 RELAY=$!
 log "中继已启动 pid=$RELAY"
 
 # 主循环：中继退出就跟着退出（KeepAlive 会整体重启）；
-# 同时定期补规则 —— 既防被别人清掉，也跟上隧道重连后的新设备名。
+# <= 1s 感知 utun 出现/消失/改名以及锚点被外部清空，仅在变化或缺失时重载 pfctl。
 while kill -0 "$RELAY" 2>/dev/null; do
-  sleep 10
+  sleep 1
   if [ -f "$BASE/enabled" ]; then
-    # 同样的规范化坑：pfctl 输出是 `block drop out`，不能按原文案 grep。
-    if [ -z "$(pfctl -s rules -a "$ANCHOR" 2>/dev/null)" ]; then
-      log "锚点规则不见了，重新加载"
-      apply_rules
+    cur="$(find_tun_dev || true)"
+    if [ -n "$cur" ]; then
+      desired="tun:${cur}"
     else
-      # 隧道重连后设备名可能变了：规则里的设备名和当前不一致就重灌
-      cur="$(find_tun_dev)"
-      if [ -n "$cur" ] && ! grep -q "on $cur all" "$RENDERED" 2>/dev/null; then
-        log "隧道设备变为 ${cur}，重灌规则"
-        apply_rules
-      fi
+      desired="none"
     fi
+    rules_now="$(pfctl -s rules -a "$ANCHOR" 2>/dev/null || true)"
+    if [ -z "$rules_now" ]; then
+      log "锚点规则为空，重新加载（状态 ${desired}）"
+      apply_rules || true
+    elif [ "$desired" != "$LAST_STATE" ]; then
+      log "隧道状态变化：${LAST_STATE:-init} → ${desired}，更新 pf 规则"
+      apply_rules || true
+    elif ! pfctl -s info 2>/dev/null | grep -q 'Status: Enabled'; then
+      log "pf 未启用，重新加载（状态 ${desired}）"
+      apply_rules || true
+    fi
+  else
+    LAST_STATE=""
   fi
-
 done
 
 log "中继已退出，guard-run 结束"
