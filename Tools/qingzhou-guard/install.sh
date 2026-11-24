@@ -43,6 +43,8 @@ install -m 755 -o root -g wheel "$HERE/off.sh" "$BASE/off.sh"
 install -m 755 -o root -g wheel "$HERE/enable.sh" "$BASE/enable.sh"
 install -m 755 -o root -g wheel "$HERE/uninstall.sh" "$BASE/uninstall.sh"
 install -m 755 -o root -g wheel "$HERE/diagnose.sh" "$BASE/diagnose.sh"
+install -m 755 -o root -g wheel "$HERE/timezone-follow.sh" "$BASE/timezone-follow.sh"
+install -m 755 -o root -g wheel "$HERE/timezone-follow.sh" "$BASE/timezone-follow.sh"
 printf '%s' "$PORT" > "$BASE/port"
 chmod 644 "$BASE/port"
 

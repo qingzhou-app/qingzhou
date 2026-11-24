@@ -218,7 +218,7 @@ public struct SettingsView: View {
 
                 Divider()
 
-                Toggle("跟随出口地区（界面语言 / 时间显示）",
+                Toggle("跟随出口地区（全局系统时区 + 界面语言）",
                        isOn: state.setting(\.followExitRegion))
                 if state.settings.followExitRegion {
                     if let region = state.exitRegion {
@@ -231,24 +231,18 @@ public struct SettingsView: View {
                             Text("该地区没有对应的界面语言，语言保持你现在的选择。")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
-                        if let cmd = region.systemTimeZoneCommand() {
-                            // 系统时区要 root，本 App 不代劳 —— 但把「设置」和「还原」两条
-                            // 命令都摆出来，用户复制粘贴即可，也知道怎么退回去。
-                            Text("系统时区需要 root，本 App 不会自动改（会影响整机日历/提醒）。")
+                        // 系统时区现在由 guard（root 常驻进程）自动改：App 写指令到
+                        // App Group，guard 每 10 秒读一次并调 systemsetup。断开自动还原。
+                        if region.timezoneID != nil {
+                            Text("系统时区将自动切换为 \(region.summary)（由 guard 执行，断开 VPN 自动还原）。")
                                 .font(.caption2).foregroundStyle(.secondary)
-                            Text("设置：\(cmd)")
-                                .font(.caption2.monospaced())
-                                .textSelection(.enabled)
-                            Text("还原：sudo systemsetup -settimezone \(TimeZone.current.identifier)")
-                                .font(.caption2.monospaced())
-                                .textSelection(.enabled)
                         }
+                        Text("注意：需要先安装并启用 guard（见下方「断网开关」）。系统语言不自动改（需注销登录，副作用大），浏览器语言仍由浏览器自己决定。")
+                            .font(.caption2).foregroundStyle(.secondary)
                     } else {
                         Text("连上 VPN 并拿到出口信息后显示。")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
-                    Text("只影响本 App。系统时区/系统语言要 root，浏览器语言与时区是各浏览器自己的设置；GPS 定位按 IP 判定，已随出口变化。")
-                        .font(.caption2).foregroundStyle(.secondary)
                 }
 
                 Divider()

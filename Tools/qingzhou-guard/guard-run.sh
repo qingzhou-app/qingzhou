@@ -74,6 +74,22 @@ while kill -0 "$RELAY" 2>/dev/null; do
       fi
     fi
   fi
+
+  # 跟随出口地区改系统时区：App 把目标时区（或"还原"空串）写进 App Group，
+  # 这里读出来，有变化就调用 timezone-follow.sh（root 权限执行 systemsetup）。
+  # App 只能写自己的 App Group 容器（沙箱），guard 是 root 能读任意用户目录，
+  # 所以直接读 App Group 里的指令文件，不做中间桥接。
+  TARGET_USER="$(stat -f %Su /dev/console 2>/dev/null)"
+  TARGET_HOME="$(eval echo "~${TARGET_USER}" 2>/dev/null)"
+  TZ_FILE="$TARGET_HOME/Library/Group Containers/group.com.sbraveyoung.qingzhou/follow-timezone.request"
+  if [ -f "$TZ_FILE" ]; then
+    TZ_VALUE="$(cat "$TZ_FILE" 2>/dev/null)"
+    # 有值才处理；空文件说明 App 正在写，下轮再看
+    if [ -n "$TZ_VALUE" ]; then
+      sh "$BASE/timezone-follow.sh" "" "$TZ_VALUE"
+      rm -f "$TZ_FILE"
+    fi
+  fi
 done
 
 log "中继已退出，guard-run 结束"

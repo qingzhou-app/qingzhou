@@ -863,6 +863,24 @@ public final class AppState {
         return .current
     }
 
+    /// 把「跟随出口地区」的目标时区写给 guard（root 进程）去改系统时区。
+    /// 传 nil 表示"还原到原时区"。
+    ///
+    /// 为什么走 App Group 文件而不是直接改：改系统时区要 root，App 是普通进程。
+    /// guard-run.sh 每 10 秒读一次这个文件，非空就调 timezone-follow.sh（root）。
+    public func requestSystemTimeZone(_ timezoneID: String?) {
+        guard let url = AppGroupStorage.containerURL?.appendingPathComponent("follow-timezone.request") else { return }
+        let value = timezoneID ?? ""   // 空串 = 还原
+        // 原子写：先写临时再 rename，避免 guard 读到半截
+        let tmp = url.appendingPathExtension("tmp")
+        do {
+            try value.write(to: tmp, atomically: true, encoding: .utf8)
+            try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+        } catch {
+            logger.warn("写时区指令失败：\(error.localizedDescription)", category: "region")
+        }
+    }
+
     /// 当前真正可用的分流节点对；开关关着或配置不完整时 nil。
     var activeSplitExit: (exit: Node, hop: Node)? {
         guard settings.splitExitEnabled, splitExitBlockedReason == nil,
@@ -1104,6 +1122,10 @@ public final class AppState {
             // 只在终态翻「关」，.disconnecting 等瞬态不动，避免开关闪烁
             isVPNRunning = false
             logger.info("VPN status synced from system: stopped", category: "tunnel")
+            // 跟随出口地区：断开即还原系统时区（guard 会读指令并还原到原时区）
+            if settings.followExitRegion {
+                requestSystemTimeZone(nil)
+            }
         }
     }
 

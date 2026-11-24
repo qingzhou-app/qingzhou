@@ -92,6 +92,11 @@ extension AppState {
                 guard !Task.isCancelled, self.ipRefreshGeneration == token, self.measurementNetworkID == network,
                       self.isVPNRunning, self.appliedTunnelConfiguration?.id == configuration else { return }
                 self.proxyIPInfo = info; self.publicIPInfo = info
+                // 跟随出口地区：拿到出口时区后，请求 guard 改系统时区（root）。
+                // 只在用户开了开关且确实有出口时区时触发；拿到 nil 就不发指令。
+                if self.settings.followExitRegion, let tz = info.exitRegion.timezoneID {
+                    self.requestSystemTimeZone(tz)
+                }
             } catch {
                 guard self.ipRefreshGeneration == token, self.measurementNetworkID == network,
                       self.appliedTunnelConfiguration?.id == configuration else { return }
