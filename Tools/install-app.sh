@@ -174,7 +174,7 @@ CODE="000"
 SVC_ID="$(scutil --nc list 2>/dev/null | awk '/Qingzhou/ {for (i=1;i<=NF;i++) if ($i ~ /^[0-9A-F-]{36}$/) {print $i; exit}}')"
 
 probe() {
-  CODE="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 -o /dev/null -w '%{http_code}' "$PROBE_PRIMARY" 2>/dev/null)"
+  CODE="$($CLEAN_ENV curl -sS --noproxy '*' -m 25 -o /dev/null -w '%{http_code}' "$PROBE_PRIMARY" 2>/dev/null)"
   [ -z "$CODE" ] && CODE="000"
   [ "$CODE" = "204" ]
 }
@@ -197,9 +197,9 @@ fi
 log "    $PROBE_PRIMARY → ${CODE}（期望 204）"
 
 if [ "$CODE" = "204" ]; then
-  EXIT_IP="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 "$PROBE_IP" 2>/dev/null)"
+  EXIT_IP="$($CLEAN_ENV curl -sS --noproxy '*' -m 25 "$PROBE_IP" 2>/dev/null)"
   log "    出口 IP：${EXIT_IP:-取不到}"
-  CLAUDE_CODE="$($CLEAN_ENV curl -sS --noproxy '*' -m 12 -o /dev/null -w '%{http_code}' https://claude.ai/ 2>/dev/null)"
+  CLAUDE_CODE="$($CLEAN_ENV curl -sS --noproxy '*' -m 25 -o /dev/null -w '%{http_code}' https://claude.ai/ 2>/dev/null)"
   log "    参考：https://claude.ai/ → ${CLAUDE_CODE:-000}（403 通常是 Cloudflare 挑战，说明已到达服务器）"
 fi
 
