@@ -838,6 +838,31 @@ public final class AppState {
         return nil
     }
 
+    // MARK: - 跟随出口地区
+
+    /// 当前出口的地区画像（有节点出口信息时才非 nil）。
+    public var exitRegion: ExitRegionProfile? { proxyIPInfo?.exitRegion }
+
+    /// 是否正在"跟随出口地区"：开关打开 + 隧道在跑 + 拿到了出口地区 + 有可映射的语言/时区。
+    ///
+    /// 之所以只在**连接期间**生效：这是伪装的一部分，断开后就该回到本机设置。
+    /// 也不改写 `settings.language` —— 用户存的语言偏好不该被一次连接悄悄改掉。
+    public var isFollowingExitRegion: Bool {
+        settings.followExitRegion && isVPNRunning && proxyIPInfo != nil
+    }
+
+    /// 界面实际使用的语言（可能被出口地区临时覆盖）。
+    public var effectiveLanguage: AppLanguage {
+        if isFollowingExitRegion, let lang = exitRegion?.suggestedLanguage { return lang }
+        return settings.language
+    }
+
+    /// 界面时间显示使用的时区：跟随出口时用出口时区，否则系统时区。
+    public var displayTimeZone: TimeZone {
+        if isFollowingExitRegion, let tz = exitRegion?.timeZone { return tz }
+        return .current
+    }
+
     /// 当前真正可用的分流节点对；开关关着或配置不完整时 nil。
     var activeSplitExit: (exit: Node, hop: Node)? {
         guard settings.splitExitEnabled, splitExitBlockedReason == nil,
@@ -3009,14 +3034,33 @@ public struct PublicIPInfo: Codable, Sendable, Equatable {
     public var city: String?
     public var isp: String?
     public var fetchedAt: Date
+    /// 以下三项来自同一次查询（ipwho.is 一并返回），不额外发请求。
+    /// 用途：对齐界面语言与时间显示时区（见 ExitRegionProfile）。
+    public var countryCode: String?
+    public var timezoneID: String?
+    public var latitude: Double?
+    public var longitude: Double?
 
-    public init(ip: String, country: String? = nil, region: String? = nil, city: String? = nil, isp: String? = nil, fetchedAt: Date = Date()) {
+    public init(ip: String, country: String? = nil, region: String? = nil, city: String? = nil,
+                isp: String? = nil, fetchedAt: Date = Date(),
+                countryCode: String? = nil, timezoneID: String? = nil,
+                latitude: Double? = nil, longitude: Double? = nil) {
         self.ip = ip
         self.country = country
         self.region = region
         self.city = city
         self.isp = isp
         self.fetchedAt = fetchedAt
+        self.countryCode = countryCode
+        self.timezoneID = timezoneID
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    /// 出口地区画像（给「跟随出口地区」用）。
+    public var exitRegion: ExitRegionProfile {
+        ExitRegionProfile(countryCode: countryCode, country: country, city: city,
+                          timezoneID: timezoneID, latitude: latitude, longitude: longitude)
     }
 }
 

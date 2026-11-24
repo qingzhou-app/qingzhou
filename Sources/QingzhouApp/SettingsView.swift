@@ -210,6 +210,41 @@ public struct SettingsView: View {
                 Text("住宅 SOCKS5 的地址/端口/账号/密码请在「节点」里编辑该节点。")
                     .font(.caption2).foregroundStyle(.secondary)
 
+                Divider()
+
+                Toggle("跟随出口地区（界面语言 / 时间显示）",
+                       isOn: state.setting(\.followExitRegion))
+                if state.settings.followExitRegion {
+                    if let region = state.exitRegion {
+                        Text("出口地区：\(region.summary)")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        if let lang = region.suggestedLanguage {
+                            Text("界面语言 → \(lang.rawValue)（仅连接期间生效，不改你的语言设置）")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        } else {
+                            Text("该地区没有对应的界面语言，语言保持你现在的选择。")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        if let cmd = region.systemTimeZoneCommand() {
+                            // 系统时区要 root，本 App 不代劳 —— 但把「设置」和「还原」两条
+                            // 命令都摆出来，用户复制粘贴即可，也知道怎么退回去。
+                            Text("系统时区需要 root，本 App 不会自动改（会影响整机日历/提醒）。")
+                                .font(.caption2).foregroundStyle(.secondary)
+                            Text("设置：\(cmd)")
+                                .font(.caption2.monospaced())
+                                .textSelection(.enabled)
+                            Text("还原：sudo systemsetup -settimezone \(TimeZone.current.identifier)")
+                                .font(.caption2.monospaced())
+                                .textSelection(.enabled)
+                        }
+                    } else {
+                        Text("连上 VPN 并拿到出口信息后显示。")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Text("只影响本 App。系统时区/系统语言要 root，浏览器语言与时区是各浏览器自己的设置；GPS 定位按 IP 判定，已随出口变化。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+
                 // 国内名单：每天自动更新一次；这里给当前状态 + 手动更新入口。
                 // 没拉到名单也能用（退回内置 geosite:cn / geoip:cn），所以不做成阻断项。
                 HStack {

@@ -57,7 +57,8 @@ struct VPNMacApp: App {
             RootView(state: state)
                 .frame(minWidth: 880, minHeight: 560)
                 .preferredColorScheme(colorScheme(for: state.settings.theme))
-                .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
+                .environment(\.locale, LocaleResolver.locale(for: state.effectiveLanguage))
+                .environment(\.timeZone, state.displayTimeZone)
                 .task {
                     guard !didStart else { return }
                     didStart = true
@@ -98,12 +99,14 @@ struct VPNMacApp: App {
             SettingsView(state: state)
                 .frame(minWidth: 560, minHeight: 520)
                 .preferredColorScheme(colorScheme(for: state.settings.theme))
-                .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
+                .environment(\.locale, LocaleResolver.locale(for: state.effectiveLanguage))
+                .environment(\.timeZone, state.displayTimeZone)
         }
 
         MenuBarExtra {
             StatusBarMenu(state: state)
-                .environment(\.locale, LocaleResolver.locale(for: state.settings.language))
+                .environment(\.locale, LocaleResolver.locale(for: state.effectiveLanguage))
+                .environment(\.timeZone, state.displayTimeZone)
         } label: {
             // 独立 View 才能建立 @Observable 观察 —— 在这个 Scene 闭包里直接读 state
             // 不会触发重绘（状态变了图标不更新的历史 bug）。见 StatusBarIcon 注释。

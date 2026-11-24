@@ -105,6 +105,11 @@ public struct Settings: Codable, Sendable {
     public var splitExitExitNodeID: UUID?
     /// 跳板节点 id（出口自己的流量经它出去）。
     public var splitExitHopNodeID: UUID?
+    /// 跟随出口地区：联动 App 界面语言与时间显示时区。
+    ///
+    /// **只影响本 App**。系统时区/系统语言需要 root，浏览器语言/时区是各自浏览器的设置 ——
+    /// 这些在设置页会给出可复制的命令，但不会自动改（改了会影响整台机器）。
+    public var followExitRegion: Bool
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -134,7 +139,8 @@ public struct Settings: Codable, Sendable {
         quicPolicy: QUICPolicy = .auto,
         splitExitEnabled: Bool = false,
         splitExitExitNodeID: UUID? = nil,
-        splitExitHopNodeID: UUID? = nil
+        splitExitHopNodeID: UUID? = nil,
+        followExitRegion: Bool = false
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -164,6 +170,7 @@ public struct Settings: Codable, Sendable {
         self.splitExitEnabled = splitExitEnabled
         self.splitExitExitNodeID = splitExitExitNodeID
         self.splitExitHopNodeID = splitExitHopNodeID
+        self.followExitRegion = followExitRegion
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -186,6 +193,7 @@ public struct Settings: Codable, Sendable {
         case autoFailoverAlert
         case quicPolicy
         case splitExitEnabled, splitExitExitNodeID, splitExitHopNodeID
+        case followExitRegion
     }
 
     public init(from decoder: Decoder) throws {
@@ -227,5 +235,6 @@ public struct Settings: Codable, Sendable {
         self.splitExitEnabled = try c.decodeIfPresent(Bool.self, forKey: .splitExitEnabled) ?? false
         self.splitExitExitNodeID = try c.decodeIfPresent(UUID.self, forKey: .splitExitExitNodeID)
         self.splitExitHopNodeID = try c.decodeIfPresent(UUID.self, forKey: .splitExitHopNodeID)
+        self.followExitRegion = try c.decodeIfPresent(Bool.self, forKey: .followExitRegion) ?? false
     }
 }
