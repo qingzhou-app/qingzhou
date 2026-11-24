@@ -120,6 +120,176 @@ final class SessionRegistry {
     }
 }
 
+// MARK: - 域名解析（绕开 TUN）
+//
+// 为什么不交给 NWConnection／系统解析：VPN 的默认路由在 TUN 上，系统 DNS 也是
+// TUN 里的服务器 —— 系统解析海外域名返回 **fakedns 假 IP**，连假 IP 会跟着默认
+// 路由绕回 TUN（实测：经中继查出口 IP 得到的是 VPN 出口）。所以中继必须自己解析：
+// 直查公网国内 DNS（UDP 223.5.5.5 / 119.29.29.29），socket 绑定物理网卡，
+// 拿到真实 IP 后再拨（裸 IP + requiredInterface 已实测有效）。
+enum RelayDNS {
+    private static let servers: [String] = ["223.5.5.5", "119.29.29.29"]
+    private static let cacheLock = NSLock()
+    private static var cache: [String: (ip: String, at: Date)] = [:]
+    private static let ttl: TimeInterval = 60
+
+    /// 是域名（不是 IP 字面量）就返回 true。
+    static func isName(_ host: String) -> Bool {
+        var v4 = in_addr(); var v6 = in6_addr()
+        return inet_pton(AF_INET, host, &v4) != 1 && inet_pton(AF_INET6, host, &v6) != 1
+    }
+
+    static func resolve(_ host: String, interface: NWInterface?) -> String? {
+        var v4 = in_addr()
+        if inet_pton(AF_INET, host, &v4) == 1 { return host }
+        var v6 = in6_addr()
+        if inet_pton(AF_INET6, host, &v6) == 1 { return host }
+
+        cacheLock.lock()
+        if let hit = cache[host], Date().timeIntervalSince(hit.at) < ttl {
+            cacheLock.unlock()
+            return hit.ip
+        }
+        cacheLock.unlock()
+
+        for server in servers {
+            if let ip = query(host, server: server, interface: interface) {
+                cacheLock.lock()
+                cache[host] = (ip, Date())
+                cacheLock.unlock()
+                return ip
+            }
+        }
+        return nil
+    }
+
+    /// 一次 UDP A 查询。失败返回 nil（换下一个服务器）。
+    private static func query(_ host: String, server: String, interface: NWInterface?) -> String? {
+        let fd = socket(AF_INET, SOCK_DGRAM, 0)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+
+        // 绑定物理网卡：查询包绝不能进 TUN
+        if let iface = interface {
+            let idx = if_nametoindex(iface.name)
+            if idx > 0 {
+            var index = idx
+            setsockopt(fd, IPPROTO_IP, IP_BOUND_IF, &index, socklen_t(MemoryLayout<UInt32>.size))
+            }
+        }
+        // 3 秒收不到就换下一个
+        var tv = timeval(tv_sec: 3, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = UInt16(53).bigEndian
+        addr.sin_addr = in_addr(s_addr: inet_addr(server))
+        var q = Data()
+        let id = UInt16.random(in: 1...UInt16.max)
+        q.append(contentsOf: [UInt8(id >> 8), UInt8(id & 0xFF), 0x01, 0x00,
+                              0, 1, 0, 0, 0, 0, 0, 0])
+        for label in host.split(separator: ".") where !label.isEmpty {
+            q.append(UInt8(label.utf8.count))
+            q.append(contentsOf: Array(label.utf8))
+        }
+        q.append(0)
+        q.append(contentsOf: [0, 1, 0, 1])   // QTYPE=A, QCLASS=IN
+
+        var sa = addr
+        let sent = q.withUnsafeBytes { raw -> Int in
+            withUnsafePointer(to: &sa) { p in
+                p.withMemoryRebound(to: sockaddr.self, capacity: 1) { sap in
+                    sendto(fd, raw.baseAddress, raw.count, 0, sap,
+                           socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        }
+        guard sent == q.count else { return nil }
+
+        var buf = [UInt8](repeating: 0, count: 1500)
+        let n = buf.withUnsafeMutableBufferPointer { ptr -> Int in
+            recv(fd, ptr.baseAddress, ptr.count, 0)
+        }
+        guard n > 12 else { return nil }
+        let resp = buf[0..<n]
+        guard resp[3] & 0x0F == 0 else { return nil }   // RCODE 在 flags 低字节
+        guard resp.count >= 12 + 6 else { return nil }
+
+        // 跳过 Question 段（名字可能是压缩指针）
+        var i = 12
+        while i < resp.count, resp[i] > 0 {
+            if resp[i] & 0xC0 == 0xC0 { i += 2; break }
+            i += Int(resp[i]) + 1
+        }
+        if i < resp.count, resp[i] == 0 { i += 1 }
+        i += 4
+
+        var answers = 0
+        while i + 12 <= resp.count, answers < 8 {
+            if resp[i] & 0xC0 == 0xC0 {
+                i += 2
+            } else {
+                var j = i
+                while j < resp.count, resp[j] > 0 { j += Int(resp[j]) + 1 }
+                i = (j < resp.count && resp[j] == 0) ? j + 1 : j
+            }
+            guard i + 10 <= resp.count else { break }
+            let rtype = Int(resp[i]) << 8 | Int(resp[i + 1])
+            let rdlen = Int(resp[i + 8]) << 8 | Int(resp[i + 9])
+            let rdataStart = i + 10
+            if rtype == 1, rdlen == 4, rdataStart + 4 <= resp.count {
+                return (0..<4).map { String(resp[rdataStart + $0]) }.joined(separator: ".")
+            }
+            i = rdataStart + rdlen
+            answers += 1
+        }
+        return nil
+    }
+}
+
+// MARK: - 物理出口接口
+//
+// 中继自己的拨号**绝不能走默认路由**：分流模式下默认路由指向轻舟的 TUN，
+// 绕进去的包会回到 xray，xray 的 direct 出站又经 dialerProxy 交回中继 ——
+// 无限递归（线上实测：微信 1 秒重连 17 次、整机断网）。
+//
+// xray 自己没有这个问题：它跑在 NE 扩展进程里，系统豁免它进自己开的 TUN；
+// 中继是独立的 root 进程，没有豁免，必须显式绑定物理网卡（IP_BOUND_IF 语义，
+// Network.framework 里是 NWParameters.requiredInterface）。
+enum PhysicalEgress {
+    private static let lock = NSLock()
+    private static var iface: NWInterface?
+    private static var logged = false
+
+    static func start() {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { path in
+            // VPN 生效时 path 经 utun，但 availableInterfaces 会带出底层物理口
+            let physical = path.availableInterfaces.first {
+                $0.type == .wifi || $0.type == .wiredEthernet || $0.type == .cellular
+            }
+            lock.lock()
+            let old = iface?.name
+            iface = physical
+            let first = !logged
+            logged = true
+            lock.unlock()
+            if first {
+                log("物理出口接口：\(physical?.name ?? "未知 —— 拿不到就拒绝拨号")")
+            } else if old != physical?.name {
+                log("物理出口接口切换：\(old ?? "?") → \(physical?.name ?? "?")（旧连接会断，新连接用新口）")
+            }
+        }
+        monitor.start(queue: .global(qos: .utility))
+    }
+
+    static func current() -> NWInterface? {
+        lock.lock(); defer { lock.unlock() }
+        return iface
+    }
+}
+
 let registry = SessionRegistry()
 
 final class ClientSession {
@@ -257,10 +427,32 @@ final class ClientSession {
     }
 
     private func connect(host: String, port: UInt16) {
-        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host),
+        // 域名必须先自解析：系统解析走 TUN 里的 DNS，海外域名会拿到 fakedns 假 IP，
+        // 连假 IP 跟着默认路由绕回 TUN（实测经中继查出口 IP 得到的是 VPN 出口）。
+        // 自解析用绑物理口的 UDP 直查公网 DNS，拿到真实 IP 后裸连接（已实测绕开 TUN）。
+        var dialTarget = host
+        var resolvedNote = ""
+        if RelayDNS.isName(host) {
+            guard let ip = RelayDNS.resolve(host, interface: PhysicalEgress.current()) else {
+                log("DNS 解析失败：\(host)")
+                replyFailure(0x04)   // host unreachable
+                return
+            }
+            dialTarget = ip
+            resolvedNote = " → \(ip)"
+        }
+        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(dialTarget),
                                            port: NWEndpoint.Port(rawValue: port) ?? 0)
         let params = NWParameters.tcp
-        // 出站不做 Happy Eyeballs 的特殊处理，交给系统默认
+        // 绑定物理网卡：不绑的拨号会跟着默认路由绕回 TUN（见 PhysicalEgress 注释）
+        if let iface = PhysicalEgress.current() {
+            params.requiredInterface = iface
+        } else {
+            // 宁可失败也不能不绑：不绑的拨号在分流模式下是无限递归
+            log("无物理出口接口，拒绝拨号 \(host):\(port)")
+            replyFailure(0x01)
+            return
+        }
         let up = NWConnection(to: endpoint, using: params)
         upstream = up
         up.stateUpdateHandler = { [weak self] state in
@@ -268,7 +460,7 @@ final class ClientSession {
             switch state {
             case .ready:
                 self.send([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
-                log("CONNECT \(host):\(port)")
+                log("CONNECT \(host):\(port)\(resolvedNote)")
                 self.pipeUpstreamToClient()
                 // 客户端可能在上游 ready 之前就发了数据
                 if !self.buffer.isEmpty {
@@ -364,5 +556,7 @@ listener.stateUpdateHandler = { state in
 listener.newConnectionHandler = { connection in
     ClientSession(connection, creds: creds).start()
 }
+
+PhysicalEgress.start()
 listener.start(queue: .global(qos: .userInitiated))
 dispatchMain()
