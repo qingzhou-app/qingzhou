@@ -50,7 +50,7 @@ for dev in $(ifconfig -l 2>/dev/null); do
   netstat -rn -f inet6 2>/dev/null | awk -v d="$dev" '$1=="default" && $NF==d{f=1} END{exit !f}' && has_default="yes"
 
   reason=""
-  [ -n "$v4" ] && reason="有 IPv4 地址（$v4）"
+  [ -n "$v4" ] && reason="有 IPv4 地址（${v4}）"
   [ "$has_default" = "yes" ] && [ "$dev" = "$ACTIVE_V6" ] && reason="当前实际在用"
   [ -z "$ula" ] && [ -z "$reason" ] && reason="没有 ULA 地址（可能不是隧道）"
 

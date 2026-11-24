@@ -96,7 +96,7 @@ else
 fi
 
 echo
-echo "中继监听：127.0.0.1:$PORT（凭据见 $BASE/relay-auth）"
+echo "中继监听：127.0.0.1:${PORT}（凭据见 $BASE/relay-auth）"
 echo "本地自测："
 echo "  U=\$(grep -v '^#' \"$BASE/relay-auth\" | cut -d: -f1); P=\$(grep -v '^#' \"$BASE/relay-auth\" | cut -d: -f2)"
 echo "  curl -sS -o /dev/null -w '%{http_code}\\n' --proxy \"socks5h://\$U:\$P@127.0.0.1:$PORT\" https://example.com/"

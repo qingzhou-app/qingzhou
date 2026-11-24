@@ -46,7 +46,7 @@ apply_rules() {
 
 if [ -f "$BASE/enabled" ]; then
   if apply_rules; then
-    log "pf 规则已加载（锚点 $ANCHOR，中继端口 $PORT）"
+    log "pf 规则已加载（锚点 ${ANCHOR}，中继端口 ${PORT}）"
   fi
 else
   log "未启用断网开关（无 enabled 标记），只启动中继"
@@ -68,7 +68,7 @@ while kill -0 "$RELAY" 2>/dev/null; do
       # 隧道重连后设备名可能变了：规则里的设备名和当前不一致就重灌
       cur="$(find_tun_dev)"
       if [ -n "$cur" ] && ! grep -q "on $cur all" "$RENDERED" 2>/dev/null; then
-        log "隧道设备变为 $cur，重灌规则"
+        log "隧道设备变为 ${cur}，重灌规则"
         apply_rules
       fi
     fi
