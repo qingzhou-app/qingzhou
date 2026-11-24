@@ -38,6 +38,9 @@ public enum ProxyURLParser {
     public static func parse(_ urlString: String) throws -> Node {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let schemeEnd = trimmed.range(of: "://") else {
+            // 没有 scheme：可能是服务商直接给的「主机:端口:账号:密码」一行。
+            // 这是静态住宅代理最常见的下发格式，认不出就得让用户手填四个框。
+            if let node = Socks5Parser.parseFourField(trimmed) { return node }
             throw ProxyURLParseError.malformedURL
         }
         let scheme = String(trimmed[..<schemeEnd.lowerBound])

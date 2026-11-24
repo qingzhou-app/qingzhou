@@ -46,6 +46,57 @@ final class Socks5ParserTests: XCTestCase {
         }
     }
 
+    // MARK: - 服务商四段式（IP:端口:账号:密码）
+
+    /// 静态住宅代理最常见的下发格式。它不是合法 URL（用 `:` 分隔、没有 `@`），
+    /// 直接粘进来必须能认出来，否则用户只能手填四个框。
+    func testFourFieldWithScheme() throws {
+        let node = try ProxyURLParser.parse("socks5://203.0.113.9:4000:user1:pass1")
+        XCTAssertEqual(node.protocolType, .socks5)
+        XCTAssertEqual(node.host, "203.0.113.9")
+        XCTAssertEqual(node.port, 4000)
+        XCTAssertEqual(node.parameters["username"], "user1")
+        XCTAssertEqual(node.password, "pass1")
+        XCTAssertEqual(node.name, "203.0.113.9:4000")
+    }
+
+    /// 不带 scheme 也要认（有些人只复制后半截）
+    func testFourFieldWithoutScheme() throws {
+        let node = try ProxyURLParser.parse("203.0.113.9:4000:user1:pass1")
+        XCTAssertEqual(node.protocolType, .socks5)
+        XCTAssertEqual(node.host, "203.0.113.9")
+        XCTAssertEqual(node.port, 4000)
+        XCTAssertEqual(node.parameters["username"], "user1")
+        XCTAssertEqual(node.password, "pass1")
+    }
+
+    /// 密码里含 `:` 时，多出来的段全归密码（服务商密码常带符号）
+    func testFourFieldPasswordWithColon() throws {
+        let node = try ProxyURLParser.parse("1.2.3.4:1080:u:p:a:ss")
+        XCTAssertEqual(node.parameters["username"], "u")
+        XCTAssertEqual(node.password, "p:a:ss")
+    }
+
+    /// 带 #名称
+    func testFourFieldWithName() throws {
+        let node = try ProxyURLParser.parse("socks5://1.2.3.4:1080:u:p#住宅%20A")
+        XCTAssertEqual(node.name, "住宅 A")
+    }
+
+    /// 域名当主机也认
+    func testFourFieldWithHostname() throws {
+        let node = try ProxyURLParser.parse("gate.example.com:1080:u:p")
+        XCTAssertEqual(node.host, "gate.example.com")
+    }
+
+    /// 不是四段式、也不是 URL 的文本，仍然要报格式错误，别把垃圾当节点
+    func testGarbageStillRejected() {
+        XCTAssertThrowsError(try ProxyURLParser.parse("这是一段说明文字"))
+        XCTAssertThrowsError(try ProxyURLParser.parse("user:pass:extra:x")) { error in
+            XCTAssertEqual(error as? ProxyURLParseError, .malformedURL)
+        }
+    }
+
     func testClashYAMLSocks5Node() throws {
         let yaml = """
         proxies:
