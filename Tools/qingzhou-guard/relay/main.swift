@@ -28,6 +28,11 @@ import Darwin
 
 struct RelayConfig {
     var port: UInt16 = 10808
+    /// 控制端口：App（沙箱、无 root）通过它请求 root 侧动作（目前只有改时区）。
+    /// 为什么不用文件：App Group 受 TCC 保护，launchd 起的 guard 进程没有 FDA 读不到
+    /// （实测：guard-run.sh 在「完全磁盘访问权限」列表里是灰的，无法授权）。
+    /// 网络连接不受 TCC 限制，所以这里用回环 TCP 当控制通道。
+    var controlPort: UInt16 = 10809
     var authFile: String = "/Library/Application Support/qingzhou-guard/relay-auth"
     var logPath: String = "/var/log/qingzhou-relay.log"
 }
@@ -40,6 +45,7 @@ func parseArgs() -> RelayConfig {
         func next() -> String? { args.isEmpty ? nil : args.removeFirst() }
         switch key {
         case "--port":     if let v = next(), let p = UInt16(v) { cfg.port = p }
+        case "--control-port": if let v = next(), let p = UInt16(v) { cfg.controlPort = p }
         case "--auth-file": if let v = next() { cfg.authFile = v }
         case "--log":      if let v = next() { cfg.logPath = v }
         default: break
@@ -559,4 +565,209 @@ listener.newConnectionHandler = { connection in
 
 PhysicalEgress.start()
 listener.start(queue: .global(qos: .userInitiated))
+
+// MARK: - 控制端口（root 侧动作）
+//
+// App 是沙箱进程、无 root，而改系统时区必须 root。App Group 又被 TCC 保护、
+// launchd 起的本进程读不到（FDA 在系统设置里是灰的、无法授权）。
+// 所以开一个只听回环的控制端口：App 连上来发一行文本，本进程以 root 执行。
+//
+// 协议（纯文本，一行一条，认证先行）：
+//   AUTH <user> <pass>   -> OK / ERR auth
+//   SET-TZ <IANA 时区>    -> OK / ERR zone / ERR set
+//   GET-TZ               -> <当前时区>
+//   RESTORE              -> OK / ERR no-orig
+//
+// 安全边界与转发端口一致：只听 127.0.0.1、强制用户名密码认证（同一份 relay-auth）、
+// 只认白名单命令、时区值必须能在 /usr/share/zoneinfo 下找到（防注入路径）。
+
+func currentTimeZone() -> String {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/sbin/systemsetup")
+    p.arguments = ["-gettimezone"]
+    let pipe = Pipe()
+    p.standardOutput = pipe
+    p.standardError = FileHandle.nullDevice
+    do { try p.run() } catch { return "" }
+    p.waitUntilExit()
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    let out = String(decoding: data, as: UTF8.self)
+    // "Time Zone: America/New_York"
+    if let range = out.range(of: "Time Zone: ") {
+        return String(out[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return ""
+}
+
+@discardableResult
+func setSystemTimeZone(_ id: String) -> Bool {
+    // 防注入：必须是 /usr/share/zoneinfo 下真实存在的时区（不接受 ../ 之类）
+    guard !id.isEmpty, !id.contains(".."), !id.contains(" "),
+          FileManager.default.fileExists(atPath: "/usr/share/zoneinfo/" + id) else {
+        return false
+    }
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/sbin/systemsetup")
+    p.arguments = ["-settimezone", id]
+    p.standardOutput = FileHandle.nullDevice
+    p.standardError = FileHandle.nullDevice
+    do { try p.run() } catch { return false }
+    p.waitUntilExit()
+    return p.terminationStatus == 0
+}
+
+/// 原始时区记录：首次切换前存一份，RESTORE 用它还原。
+let tzOrigPath = "/Library/Application Support/qingzhou-guard/timezone-orig"
+
+/// 控制会话登记表：ControlSession 必须被强引用，否则 newConnectionHandler 返回后
+/// 会被 ARC 立刻回收，receive 回调永远不触发（实测踩过：连接建了但收不到数据）。
+final class ControlRegistry {
+    private var sessions: [ObjectIdentifier: ControlSession] = [:]
+    private let lock = NSLock()
+    func add(_ s: ControlSession) { lock.lock(); sessions[ObjectIdentifier(s)] = s; lock.unlock() }
+    func remove(_ s: ControlSession) { lock.lock(); sessions.removeValue(forKey: ObjectIdentifier(s)); lock.unlock() }
+}
+let controlRegistry = ControlRegistry()
+
+final class ControlSession {
+    private let connection: NWConnection
+    private let creds: (user: String, pass: String)
+    private var buffer = Data()
+    private var authed = false
+
+    init(_ connection: NWConnection, creds: (user: String, pass: String)) {
+        self.connection = connection
+        self.creds = creds
+    }
+
+    func start() {
+        controlRegistry.add(self)
+        connection.stateUpdateHandler = { [weak self] state in
+            if case .failed = state { self?.close() }
+            if case .cancelled = state { self?.close() }
+        }
+        connection.start(queue: .global(qos: .userInitiated))
+        pump()
+    }
+
+    private func pump() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            if let data, !data.isEmpty { self.buffer.append(data) }
+            if error != nil || isComplete { self.close(); return }
+            while let nl = self.buffer.firstIndex(of: 0x0A) {
+                let line = String(decoding: self.buffer[self.buffer.startIndex..<nl], as: UTF8.self)
+                self.buffer.removeFirst(self.buffer.distance(from: self.buffer.startIndex, to: nl) + 1)
+                if !self.handle(line) { return }
+            }
+            self.pump()
+        }
+    }
+
+    /// 返回 false 表示会话结束（不回 pump）。
+    private func handle(_ line: String) -> Bool {
+        let parts = line.split(separator: " ", maxSplits: 2).map(String.init)
+        guard let cmd = parts.first?.uppercased() else { return true }
+
+        if cmd == "AUTH" {
+            guard parts.count == 3, parts[1] == creds.user, parts[2] == creds.pass else {
+                // 先让 ERR 真正发出去再关：send 是异步的，立刻 cancel 会丢掉响应
+                sendLine("ERR auth") { [weak self] in self?.close() }
+                return false
+            }
+            authed = true
+            sendLine("OK")
+            return true
+        }
+        guard authed else { sendLine("ERR auth") { [weak self] in self?.close() }; return false }
+
+        switch cmd {
+        case "SET-TZ":
+            guard parts.count == 2 else { sendLine("ERR zone"); return true }
+            let tz = parts[1].trimmingCharacters(in: .whitespaces)
+            // 首次切换前记录原时区（只记一次），供 RESTORE 用
+            if !FileManager.default.fileExists(atPath: tzOrigPath) {
+                let orig = currentTimeZone()
+                if !orig.isEmpty {
+                    try? orig.write(toFile: tzOrigPath, atomically: true, encoding: .utf8)
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tzOrigPath)
+                    log("记录原时区：\(orig)")
+                }
+            }
+            if let existing = try? String(contentsOfFile: tzOrigPath, encoding: .utf8),
+               existing.trimmingCharacters(in: .whitespacesAndNewlines) == tz {
+                sendLine("OK")   // 已经是目标值，不重复执行
+                return true
+            }
+            if setSystemTimeZone(tz) {
+                log("系统时区 → \(tz)")
+                sendLine("OK")
+            } else {
+                log("设置时区失败：\(tz)")
+                sendLine("ERR set")
+            }
+            return true
+
+        case "GET-TZ":
+            sendLine(currentTimeZone())
+            return true
+
+        case "RESTORE":
+            guard let orig = try? String(contentsOfFile: tzOrigPath, encoding: .utf8),
+                  !orig.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                sendLine("ERR no-orig"); return true
+            }
+            let target = orig.trimmingCharacters(in: .whitespacesAndNewlines)
+            if setSystemTimeZone(target) {
+                log("还原时区 → \(target)")
+                sendLine("OK")
+            } else {
+                sendLine("ERR set")
+            }
+            return true
+
+        default:
+            sendLine("ERR cmd")
+            return true
+        }
+    }
+
+    private func sendLine(_ text: String, completion: (() -> Void)? = nil) {
+        connection.send(content: Data((text + "\n").utf8),
+                        completion: .contentProcessed { _ in completion?() })
+    }
+
+    private func close() {
+        connection.cancel()
+        controlRegistry.remove(self)
+    }
+}
+
+// 控制端口必须用独立参数：全局 params 的 requiredLocalEndpoint 钉死在转发端口上，
+// 复用会导致 listen 报 Invalid argument（实测）。
+let controlParams = NWParameters.tcp
+controlParams.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback),
+                                                port: NWEndpoint.Port(rawValue: cfg.controlPort)!)
+controlParams.allowLocalEndpointReuse = true
+
+let controlListener: NWListener?
+do {
+    controlListener = try NWListener(using: controlParams)
+} catch {
+    log("警告：控制端口 \(cfg.controlPort) 无法监听（\(error)）—— 时区跟随不可用，代理不受影响")
+    controlListener = nil
+}
+
+controlListener?.stateUpdateHandler = { state in
+    switch state {
+    case .ready: log("controller listening on 127.0.0.1:\(cfg.controlPort)（时区指令，需认证）")
+    case .failed(let error): log("控制端口失败：\(error)")
+    default: break
+    }
+}
+controlListener?.newConnectionHandler = { connection in
+    ControlSession(connection, creds: creds).start()
+}
+controlListener?.start(queue: .global(qos: .userInitiated))
+
 dispatchMain()

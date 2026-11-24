@@ -20,6 +20,10 @@ public struct GuardRelayCredentials: Codable, Sendable, Equatable {
     /// App Group 里的文件名（install.sh 写的也是这个名字）。
     public static let fileName = "guard-relay.json"
 
+    /// 控制端口：中继以 root 执行 App 请求的动作（目前只有改系统时区）。
+    /// 与转发的 10808 分开，避免指令流量混进代理流量。
+    public static let controlPort: UInt16 = 10809
+
     /// 序列化成 providerConfiguration 里的一段 JSON（plist 不接受任意 Codable）。
     public var jsonString: String {
         guard let data = try? JSONEncoder().encode(self) else { return "" }

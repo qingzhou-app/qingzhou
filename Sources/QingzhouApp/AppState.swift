@@ -863,22 +863,73 @@ public final class AppState {
         return .current
     }
 
-    /// 把「跟随出口地区」的目标时区写给 guard（root 进程）去改系统时区。
-    /// 传 nil 表示"还原到原时区"。
+    /// 请求 root 侧（中继的控制端口）改系统时区。传 nil = 还原到原时区。
     ///
-    /// 为什么走 App Group 文件而不是直接改：改系统时区要 root，App 是普通进程。
-    /// guard-run.sh 每 10 秒读一次这个文件，非空就调 timezone-follow.sh（root）。
+    /// 为什么走 TCP 而不是 App Group 文件：
+    /// App Group 受 TCC 保护，launchd 起的 guard 进程没有「完全磁盘访问权限」读不到
+    /// （实测：guard-run.sh 在 FDA 列表里是灰的，无法授权）。网络连接不受 TCC 限制，
+    /// 所以改用回环 TCP 控制端口，由 root 的中继直接执行 systemsetup。
     public func requestSystemTimeZone(_ timezoneID: String?) {
-        guard let url = AppGroupStorage.containerURL?.appendingPathComponent("follow-timezone.request") else { return }
-        let value = timezoneID ?? ""   // 空串 = 还原
-        // 原子写：先写临时再 rename，避免 guard 读到半截
-        let tmp = url.appendingPathExtension("tmp")
-        do {
-            try value.write(to: tmp, atomically: true, encoding: .utf8)
-            try FileManager.default.replaceItemAt(url, withItemAt: tmp)
-        } catch {
-            logger.warn("写时区指令失败：\(error.localizedDescription)", category: "region")
+        guard let creds = GuardRelayCredentials.load() else { return }
+        let command = timezoneID.map { "SET-TZ \($0)" } ?? "RESTORE"
+        let port = GuardRelayCredentials.controlPort
+        Task.detached(priority: .utility) { [weak self] in
+            do {
+                try await Self.sendControlCommand(command, creds: creds, port: port)
+            } catch {
+                await self?.logger.warn("时区指令发送失败：\(error.localizedDescription)", category: "region")
+            }
         }
+    }
+
+    /// 连控制端口 → AUTH → 发一条命令 → 读到单行响应。
+    nonisolated private static func sendControlCommand(_ command: String,
+                                                      creds: GuardRelayCredentials,
+                                                      port: UInt16) async throws {
+        let url = URL(string: "http://127.0.0.1:\(port)/")!
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        // 用 URLSession 走不了这段裸协议，这里改用原始 socket：
+        _ = request
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw URLError(.cannotConnectToHost) }
+        defer { close(fd) }
+        var tv = timeval(tv_sec: 3, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        let connected = withUnsafePointer(to: &addr) { p in
+            p.withMemoryRebound(to: sockaddr.self, capacity: 1) { sap in
+                connect(fd, sap, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard connected == 0 else { throw URLError(.cannotConnectToHost) }
+
+        func writeLine(_ s: String) throws {
+            let data = Array((s + "\n").utf8)
+            let n = data.withUnsafeBytes { write(fd, $0.baseAddress, data.count) }
+            guard n == data.count else { throw URLError(.cannotWriteToFile) }
+        }
+        func readLine() throws -> String {
+            var bytes: [UInt8] = []
+            var one: UInt8 = 0
+            while read(fd, &one, 1) == 1 {
+                if one == 0x0A { break }
+                bytes.append(one)
+                if bytes.count > 256 { break }
+            }
+            return String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespaces)
+        }
+
+        try writeLine("AUTH \(creds.username) \(creds.password)")
+        let authReply = try readLine()
+        guard authReply == "OK" else { throw URLError(.userAuthenticationRequired) }
+
+        try writeLine(command)
+        let reply = try readLine()
+        guard reply == "OK" || reply.isEmpty else { throw URLError(.badServerResponse) }
     }
 
     /// 当前真正可用的分流节点对；开关关着或配置不完整时 nil。

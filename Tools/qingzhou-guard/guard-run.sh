@@ -52,7 +52,7 @@ else
   log "未启用断网开关（无 enabled 标记），只启动中继"
 fi
 
-"$BASE/qingzhou-relay" --port "$PORT" --auth-file "$BASE/relay-auth" --log /var/log/qingzhou-relay.log &
+"$BASE/qingzhou-relay" --port "$PORT" --control-port 10809 --auth-file "$BASE/relay-auth" --log /var/log/qingzhou-relay.log &
 RELAY=$!
 log "中继已启动 pid=$RELAY"
 
@@ -75,28 +75,6 @@ while kill -0 "$RELAY" 2>/dev/null; do
     fi
   fi
 
-  # 跟随出口地区改系统时区：App 把目标时区（或"还原"空串）写进 App Group，
-  # 这里读出来，有变化就调用 timezone-follow.sh（root 权限执行 systemsetup）。
-  # App 只能写自己的 App Group 容器（沙箱），guard 是 root 能读任意用户目录，
-  # 所以直接读 App Group 里的指令文件，不做中间桥接。
-  #
-  # ⚠️ 不能 `eval echo ~$TARGET_USER`：macOS 上短用户名（sbrave）和 home 目录名
-  # （sbraveyoung）可能不一致，`~sbrave` 会展开成不存在的 /Users/sbrave。
-  # 用 dscl 查真实 home 目录，查不到再退回 /Users/<短名>。
-  TARGET_USER="$(stat -f %Su /dev/console 2>/dev/null)"
-  TARGET_HOME="$(dscl . -read "/Users/${TARGET_USER}" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-  if [ -z "$TARGET_HOME" ]; then
-    TARGET_HOME="/Users/${TARGET_USER}"
-  fi
-  TZ_FILE="$TARGET_HOME/Library/Group Containers/group.com.sbraveyoung.qingzhou/follow-timezone.request"
-  if [ -f "$TZ_FILE" ]; then
-    TZ_VALUE="$(cat "$TZ_FILE" 2>/dev/null)"
-    # 有值才处理；空文件说明 App 正在写，下轮再看
-    if [ -n "$TZ_VALUE" ]; then
-      sh "$BASE/timezone-follow.sh" "" "$TZ_VALUE"
-      rm -f "$TZ_FILE"
-    fi
-  fi
 done
 
 log "中继已退出，guard-run 结束"
