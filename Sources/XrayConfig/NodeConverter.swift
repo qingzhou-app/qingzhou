@@ -64,6 +64,7 @@ public enum NodeConverter {
         case .vless:        return try VLESSConverter.toOutbound(node)
         case .shadowsocks:  return try ShadowsocksConverter.toOutbound(node)
         case .hysteria2:    return try Hysteria2Converter.toOutbound(node)
+        case .socks5:       return try Socks5Converter.toOutbound(node)
         }
     }
 }

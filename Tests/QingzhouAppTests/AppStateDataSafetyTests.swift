@@ -55,7 +55,7 @@ final class AppStateDataSafetyTests: XCTestCase {
 
     func testInvalidSubscriptionResponsePreservesNodesAndMetadata() async throws {
         for body in ["<html>expired</html>", "<a href=\"https://example.com\">login</a>", "trojan://bad",
-                     "proxies:\n  - {name: unsupported, type: socks5, server: example.com, port: 1080}"] {
+                     "proxies:\n  - {name: unsupported, type: ssr, server: example.com, port: 8388}"] {
             let state = makeState(body: body)
             let sub = Subscription(name: "S", url: URL(string: "https://example.com/sub")!)
             var node = try ProxyURLParser.parse("trojan://pw@a.example:443#old")

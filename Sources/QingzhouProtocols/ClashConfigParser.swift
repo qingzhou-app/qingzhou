@@ -110,6 +110,7 @@ public enum ClashConfigParser {
         case "vmess":             proto = .vmess
         case "vless":             proto = .vless
         case "hysteria2", "hy2":  proto = .hysteria2
+        case "socks5", "socks":   proto = .socks5
         default:                  return nil   // convert记录unsupported条目
         }
 
@@ -166,6 +167,17 @@ public enum ClashConfigParser {
             if let sni = raw["servername"] as? String { node.parameters["sni"] = sni }
             if let flow = raw["flow"] as? String, !flow.isEmpty { node.parameters["flow"] = flow }
             applyRealityOpts(raw, into: &node)   // 放最后：reality 覆盖上面的 security=tls
+
+        case .socks5:
+            // Clash.Meta 的 socks5 节点字段是 username / password（老版本写作 user / pass）。
+            if let u = stringValue(raw["username"]) ?? stringValue(raw["user"]), !u.isEmpty {
+                node.parameters["username"] = u
+            }
+            if let p = stringValue(raw["password"]) ?? stringValue(raw["pass"]), !p.isEmpty {
+                node.password = p
+            } else if let n = intValue(raw["password"]) {
+                node.password = String(n)
+            }
         }
 
         // trojan 也可能走 reality（Clash.Meta 支持）

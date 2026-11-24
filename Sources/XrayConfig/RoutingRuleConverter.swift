@@ -114,6 +114,12 @@ public enum RoutingRuleConverter {
             // 完整版（App Group 下载）就位时 hasFullGeoIP=true，全部分类码解锁。
             guard hasFullGeoIP || GeoDataBundle.supportsGeoIP(value) else { return nil }
             return (.ip, "geoip:\(value.lowercased())")
+        case .geoSite:
+            guard isValidGeoSiteCode(value) else { return nil }
+            // 同 GEOIP：引用了内置 geosite.dat 里没有的分类，xray 会直接启动失败
+            //（"failed to load geosite"），一条坏规则 = 整机断网。默认只放行白名单。
+            guard GeoDataBundle.supportsGeoSite(value) else { return nil }
+            return (.domain, "geosite:\(value.lowercased())")
         case .processName, .userAgent, .final:
             // PROCESS-NAME / USER-AGENT：xray 在 TUN 层无法匹配；FINAL 由 finalOutboundTag 处理
             return nil
@@ -148,5 +154,12 @@ public enum RoutingRuleConverter {
     private static func isValidGeoCode(_ v: String) -> Bool {
         guard !v.isEmpty else { return false }
         return v.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "!" }
+    }
+
+    /// geosite 分类码：除 geoip 允许的字符外还可带下划线；`!` 只能出现在中间
+    ///（`geolocation-!cn` 是合法分类名，前缀 `!` 是「反转」写法，xray 无此语义）。
+    private static func isValidGeoSiteCode(_ v: String) -> Bool {
+        guard !v.isEmpty, !v.hasPrefix("!") else { return false }
+        return v.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "!" || $0 == "_" }
     }
 }

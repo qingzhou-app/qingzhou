@@ -79,6 +79,7 @@ public enum ProxyURLParser {
         case .vmess:       return try VMessParser.parse(url)
         case .vless:       return try VLESSParser.parse(url)
         case .hysteria2:   return try Hysteria2Parser.parse(url)
+        case .socks5:      return try Socks5Parser.parse(url)
         }
     }
 

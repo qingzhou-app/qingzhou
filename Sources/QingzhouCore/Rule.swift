@@ -8,6 +8,11 @@ public enum RuleType: String, Codable, Sendable, CaseIterable {
     case ipCIDR         = "IP-CIDR"
     case ipCIDR6        = "IP-CIDR6"
     case geoip          = "GEOIP"
+    /// geosite 分类（v2fly 域名库），例如 `GEOSITE,geolocation-!cn,PROXY`。
+    /// 与 `GEOIP` 的区别：GEOIP 匹配**目标 IP**，GEOSITE 匹配**域名**（所以不需要解析，
+    /// 也不受 fake-ip 影响）；与 `DOMAIN-SUFFIX` 的区别：一次引用几百条域名，且随
+    /// geo 数据更新而更新，不必逐条维护。
+    case geoSite        = "GEOSITE"
     case processName    = "PROCESS-NAME"
     case userAgent      = "USER-AGENT"
     case final          = "FINAL"

@@ -134,6 +134,16 @@ public struct RulesView: View {
                 }
             }
 
+            // GEOSITE 只能用内置 geosite.dat 里存在的分类：xray 遇到缺失分类会直接启动失败，
+            // 所以未知分类会被**跳过**而不是透传 —— 这里提前说清，别让用户以为规则生效了。
+            if newType == .geoSite {
+                let v = newValue.trimmingCharacters(in: .whitespaces)
+                if !v.isEmpty && !GeoDataBundle.supportsGeoSite(v) {
+                    Text("「\(v)」不在内置 geosite 分类白名单里，这条规则会被跳过。")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
+            }
+
             // 命中后动作 —— 三选一，segmented 紧凑
             Picker("匹配后", selection: $newTarget) {
                 ForEach(RuleTarget.allCases, id: \.self) { target in
@@ -196,6 +206,7 @@ public struct RulesView: View {
         case .ipCIDR:        return "IPv4 网段"
         case .ipCIDR6:       return "IPv6 网段"
         case .geoip:         return "GEOIP（国家代码）"
+        case .geoSite:       return "GEOSITE（域名分类）"
         case .processName:   return "进程名（仅 macOS）"
         case .userAgent:     return "User-Agent"
         case .final:         return "FINAL（兜底）"
@@ -218,6 +229,7 @@ public struct RulesView: View {
         case .ipCIDR:        return "192.168.0.0/16"
         case .ipCIDR6:       return "fc00::/7"
         case .geoip:         return "cn / private"
+        case .geoSite:       return "geolocation-!cn"
         case .processName:   return "Telegram"
         case .userAgent:     return "MyApp/*"
         case .final:         return ""

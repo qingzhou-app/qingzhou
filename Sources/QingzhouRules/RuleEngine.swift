@@ -99,6 +99,11 @@ public struct RuleEngine: Sendable {
                 if let ua = ctx.userAgent, ua.contains(rule.value) {
                     return MatchResult(rule: rule, target: rule.target)
                 }
+            case .geoSite:
+                // 域名分类表只在 xray 侧（geosite.dat）存在，App 侧的规则模拟器没有这份数据。
+                // 这里**不匹配**而不是猜：猜错会给用户"这条规则生效了"的错觉，而真实流量
+                // 在 xray 里可能是另一条规则命中的。
+                break
             case .final:
                 return MatchResult(rule: rule, target: rule.target)
             }
