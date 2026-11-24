@@ -404,9 +404,9 @@ public final class AppState {
             category: "app"
         )
         logger.setMinimumLevel(LogLevel(rawValue: settings.logLevel) ?? .info)
-        // 语言选项只放出 zhHans / en：存量老值（跟随系统 / 繁中 / 日语）一次性迁移到简中，
-        // 否则 Picker 无匹配 tag、显示为空（旧值来自下架前的版本或手改 JSON）
-        if settings.language != .zhHans && settings.language != .en {
+        // 语言选项放出 zhHans / zhHant / en / ja 四种固定语言；存量老值（.system）
+        // 一次性迁移到简中，否则 Picker 无匹配 tag、显示为空（旧值来自下架前的版本或手改 JSON）
+        if ![AppLanguage.zhHans, .zhHant, .en, .ja].contains(settings.language) {
             settings.language = .zhHans
         }
         // 动态字符串（toast / 错误文案）的语言跟随 App 语言设置（静态 UI 靠 \.locale 环境值）
@@ -828,7 +828,9 @@ public final class AppState {
 
     /// 分流方案能否真正启用：开关打开 + 两个节点都在 + 不是同一个节点。
     /// 返回 nil 表示可用，否则是给人看的原因。
+    /// iOS 无分流 UI，即使 iCloud 同步了 macOS 的 `splitExitEnabled` 也必须忽略。
     public var splitExitBlockedReason: String? {
+        #if os(macOS)
         guard settings.splitExitEnabled else { return nil }
         guard let exit = splitExitExitNode else { return L("未选择「海外出口」节点") }
         guard let hop = splitExitHopNode else { return L("未选择「跳板」节点") }
@@ -836,6 +838,9 @@ public final class AppState {
             return L("「海外出口」和「跳板」是同一个节点，会绕成死循环")
         }
         return nil
+        #else
+        return nil
+        #endif
     }
 
     // MARK: - 跟随出口地区
@@ -847,19 +852,28 @@ public final class AppState {
     ///
     /// 之所以只在**连接期间**生效：这是伪装的一部分，断开后就该回到本机设置。
     /// 也不改写 `settings.language` —— 用户存的语言偏好不该被一次连接悄悄改掉。
+    /// iOS 无该开关 UI，即使 iCloud 同步了 macOS 的 `followExitRegion` 也必须忽略。
     public var isFollowingExitRegion: Bool {
+        #if os(macOS)
         settings.followExitRegion && isVPNRunning && proxyIPInfo != nil
+        #else
+        false
+        #endif
     }
 
     /// 界面实际使用的语言（可能被出口地区临时覆盖）。
     public var effectiveLanguage: AppLanguage {
+        #if os(macOS)
         if isFollowingExitRegion, let lang = exitRegion?.suggestedLanguage { return lang }
+        #endif
         return settings.language
     }
 
     /// 界面时间显示使用的时区：跟随出口时用出口时区，否则系统时区。
     public var displayTimeZone: TimeZone {
+        #if os(macOS)
         if isFollowingExitRegion, let tz = exitRegion?.timeZone { return tz }
+        #endif
         return .current
     }
 
@@ -870,6 +884,7 @@ public final class AppState {
     /// （实测：guard-run.sh 在 FDA 列表里是灰的，无法授权）。网络连接不受 TCC 限制，
     /// 所以改用回环 TCP 控制端口，由 root 的中继直接执行 systemsetup。
     public func requestSystemTimeZone(_ timezoneID: String?) {
+        #if os(macOS)
         guard let creds = GuardRelayCredentials.load(),
               creds.hasValidControlCredentials else { return }
         let command = timezoneID.map { "SET-TZ \($0)" } ?? "RESTORE"
@@ -881,6 +896,7 @@ public final class AppState {
                 log.warn("时区指令发送失败：\(error.localizedDescription)", category: "region")
             }
         }
+        #endif
     }
 
     /// 连控制端口 → 校验分离控制凭据 → AUTH → 发一条命令 → 严格要求单行响应为 "OK"。
@@ -1021,9 +1037,13 @@ public final class AppState {
 
     /// 当前真正可用的分流节点对；开关关着或配置不完整时 nil。
     var activeSplitExit: (exit: Node, hop: Node)? {
+        #if os(macOS)
         guard settings.splitExitEnabled, splitExitBlockedReason == nil,
               let exit = splitExitExitNode, let hop = splitExitHopNode else { return nil }
         return (exit, hop)
+        #else
+        return nil
+        #endif
     }
 
     /// 可用于「海外出口」的节点：SOCKS5 优先展示，但不禁用其它协议 ——
@@ -1033,6 +1053,7 @@ public final class AppState {
     /// 切换分流开关。打开时强制规则模式：分流方案自带完整 routing，
     /// 全局/直连模式那两套 routing 与它互斥，留着只会让人以为「开了没生效」。
     public func setSplitExitEnabled(_ enabled: Bool) {
+        #if os(macOS)
         guard settings.splitExitEnabled != enabled else { return }
         settings.splitExitEnabled = enabled
         if enabled, settings.proxyMode != .rule {
@@ -1043,20 +1064,25 @@ public final class AppState {
         persist()
         // 分流开关改变出口身份 → VPN 在跑时必须重连，否则还在按旧配置走。
         Task { await reapplyRunningTunnel() }
+        #endif
     }
 
     public func setSplitExitExitNode(_ id: UUID?) {
+        #if os(macOS)
         guard settings.splitExitExitNodeID != id else { return }
         settings.splitExitExitNodeID = id
         persist()
         Task { await reapplyRunningTunnel() }
+        #endif
     }
 
     public func setSplitExitHopNode(_ id: UUID?) {
+        #if os(macOS)
         guard settings.splitExitHopNodeID != id else { return }
         settings.splitExitHopNodeID = id
         persist()
         Task { await reapplyRunningTunnel() }
+        #endif
     }
 
     // MARK: - 地区
@@ -1260,10 +1286,12 @@ public final class AppState {
             // 只在终态翻「关」，.disconnecting 等瞬态不动，避免开关闪烁
             isVPNRunning = false
             logger.info("VPN status synced from system: stopped", category: "tunnel")
+            #if os(macOS)
             // 跟随出口地区：断开即还原系统时区（guard 会读指令并还原到原时区）
             if settings.followExitRegion {
                 requestSystemTimeZone(nil)
             }
+            #endif
         }
     }
 
@@ -1296,6 +1324,7 @@ public final class AppState {
             isVPNRunning = false
             return
         }
+        #if os(macOS)
         // 分流方案：出口和跳板都必须在，缺一个就**不连**而不是退回单节点 ——
         // 缺跳板的住宅代理只能从本机直连（国内连不上 + 暴露真实 IP），
         // 缺出口则等于没有海外出口。两种都不是用户要的状态，报清楚让它停在这儿。
@@ -1308,7 +1337,7 @@ public final class AppState {
         let splitExitActive = settings.splitExitEnabled
         let exitNode = splitExitActive ? splitExitExitNode : nil
         let hopNode = splitExitActive ? splitExitHopNode : nil
-        // 断网开关的 root 中继。开关打开但读不到凭据时**拒绝连接**而不是静默降级 ——
+        // 断网开关的 root 中继（仅 macOS）。开关打开但读不到凭据时**拒绝连接**而不是静默降级 ——
         // 静默降级会让用户以为"正在经中继出网"，然后一开 pf 就整机断网，且看不出原因。
         var guardRelay: GuardRelayCredentials?
         if splitExitActive, settings.guardRelayEnabled {
@@ -1320,6 +1349,11 @@ public final class AppState {
             }
             guardRelay = creds
         }
+        #else
+        let exitNode: Node? = nil
+        let hopNode: Node? = nil
+        let guardRelay: GuardRelayCredentials? = nil
+        #endif
         let link = node.flatMap(NodeEncoder.shareLink)
         guard settings.proxyMode == .direct || link != nil else {
             tunnelError = L("无法把节点编码成分享链接")
@@ -1622,12 +1656,17 @@ public final class AppState {
         guard isVPNRunning else { return }
         // Selecting a future proxy node does not change a direct tunnel.
         if scope == .nodeOnly && settings.proxyMode == .direct { return }
+        #if os(macOS)
         // 分流方案生效时，出口不是"当前节点"，重连必须带上出口/跳板两个节点。
         // 少了它们，configure() 会把 providerConfiguration 里残留的分流字段清掉，
         // 下一次连接就悄悄退回单节点 —— 用户以为还在分流，其实已经直连住宅代理了。
         let split = activeSplitExit
         var guardRelay: GuardRelayCredentials?
         if split != nil, settings.guardRelayEnabled { guardRelay = GuardRelayCredentials.load() }
+        #else
+        let split: (exit: Node, hop: Node)? = nil
+        let guardRelay: GuardRelayCredentials? = nil
+        #endif
         let node = settings.proxyMode == .direct ? nil : currentNode
         guard settings.proxyMode == .direct || node != nil || split != nil else {
             tunnelError = VPNTunnelManager.TunnelError.noCurrentNode.errorDescription
@@ -2615,7 +2654,12 @@ public final class AppState {
         try? await Task.sleep(for: .seconds(5))
         if Task.isCancelled { return }
 
-        if !settings.splitExitEnabled,
+        #if os(macOS)
+        let splitExitAtLaunch = settings.splitExitEnabled
+        #else
+        let splitExitAtLaunch = false
+        #endif
+        if !splitExitAtLaunch,
            settings.autoSelectTrigger == .onAppLaunch || settings.autoSelectTrigger == .onAppLaunchAndInterval {
             await autoSelectBestNode(origin: .scheduled)
         }
@@ -2634,7 +2678,12 @@ public final class AppState {
             let trigger = settings.autoSelectTrigger
             // 分流方案的出口是手选的，自动择优会把 currentNodeId 改掉、进而把出口也换掉 ——
             // 那就成了「自动换节点」，与「手选、挂了就断」直接冲突。开着分流时跳过择优。
-            if !settings.splitExitEnabled,
+            #if os(macOS)
+            let splitExitInLoop = settings.splitExitEnabled
+            #else
+            let splitExitInLoop = false
+            #endif
+            if !splitExitInLoop,
                (trigger == .interval || trigger == .onAppLaunchAndInterval)
                 && now.timeIntervalSince(lastAutoSelect) >= settings.autoSelectIntervalSeconds {
                 await autoSelectBestNode(origin: .scheduled)
@@ -2654,10 +2703,12 @@ public final class AppState {
                 lastRefresh = Date()
             }
 
+            #if os(macOS)
             // 4) 分流方案的国内名单：24 小时一次（内部自己节流，失败也记时间，不刷屏重试）
             if settings.splitExitEnabled {
                 await refreshSplitExitListsIfDue()
             }
+            #endif
         }
     }
 

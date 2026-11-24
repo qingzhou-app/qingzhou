@@ -147,6 +147,18 @@
             "state" : "translated",
             "value" : "${applicationName} connection status"
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}の接続状態"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}連線狀態"
+          }
         }
       }
     },
@@ -157,6 +169,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Is ${applicationName} connected"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}は接続されていますか"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName}連上了嗎"
           }
         }
       }

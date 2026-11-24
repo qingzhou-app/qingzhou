@@ -8,6 +8,7 @@ public struct RulesView: View {
     @State private var newType: RuleType = .domainSuffix
     @State private var newValue: String = ""
     @State private var newTarget: RuleTarget = .proxy
+    @State private var newNoResolve: Bool = false
     @State private var addError: String?
     @State private var refreshing = false
     /// 远程规则一次渲染多少条。远程规则动辄几千上万条，一次性铺开会卡住列表；
@@ -106,6 +107,9 @@ public struct RulesView: View {
                     Text(Self.displayName(for: type)).tag(type)
                 }
             }
+            .onChange(of: newType) { _, _ in
+                if !supportsNoResolve { newNoResolve = false }
+            }
 
             // FINAL 类型不需要 value（它就是"以上全没命中时怎么走"）
             if newType != .final {
@@ -147,6 +151,24 @@ public struct RulesView: View {
                 }
             }
 
+            if newType == .processName {
+                Text("PROCESS-NAME 仅用于本机规则模拟与命中归因，xray TUN 隧道不匹配进程名。")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
+
+            if newType == .userAgent {
+                Text("USER-AGENT 仅用于本机规则模拟，xray TUN 隧道无法匹配 HTTP User-Agent。")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
+
+            if supportsNoResolve {
+                Toggle("no-resolve（不触发本地 DNS 解析）", isOn: $newNoResolve)
+                if newNoResolve {
+                    Text("xray 隧道无单条 no-resolve 开关，规则模式全局使用 IPIfNonMatch。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
             // 命中后动作 —— 三选一，segmented 紧凑
             Picker("匹配后", selection: $newTarget) {
                 ForEach(RuleTarget.allCases, id: \.self) { target in
@@ -172,12 +194,17 @@ public struct RulesView: View {
         }
     }
 
+    private var supportsNoResolve: Bool {
+        newType == .ipCIDR || newType == .ipCIDR6 || newType == .geoip
+    }
+
     private var previewLine: String {
         if newType == .final {
             return "\(newType.rawValue),\(newTarget.rawValue)"
         }
         let v = newValue.trimmingCharacters(in: .whitespaces)
-        return "\(newType.rawValue),\(v.isEmpty ? "…" : v),\(newTarget.rawValue)"
+        let base = "\(newType.rawValue),\(v.isEmpty ? "…" : v),\(newTarget.rawValue)"
+        return (supportsNoResolve && newNoResolve) ? "\(base),no-resolve" : base
     }
 
     /// iOS 上隐藏 PROCESS-NAME —— iOS App 沙箱看不到其他进程名，规则永远命不中。
@@ -195,9 +222,11 @@ public struct RulesView: View {
             addError = L("请填写规则值")
             return
         }
-        let rule = Rule(type: newType, value: trimmed, target: newTarget)
+        let rule = Rule(type: newType, value: trimmed, target: newTarget,
+                        noResolve: supportsNoResolve ? newNoResolve : false)
         state.addCustomRule(rule)
         newValue = ""
+        newNoResolve = false
         addError = nil
     }
 
@@ -245,7 +274,7 @@ public struct RulesView: View {
                 state.customRules.contains(where: { $0.id == rule.id })
             }
             if filtered.isEmpty {
-                Text(searchText.isEmpty ? "暂无自定义规则" : "无匹配规则")
+                Text(searchText.isEmpty ? LocalizedStringKey("暂无自定义规则") : LocalizedStringKey("无匹配规则"))
                     .foregroundStyle(.secondary).font(.caption)
             } else {
                 ForEach(filtered) { rule in
@@ -261,7 +290,7 @@ public struct RulesView: View {
                 state.remoteRules.contains(where: { $0.id == rule.id })
             }
             if filtered.isEmpty {
-                Text(state.remoteRules.isEmpty ? "尚未加载远程规则" : "无匹配规则")
+                Text(state.remoteRules.isEmpty ? LocalizedStringKey("尚未加载远程规则") : LocalizedStringKey("无匹配规则"))
                     .foregroundStyle(.secondary).font(.caption)
             } else {
                 ForEach(filtered.prefix(remoteLimit)) { rule in
@@ -298,6 +327,10 @@ public struct RulesView: View {
     /// 完整版 geo 数据（此页一键下载 / 设置 → Geo 数据）就位后全部解锁，不再标注。
     private func isIneffectiveGeoIP(_ rule: Rule) -> Bool {
         !state.geoData.hasFullGeoIP && rule.type == .geoip && !GeoDataBundle.supportsGeoIP(rule.value)
+    }
+
+    private func isIneffectiveGeoSite(_ rule: Rule) -> Bool {
+        rule.type == .geoSite && !GeoDataBundle.supportsGeoSite(rule.value)
     }
 
     /// 一键下载完整版 geo 数据的控件（下载进度 / 校验中 / 按钮 + 错误三态）。
@@ -341,6 +374,19 @@ public struct RulesView: View {
                     .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
                 if isIneffectiveGeoIP(rule) {
                     Text("需下载完整版 geo 数据，该规则暂不生效")
+                        .font(.caption2).foregroundStyle(.orange)
+                } else if isIneffectiveGeoSite(rule) {
+                    Text("不在内置 geosite 分类白名单里，xray 隧道将跳过此规则")
+                        .font(.caption2).foregroundStyle(.orange)
+                } else if rule.type == .processName {
+                    Text("仅本机规则模拟生效，xray TUN 隧道不匹配进程名")
+                        .font(.caption2).foregroundStyle(.orange)
+                } else if rule.type == .userAgent {
+                    Text("仅本机规则模拟生效，xray TUN 隧道不匹配 User-Agent")
+                        .font(.caption2).foregroundStyle(.orange)
+                }
+                if rule.noResolve && rule.type != .final {
+                    Text("含 no-resolve（xray 隧道无单条开关，规则模式按 IPIfNonMatch 处理）")
                         .font(.caption2).foregroundStyle(.orange)
                 }
                 // 命中计数只给自定义规则：远程规则整包换源，id 不稳定，计数没有参考价值

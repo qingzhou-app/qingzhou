@@ -28,7 +28,7 @@ public struct AppGroupSplitExitListsStore: SplitExitListsStore {
     public func save(_ lists: SplitExitLists) throws {
         guard let url = Self.storeURL, let data = SplitExitListsFile.encode(lists) else {
             throw NSError(domain: "qingzhou.split-exit", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "无法写入 App Group 共享目录"])
+                          userInfo: [NSLocalizedDescriptionKey: L("无法写入 App Group 共享目录")])
         }
         try data.write(to: url, options: .atomic)
     }
@@ -88,7 +88,7 @@ public actor SplitExitListsUpdater {
             return Outcome(lists: cached, error: nil, usedCache: true)
         }
         guard sources.count == 2 else {
-            return Outcome(lists: cached, error: "名单源配置错误（需要域名与 IP 两份）", usedCache: cached != nil)
+            return Outcome(lists: cached, error: L("名单源配置错误（需要域名与 IP 两份）"), usedCache: cached != nil)
         }
 
         var domains: [String] = []
@@ -99,7 +99,7 @@ public actor SplitExitListsUpdater {
             do {
                 let (data, _) = try await client.get(url)
                 guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
-                    failures.append("\(url.lastPathComponent): 响应为空或非 UTF-8")
+                    failures.append(L("\(url.lastPathComponent)：响应为空或非 UTF-8"))
                     continue
                 }
                 if index == 0 {
@@ -118,12 +118,12 @@ public actor SplitExitListsUpdater {
         // 任何一份为空都算失败：只有域名没有 IP 名单（或反之）会让国内直连明显缺口，
         // 而且这种"半份"很难被用户察觉。宁可整份不更新。
         guard failures.isEmpty else {
-            let message = failures.joined(separator: "；")
+            let message = failures.joined(separator: L("；"))
             logger?.error("Split-exit lists refresh failed: \(message)", category: "rules")
             return Outcome(lists: cached, error: message, usedCache: cached != nil)
         }
         guard !domains.isEmpty, !cidrs.isEmpty else {
-            let message = "解析结果为空（域名 \(domains.count) 条 / IP \(cidrs.count) 条），已保留上一份"
+            let message = L("解析结果为空（域名 \(domains.count) 条 / IP \(cidrs.count) 条），已保留上一份")
             logger?.error("Split-exit lists empty: \(message)", category: "rules")
             return Outcome(lists: cached, error: message, usedCache: cached != nil)
         }
@@ -144,13 +144,13 @@ public actor SplitExitListsUpdater {
         do {
             try store.save(fresh)
         } catch {
-            return Outcome(lists: cached, error: "写入失败：\(error.localizedDescription)", usedCache: cached != nil)
+            return Outcome(lists: cached, error: L("写入失败：\(error.localizedDescription)"), usedCache: cached != nil)
         }
         // 回读校验：写出去了但读不回来（权限 / 磁盘）和没写是一回事，别告诉用户成功了。
         guard let readBack = store.load(),
               readBack.domains.count == domains.count,
               readBack.cidrs.count == cidrs.count else {
-            return Outcome(lists: cached, error: "写入后回读校验失败，已保留上一份", usedCache: cached != nil)
+            return Outcome(lists: cached, error: L("写入后回读校验失败，已保留上一份"), usedCache: cached != nil)
         }
         logger?.info("Split-exit lists updated: \(domains.count) domains / \(cidrs.count) cidrs", category: "rules")
         return Outcome(lists: readBack, error: nil, usedCache: false)
@@ -173,6 +173,7 @@ extension AppState {
     /// 名单变化后只在**分流正在跑**时才重连：普通模式下这份名单根本不参与分流，
     /// 为此断一次网没有道理。
     public func refreshSplitExitLists(force: Bool = true) async {
+        #if os(macOS)
         guard !splitExitListsStatus.isLoading else { return }
         splitExitListsStatus.isLoading = true
         lastSplitExitListsAttempt = Date()
@@ -195,12 +196,15 @@ extension AppState {
         } else if outcome.error != nil {
             logger.warn("Split-exit lists unavailable: \(outcome.error ?? "")", category: "rules")
         }
+        #endif
     }
 
     /// 调度器每拍调用：24 小时一次，失败不重试到爆（失败也记 lastAttempt）。
     func refreshSplitExitListsIfDue() async {
+        #if os(macOS)
         let last = lastSplitExitListsAttempt ?? .distantPast
         guard Date().timeIntervalSince(last) >= 24 * 3600 else { return }
         await refreshSplitExitLists(force: false)
+        #endif
     }
 }

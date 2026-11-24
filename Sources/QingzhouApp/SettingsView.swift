@@ -10,6 +10,7 @@ public struct SettingsView: View {
     /// 跟随 App 语言设置的 locale（根视图注入），日期/相对时间格式化用
     @Environment(\.locale) private var locale
     @State private var filterEnabled = false
+    #if os(macOS)
     /// 名单查看器（sheet）。数据在打开时从 App Group 现读，避免长期占内存。
     @State private var listsForDisplay: SplitExitLists?
     @State private var showListsSheet = false
@@ -17,14 +18,17 @@ public struct SettingsView: View {
     @State private var listsMissingHint = false
     /// 断网开关的安装/拦截状态（命令面板展示用）。每次进页刷新一次。
     @State private var guardStatus: GuardStatus = .checking
+    #endif
 
     public init(state: AppState) { self.state = state }
 
     public var body: some View {
         Form {
             proxySection
+            #if os(macOS)
             splitExitSection
             guardSection
+            #endif
             autoSelectSection
             regionSection
             appearanceSection
@@ -42,7 +46,9 @@ public struct SettingsView: View {
         // 切 English 后「定时关闭」的值仍显示「关闭」）。静态 Text 靠 \.locale 环境值
         // 自动刷新不受影响，但 String 值内容不变时 cell 未必重渲染 —— id 直接换树。
         .id(state.settings.language)
+        #if os(macOS)
         .onAppear { refreshGuardStatus() }
+        #endif
         .navigationTitle(AppSection.settings.localizedTitle(language: state.settings.language))
         .formStyle(.grouped)
         // 「立即恢复」的版本选择 sheet。两条呈现纪律（复验 #18 两轮打回换来的）：
@@ -57,11 +63,13 @@ public struct SettingsView: View {
         }) {
             cloudVersionPicker
         }
+        #if os(macOS)
         .sheet(isPresented: $showListsSheet) {
             if let lists = listsForDisplay {
                 SplitExitListsView(lists: lists)
             }
         }
+        #endif
     }
 
     /// 诊断：隧道扩展进程的内存水位。iOS 对 NE 扩展有 50MB jetsam 硬上限，超限即"断流"——
@@ -184,6 +192,7 @@ public struct SettingsView: View {
         }
     }
 
+    #if os(macOS)
     /// 分流方案：「国内直连、其余全走海外出口」。
     ///
     /// 只放两个手选项 + 一个开关，不提供"自动"选项 —— 出口挂了就应该断网，
@@ -222,7 +231,7 @@ public struct SettingsView: View {
                        isOn: state.setting(\.followExitRegion))
                 if state.settings.followExitRegion {
                     if let region = state.exitRegion {
-                        Text("出口地区：\(region.summary)")
+                        Text("出口地区：\(region.localizedSummary)")
                             .font(.caption2).foregroundStyle(.secondary)
                         if let lang = region.suggestedLanguage {
                             Text("界面语言 → \(lang.rawValue)（仅连接期间生效，不改你的语言设置）")
@@ -231,10 +240,11 @@ public struct SettingsView: View {
                             Text("该地区没有对应的界面语言，语言保持你现在的选择。")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
-                        // 系统时区现在由 guard（root 常驻进程）自动改：App 写指令到
-                        // App Group，guard 每 10 秒读一次并调 systemsetup。断开自动还原。
+                        // 系统时区由 guard（root 常驻中继）自动改：App 通过回环 TCP 控制端口（10809）
+                        // 发送分离控制凭据 AUTH + SET-TZ <IANA> / RESTORE 指令，由 root 调 systemsetup；
+                        // VPN 断开后自动还原。
                         if region.timezoneID != nil {
-                            Text("系统时区将自动切换为 \(region.summary)（由 guard 执行，断开 VPN 自动还原）。")
+                            Text("系统时区将自动切换为 \(region.localizedSummary)（由 guard 执行，断开 VPN 自动还原）。")
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                         Text("注意：需要先安装并启用 guard（见下方「断网开关」）。系统语言不自动改（需注销登录，副作用大），浏览器语言仍由浏览器自己决定。")
@@ -263,7 +273,7 @@ public struct SettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(state.splitExitListsStatus.error == nil ? Color.secondary : Color.orange)
                 Spacer()
-                Button(state.splitExitListsStatus.isLoading ? "更新中…" : "更新名单") {
+                Button(state.splitExitListsStatus.isLoading ? LocalizedStringKey("更新中…") : LocalizedStringKey("更新名单")) {
                     Task { await state.refreshSplitExitLists(force: true) }
                 }
                 .buttonStyle(.borderless)
@@ -334,7 +344,7 @@ public struct SettingsView: View {
     /// 中继在不在听（127.0.0.1:10808）。不做任何特权操作。
     private func refreshGuardStatus() {
         var s = GuardStatus()
-        let base = "/Library/Application Support/qingzhou-guard"
+        let base = Self.guardBase
         let fm = FileManager.default
         s.installed = fm.fileExists(atPath: base + "/qingzhou-relay")
             && fm.fileExists(atPath: "/Library/LaunchDaemons/com.sbraveyoung.qingzhou.guard.plist")
@@ -360,7 +370,7 @@ public struct SettingsView: View {
         return r == 0
     }
 
-    private func statusRow(_ title: String, ok: Bool) -> some View {
+    private func statusRow(_ title: LocalizedStringKey, ok: Bool) -> some View {
         HStack {
             Image(systemName: ok ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(ok ? Color.green : Color.secondary)
@@ -369,7 +379,7 @@ public struct SettingsView: View {
         }
     }
 
-    private func commandRow(_ title: String, cmd: String, danger: Bool) -> some View {
+    private func commandRow(_ title: LocalizedStringKey, cmd: String, danger: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption).fontWeight(.medium)
             Text(cmd)
@@ -387,27 +397,23 @@ public struct SettingsView: View {
     }
 
     private func copyGuardCommand(_ cmd: String) {
-        #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(cmd, forType: .string)
-        #else
-        UIPasteboard.general.string = cmd
-        #endif
     }
 
     private static let guardBase = "/Library/Application Support/qingzhou-guard"
 
     private var guardInstallCommand: String {
-        "sudo sh \"/Library/Application Support/qingzhou-guard/install.sh\""
+        "sudo sh Tools/qingzhou-guard/install.sh"
     }
     private var guardEnableCommand: String {
-        "sudo sh \"/Library/Application Support/qingzhou-guard/enable.sh\""
+        "sudo sh \"\(Self.guardBase)/enable.sh\""
     }
     private var guardOffCommand: String {
-        "sudo sh \"/Library/Application Support/qingzhou-guard/off.sh\""
+        "sudo sh \"\(Self.guardBase)/off.sh\""
     }
     private var guardUninstallCommand: String {
-        "sudo sh \"/Library/Application Support/qingzhou-guard/uninstall.sh\""
+        "sudo sh \"\(Self.guardBase)/uninstall.sh\""
     }
 
     private var splitExitListsText: String {
@@ -428,7 +434,7 @@ public struct SettingsView: View {
     /// 节点下拉：`nil` 表示未选。列表用 `id` 作 tag，重名节点也不会串。
     private func nodePicker(title: LocalizedStringKey,
                             selected: UUID?,
-                            set: @escaping @Sendable (UUID?) -> Void) -> some View {
+                            set: @escaping @MainActor (UUID?) -> Void) -> some View {
         Picker(title, selection: Binding(get: { selected }, set: set)) {
             Text("未选择").tag(UUID?.none)
             ForEach(state.splitExitCandidates) { node in
@@ -436,6 +442,7 @@ public struct SettingsView: View {
             }
         }
     }
+    #endif
 
     /// QUIC 运行态 → 状态行文案。状态推导在 QingzhouCore（纯函数、有单测），这里只做文案映射。
     static func quicStatusText(_ status: QUICRuntimeStatus) -> String {
@@ -735,7 +742,7 @@ public struct SettingsView: View {
             autoConnectRows
             // 「来源 App 标注」入口暂时隐藏（功能搁置，见 FeatureFlags.sourceAppLabeling）。
             if FeatureFlags.sourceAppLabeling {
-                Button(filterEnabled ? "关闭来源 App 标注" : "启用来源 App 标注") {
+                Button(filterEnabled ? LocalizedStringKey("关闭来源 App 标注") : LocalizedStringKey("启用来源 App 标注")) {
                     ContentFilterManager.shared.onNeedsApproval = {
                         state.showToast(L("请到「系统设置 → 通用 → 登录项与扩展 → 网络扩展」批准轻舟"))
                     }

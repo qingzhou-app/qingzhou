@@ -1,6 +1,7 @@
 import SwiftUI
 import QingzhouCore
 
+#if os(macOS)
 /// 查看「分流方案」用的国内名单（Loyalsoldier direct.txt / cncidr.txt）实际内容。
 ///
 /// 为什么要给界面看：这份名单是每天从外网拉的、注入进 xray 规则里的，
@@ -9,6 +10,7 @@ import QingzhouCore
 struct SplitExitListsView: View {
     let lists: SplitExitLists
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     private enum Kind: String, CaseIterable, Identifiable {
         case domains, keywords, cidrs
@@ -46,7 +48,7 @@ struct SplitExitListsView: View {
                 Section {
                     if let at = lists.fetchedAt {
                         LabeledContent("更新时间",
-                                       value: at.formatted(date: .numeric, time: .shortened))
+                                       value: at.formatted(Date.FormatStyle(date: .numeric, time: .shortened).locale(locale)))
                     }
                     ForEach(lists.sources, id: \.self) { src in
                         Text(src)
@@ -56,9 +58,9 @@ struct SplitExitListsView: View {
                     }
                     if lists.sourceDomainCount > 0 {
                         LabeledContent("域名",
-                                       value: "\(lists.domains.count) / 源 \(lists.sourceDomainCount)")
+                                       value: L("\(lists.domains.count) / 源 \(lists.sourceDomainCount)"))
                         LabeledContent("网段",
-                                       value: "\(lists.cidrs.count) / 源 \(lists.sourceCIDRCount)")
+                                       value: L("\(lists.cidrs.count) / 源 \(lists.sourceCIDRCount)"))
                     }
                 } header: {
                     Text("来源")
@@ -78,7 +80,7 @@ struct SplitExitListsView: View {
 
                 Section {
                     if items.isEmpty {
-                        Text(allItems.isEmpty ? "这一类是空的" : "无匹配")
+                        Text(allItems.isEmpty ? LocalizedStringKey("这一类是空的") : LocalizedStringKey("无匹配"))
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         ForEach(items.prefix(limit), id: \.self) { entry in
@@ -105,9 +107,6 @@ struct SplitExitListsView: View {
             .searchable(text: $query, prompt: "搜索条目")
             .onChange(of: query) { _, _ in limit = 200 }
             .navigationTitle("国内名单")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
@@ -116,3 +115,4 @@ struct SplitExitListsView: View {
         }
     }
 }
+#endif

@@ -359,4 +359,30 @@ final class SplitExitPlanTests: XCTestCase {
         XCTAssertNil(sockopt["domainStrategy"], "ForceIP 会把假 IP 塞进 CONNECT，必须去掉")
         XCTAssertNil(sockopt["happyEyeballs"], "经过 SOCKS5 中继的拨号没有 Happy Eyeballs 的意义")
     }
+
+    // MARK: - blockQUIC
+
+    func testBlockQUICTrueEmitsUDP443RejectRule() throws {
+        let exit = node("住宅", .socks5, host: "203.0.113.9", port: 1080, password: "p", params: ["username": "u"])
+        let hop = node("HK-01", .trojan, host: "hk.example.com", port: 443, password: "pw")
+        let plan = SplitExitPlan(exitNode: exit, hopNode: hop, blockQUIC: true)
+        let rules = try XCTUnwrap(plan.routing()["rules"] as? [[String: Any]])
+        XCTAssertTrue(rules.contains {
+            ($0["network"] as? String) == "udp"
+                && ($0["port"] as? Int) == 443
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.reject
+        })
+    }
+
+    func testBlockQUICFalseOmitsUDP443RejectRule() throws {
+        let exit = node("住宅", .socks5, host: "203.0.113.9", port: 1080, password: "p", params: ["username": "u"])
+        let hop = node("HK-01", .trojan, host: "hk.example.com", port: 443, password: "pw")
+        let plan = SplitExitPlan(exitNode: exit, hopNode: hop, blockQUIC: false)
+        let rules = try XCTUnwrap(plan.routing()["rules"] as? [[String: Any]])
+        XCTAssertFalse(rules.contains {
+            ($0["network"] as? String) == "udp"
+                && ($0["port"] as? Int) == 443
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.reject
+        })
+    }
 }

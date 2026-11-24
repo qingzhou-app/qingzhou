@@ -487,10 +487,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     /// 读主 App 更新好的国内名单（direct.txt / cncidr.txt）。
     ///
-    /// 为什么要限量：iOS 给 NE 扩展 50 MiB 的 jetsam 硬上限，几万条域名全塞进
-    /// routing 规则会实打实吃掉几 MB 常驻内存（Go 侧数组 + 字符串头）。这里按
-    /// 「保留前 N 条」截断并打日志 —— 名单本身按域名热度排过序，前 N 条覆盖绝大多数流量；
-    /// 剩下的仍由 `geosite:cn` / `geoip:cn` 兜。真机上量过内存再决定要不要放开。
+    /// 主 App 写入 `split-exit-lists.json` 时已由 `SplitExitListsUpdater` 按内存预算
+    /// （`SplitExitListsLimits`）完成采样裁剪，扩展侧直接全量加载即可，不再重复截断；
+    /// 未入表的国内域名/IP 仍由内置 `geosite:cn` / `geoip:cn` 兜底。
     private func loadSplitExitLists() -> SplitExitPlan.Lists {
         guard let dir = TunnelAppGroup.ensureWorkingDirectory() else {
             os_log("split-exit: App Group 不可用 → 名单只用 geosite/geoip", log: log, type: .error)
@@ -502,24 +501,24 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             os_log("split-exit: 未找到名单文件 → 名单只用 geosite/geoip", log: log, type: .default)
             return .init()
         }
-        let domains = Array(lists.domains.prefix(SplitExitListsLimits.domains))
-        let keywords = Array(lists.domainKeywords.prefix(SplitExitListsLimits.keywords))
-        let cidrs = Array(lists.cidrs.prefix(SplitExitListsLimits.cidrs))
-        if domains.count < lists.domains.count || cidrs.count < lists.cidrs.count {
-            os_log("split-exit: 名单已截断 domains=%d/%d cidrs=%d/%d（NE 内存预算）",
-                   log: log, type: .default,
-                   domains.count, lists.domains.count, cidrs.count, lists.cidrs.count)
-        }
-        return .init(cnDomains: domains, cnDomainKeywords: keywords, cnCIDRs: cidrs)
+        os_log("split-exit: 已加载名单 domains=%d keywords=%d cidrs=%d",
+               log: log, type: .default,
+               lists.domains.count, lists.domainKeywords.count, lists.cidrs.count)
+        return .init(cnDomains: lists.domains,
+                     cnDomainKeywords: lists.domainKeywords,
+                     cnCIDRs: lists.cidrs)
     }
 
     /// 用分流方案生成完整 xray 配置。TUN 接口名与 access log 与老路径一致，
     /// 这样连接页、流量统计、域名账本都不用改。
+    /// 注：TUN 仍接管 IPv6 默认路由（`NEIPv6Settings` `fd00:c0de::1`）以防真实网络泄漏，
+    /// 而 `SplitExitPlan` 刻意使用 `UseIPv4` + 单一 IPv4 FakeDNS 池（见 `SplitExitPlan.dns()` 注释）。
     private func composeSplitExit(_ nodes: SplitExitNodes,
                                   accessLogPath: String?,
                                   tunInterfaceName: String) throws -> String {
         let plan = SplitExitPlan(exitNode: nodes.exit, hopNode: nodes.hop,
                                  lists: loadSplitExitLists(),
+                                 blockQUIC: self.blockQUIC,
                                  relay: guardRelay.withLock { $0 })
         return try plan.composeJSON(
             accessLogPath: accessLogPath,

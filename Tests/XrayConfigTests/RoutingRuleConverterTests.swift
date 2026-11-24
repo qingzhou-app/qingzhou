@@ -159,7 +159,7 @@ final class RoutingRuleConverterTests: XCTestCase {
         XCTAssertEqual(out[0]["domain"] as? [String], ["domain:a.com"], "同段内完全重复的条目去重")
     }
 
-    // MARK: - 跳过不支持 / 畸形
+    // MARK: - 跳过不支持 / 畸形 & 显式诊断
 
     func testUnsupportedTypesSkipped() {
         let out = RoutingRuleConverter.xrayRules(from: [
@@ -168,6 +168,34 @@ final class RoutingRuleConverterTests: XCTestCase {
             Rule(type: .final, value: "", target: .direct)
         ])
         XCTAssertTrue(out.isEmpty, "PROCESS-NAME / USER-AGENT / FINAL 不产出字段规则")
+    }
+
+    func testDiagnosticsExplicitlyFlagProcessNameUserAgentNoResolveAndUnsupportedGeo() {
+        let pRule = Rule(type: .processName, value: "Telegram", target: .proxy)
+        let uaRule = Rule(type: .userAgent, value: "MyApp/*", target: .direct)
+        let cidrNoResolve = Rule(type: .ipCIDR, value: "10.0.0.0/8", target: .direct, noResolve: true)
+        let missingGeoIP = Rule(type: .geoip, value: "US", target: .proxy)
+        let badGeoSite = Rule(type: .geoSite, value: "not-a-category", target: .proxy)
+        let finalRule = Rule(type: .final, value: "", target: .direct)
+
+        let result = RoutingRuleConverter.xrayRulesWithDiagnostics(
+            from: [pRule, uaRule, cidrNoResolve, missingGeoIP, badGeoSite, finalRule],
+            hasFullGeoIP: false
+        )
+
+        XCTAssertEqual(result.rules.count, 1)
+        XCTAssertEqual(result.rules[0]["ip"] as? [String], ["10.0.0.0/8"])
+        XCTAssertEqual(result.finalOutboundTag, "direct")
+
+        let kinds = Set(result.diagnostics.map(\.kind))
+        XCTAssertTrue(kinds.contains(.unsupportedProcessName))
+        XCTAssertTrue(kinds.contains(.unsupportedUserAgent))
+        XCTAssertTrue(kinds.contains(.noResolveGlobalDomainStrategyCaveat))
+        XCTAssertTrue(kinds.contains(.missingFullGeoIP))
+        XCTAssertTrue(kinds.contains(.unsupportedGeoSite))
+        XCTAssertEqual(result.diagnostics.count, 5, "FINAL 不算错误诊断，其余 5 条均应有显式诊断")
+        XCTAssertEqual(result.diagnostics.first { $0.ruleID == cidrNoResolve.id }?.ruleLine,
+                       "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve")
     }
 
     func testMalformedValuesSkipped() {

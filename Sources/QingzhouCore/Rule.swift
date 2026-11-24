@@ -31,26 +31,55 @@ public struct Rule: Codable, Sendable, Hashable, Identifiable {
     public var value: String
     public var target: RuleTarget
     public var comment: String?
+    /// Surge / Clash 风格的 `,no-resolve` 标记（IP / GEOIP 规则不触发前置 DNS 解析）。
+    public var noResolve: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, value, target, comment, noResolve
+    }
 
     public init(
         id: UUID = UUID(),
         type: RuleType,
         value: String,
         target: RuleTarget,
-        comment: String? = nil
+        comment: String? = nil,
+        noResolve: Bool = false
     ) {
         self.id = id
         self.type = type
         self.value = value
         self.target = target
         self.comment = comment
+        self.noResolve = noResolve
     }
 
-    /// 规则源文本形式，例如 `DOMAIN-SUFFIX,google.com,PROXY`。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.type = try c.decode(RuleType.self, forKey: .type)
+        self.value = try c.decode(String.self, forKey: .value)
+        self.target = try c.decode(RuleTarget.self, forKey: .target)
+        self.comment = try c.decodeIfPresent(String.self, forKey: .comment)
+        self.noResolve = try c.decodeIfPresent(Bool.self, forKey: .noResolve) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(type, forKey: .type)
+        try c.encode(value, forKey: .value)
+        try c.encode(target, forKey: .target)
+        try c.encodeIfPresent(comment, forKey: .comment)
+        try c.encode(noResolve, forKey: .noResolve)
+    }
+
+    /// 规则源文本形式，例如 `DOMAIN-SUFFIX,google.com,PROXY` 或 `IP-CIDR,10.0.0.0/8,DIRECT,no-resolve`。
     public var lineForm: String {
         if type == .final {
             return "\(type.rawValue),\(target.rawValue)"
         }
-        return "\(type.rawValue),\(value),\(target.rawValue)"
+        let base = "\(type.rawValue),\(value),\(target.rawValue)"
+        return noResolve ? "\(base),no-resolve" : base
     }
 }

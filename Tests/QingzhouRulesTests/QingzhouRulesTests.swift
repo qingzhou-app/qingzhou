@@ -67,13 +67,67 @@ final class QingzhouRulesTests: XCTestCase {
         XCTAssertEqual(r.type, .final)
         XCTAssertEqual(r.target, .direct)
         XCTAssertEqual(r.value, "")
+        XCTAssertNil(r.comment)
+    }
+
+    func testParseFinalWithCommaSeparatedInlineHashComment() throws {
+        let r1 = try RuleParser.parseLine("FINAL,PROXY # a, b")
+        XCTAssertEqual(r1.type, .final)
+        XCTAssertEqual(r1.target, .proxy)
+        XCTAssertEqual(r1.value, "")
+        XCTAssertEqual(r1.comment, "a, b")
+        XCTAssertEqual(r1.lineForm, "FINAL,PROXY")
+
+        let r2 = try RuleParser.parseLine("FINAL,DIRECT # fallback, region: us")
+        XCTAssertEqual(r2.target, .direct)
+        XCTAssertEqual(r2.comment, "fallback, region: us")
+
+        let r3 = try RuleParser.parseLine("FINAL,REJECT #")
+        XCTAssertEqual(r3.target, .reject)
+        XCTAssertNil(r3.comment)
     }
 
     func testParseCIDRWithFlag() throws {
         let r = try RuleParser.parseLine("IP-CIDR,10.0.0.0/8,DIRECT,no-resolve")
         XCTAssertEqual(r.type, .ipCIDR)
         XCTAssertEqual(r.value, "10.0.0.0/8")
-        XCTAssertEqual(r.comment, "no-resolve")
+        XCTAssertTrue(r.noResolve)
+        XCTAssertNil(r.comment)
+        XCTAssertEqual(r.lineForm, "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve")
+    }
+
+    func testParseNoResolveCaseInsensitiveAndWithComment() throws {
+        let upper = try RuleParser.parseLine("IP-CIDR,192.168.0.0/16,DIRECT,NO-RESOLVE")
+        XCTAssertTrue(upper.noResolve)
+        XCTAssertNil(upper.comment)
+        XCTAssertEqual(upper.lineForm, "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve")
+
+        let mixedWithHash = try RuleParser.parseLine("GEOIP,CN,DIRECT,No-Resolve # china ip")
+        XCTAssertTrue(mixedWithHash.noResolve)
+        XCTAssertEqual(mixedWithHash.comment, "china ip")
+        XCTAssertEqual(mixedWithHash.lineForm, "GEOIP,CN,DIRECT,no-resolve")
+
+        let extraPart = try RuleParser.parseLine("IP-CIDR6,fc00::/7,DIRECT,lan-v6,no-resolve")
+        XCTAssertTrue(extraPart.noResolve)
+        XCTAssertEqual(extraPart.comment, "lan-v6")
+        XCTAssertEqual(extraPart.lineForm, "IP-CIDR6,fc00::/7,DIRECT,no-resolve")
+    }
+
+    func testRuleBackwardCompatibleJSONDecodeWithoutNoResolve() throws {
+        let legacyJSON = """
+        {"id":"00000000-0000-0000-0000-000000000001","type":"IP-CIDR","value":"10.0.0.0/8","target":"DIRECT","comment":"legacy"}
+        """
+        let decoded = try JSONDecoder().decode(Rule.self, from: Data(legacyJSON.utf8))
+        XCTAssertFalse(decoded.noResolve)
+        XCTAssertEqual(decoded.comment, "legacy")
+        XCTAssertEqual(decoded.lineForm, "IP-CIDR,10.0.0.0/8,DIRECT")
+
+        let roundTrip = try JSONDecoder().decode(
+            Rule.self,
+            from: try JSONEncoder().encode(Rule(type: .ipCIDR, value: "10.0.0.0/8", target: .direct, noResolve: true))
+        )
+        XCTAssertTrue(roundTrip.noResolve)
+        XCTAssertEqual(roundTrip.lineForm, "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve")
     }
 
     func testParseRejectsUnknownType() {

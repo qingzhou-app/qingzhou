@@ -1,30 +1,438 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
-    "VPN 未连接，显示最近一次会话。": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "VPN is disconnected. Showing the most recent session."}}}},
-    "本次": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Session"}}}, "extractionState": "manual"},
-    "日度": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Daily"}}}, "extractionState": "manual"},
-    "月度": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Monthly"}}}, "extractionState": "manual"},
-    "统计周期": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Period"}}}, "extractionState": "manual"},
-    "日期": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Date"}}}, "extractionState": "manual"},
-    "域名流量分析": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Domain Traffic"}}}, "extractionState": "manual"},
-    "直连 · 无需节点": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Direct · No node required"}}}, "extractionState": "manual"},
-    "直连 IP": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Direct IP"}}}, "extractionState": "manual"},
-    "当前周期暂无流量记录": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "No traffic recorded for this period"}}}, "extractionState": "manual"},
-    "开启 VPN 后开始记录本次流量；重新开启隧道会开始新一轮，重开主 App 不清零。": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Start VPN to record this session. Restarting the tunnel begins a new session; reopening the app does not reset it."}}}, "extractionState": "manual"},
-    "从此版本开始记录日度流量，无法从月度总量补回历史每日用量。": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Daily traffic is recorded from this version onward. Historical daily usage cannot be reconstructed from monthly totals."}}}, "extractionState": "manual"},
-    "本次统计以 VPN 隧道会话为准。关闭再开启、模式或规则变更引发的隧道重启都会开始新一轮；仅重开主 App 不清零。": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Session totals follow the VPN tunnel. Restarting VPN, including restarts caused by mode or rule changes, begins a new session. Reopening the app does not reset it."}}}, "extractionState": "manual"},
-    "按主域名合并，日度保留最近 31 天，月度保留最近 6 个月，仅存本机，不参与云同步。无法识别域名或超出记录上限的流量仍计入总量。": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Grouped by base domain. Keeps 31 days and 6 months locally, without cloud sync. Unknown and overflow domains remain included in totals."}}}, "extractionState": "manual"},
-    "关闭主窗口仍会记录，约每 10 秒保存一次。日期和月份按保存时的本地时间划分，跨日/月附近可能有少量偏差；隧道停止时最后数秒可能尚未保存。": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Recording continues with the main window closed and saves about every 10 seconds. Days and months use local time at sampling; boundary samples may be slightly offset. The final seconds before stopping may not be saved."}}}, "extractionState": "manual"},
-    "查询失败，请重试": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Lookup failed. Try again."}}}},
-    "节点出口查询超时": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Node exit lookup timed out"}}}},
-    "节点出口查询失败": {"extractionState": "manual", "localizations": {"en": {"stringUnit": {"state": "translated", "value": "Node exit lookup failed"}}}},
+    "VPN 未连接，显示最近一次会话。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN is disconnected. Showing the most recent session."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPNは未接続です。直近のセッションを表示しています。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN 未連線，顯示最近一次工作階段。"
+          }
+        }
+      }
+    },
+    "本次": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今回"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本次"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "日度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "日次"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每日"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "月度": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monthly"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月次"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每月"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "统计周期": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Period"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "集計期間"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "統計週期"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "日期": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Date"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "日付"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "日期"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "域名流量分析": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domain Traffic"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ドメイン通信量"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網域流量分析"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "直连 · 无需节点": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct · No node required"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接接続 · ノード不要"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直連 · 無需節點"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "直连 IP": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct IP"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接IP"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直連 IP"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "当前周期暂无流量记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No traffic recorded for this period"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この期間の通信量記録はありません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前週期尚無流量記錄"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "开启 VPN 后开始记录本次流量；重新开启隧道会开始新一轮，重开主 App 不清零。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start VPN to record this session. Restarting the tunnel begins a new session; reopening the app does not reset it."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPNを開始するとこのセッションの記録が始まります。トンネルを再起動すると新しいセッションになり、アプリを再起動してもリセットされません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟 VPN 後開始記錄本次流量；重新開啟通道會開始新一輪，重開主 App 不歸零。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "从此版本开始记录日度流量，无法从月度总量补回历史每日用量。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daily traffic is recorded from this version onward. Historical daily usage cannot be reconstructed from monthly totals."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "日次通信量はこのバージョンから記録されます。月次合計から過去の日別使用量を復元することはできません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "從此版本開始記錄每日流量，無法從月度總量補回歷史每日用量。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "本次统计以 VPN 隧道会话为准。关闭再开启、模式或规则变更引发的隧道重启都会开始新一轮；仅重开主 App 不清零。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session totals follow the VPN tunnel. Restarting VPN, including restarts caused by mode or rule changes, begins a new session. Reopening the app does not reset it."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "セッション合計はVPNトンネルを基準にします。オフ・オンやモード/ルール変更による再起動で新しいセッションが始まります。アプリを再起動してもリセットされません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本次統計以 VPN 通道工作階段為準。關閉再開啟、模式或規則變更引發的通道重啟都會開始新一輪；僅重開主 App 不歸零。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "按主域名合并，日度保留最近 31 天，月度保留最近 6 个月，仅存本机，不参与云同步。无法识别域名或超出记录上限的流量仍计入总量。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grouped by base domain. Keeps 31 days and 6 months locally, without cloud sync. Unknown and overflow domains remain included in totals."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "親ドメインごとに集計し、日次は31日分、月次は6か月分を端末内にのみ保存します（iCloud同期対象外）。不明なドメインや上限超過分も合計に含まれます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "依主網域合併，每日保留最近 31 天，每月保留最近 6 個月，僅存本機，不參與雲端同步。無法識別網域或超出記錄上限的流量仍計入總量。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "关闭主窗口仍会记录，约每 10 秒保存一次。日期和月份按保存时的本地时间划分，跨日/月附近可能有少量偏差；隧道停止时最后数秒可能尚未保存。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording continues with the main window closed and saves about every 10 seconds. Days and months use local time at sampling; boundary samples may be slightly offset. The final seconds before stopping may not be saved."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メインウィンドウを閉じても記録を続け、約10秒ごとに保存します。日付と月は保存時の現地時間で区分されるため境界付近でわずかにずれる場合があり、停止直前の数秒間は保存されないことがあります。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉主視窗仍會記錄，約每 10 秒儲存一次。日期和月份依儲存時的本機時間劃分，跨日/月附近可能有少量偏差；通道停止時最後數秒可能尚未儲存。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "查询失败，请重试": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lookup failed. Try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照会に失敗しました。再試行してください"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查詢失敗，請重試"
+          }
+        }
+      }
+    },
+    "节点出口查询超时": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Node exit lookup timed out"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ノード出口の照会がタイムアウトしました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "節點出口查詢逾時"
+          }
+        }
+      }
+    },
+    "节点出口查询失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Node exit lookup failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ノード出口の照会に失敗しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "節點出口查詢失敗"
+          }
+        }
+      }
+    },
     "云端有更新，自动上传已暂停；请手动恢复或处理版本差异": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Cloud changes found. Automatic uploads are paused; restore manually or resolve the differences."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クラウドに変更があります。自動アップロードは一時停止中です。手動で復元するか差分を解決してください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "雲端有更新，自動上傳已暫停；請手動恢復或處理版本差異"
           }
         }
       }
@@ -36,6 +444,18 @@
             "state": "translated",
             "value": "Restore prompts never appear automatically. Use the button above to choose a cloud version. When versions differ, automatic uploads pause to preserve both copies."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "復元プロンプトは自動表示されません。復元するには上のボタンからクラウド版を選択してください。差分がある場合は両方を保護するため自動アップロードを一時停止します。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不會自動彈出恢復提示。需要恢復時，請點上方按鈕選擇雲端版本；出現版本差異時會暫停自動上傳，保留兩邊設定。"
+          }
         }
       }
     },
@@ -45,6 +465,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Recording has not updated recently. These totals may exclude recent traffic."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記録が最近更新されていません。現在の数値には直近の通信量が含まれていない可能性があります。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記錄暫未更新，目前數字可能不包含最近的流量。"
           }
         }
       }
@@ -56,6 +488,18 @@
             "state": "translated",
             "value": "Monthly Domain Traffic"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月次ドメイン通信量"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月度網域流量"
+          }
         }
       }
     },
@@ -65,6 +509,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unidentified domains"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不明なドメイン"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未識別網域"
           }
         }
       }
@@ -76,6 +532,18 @@
             "state": "translated",
             "value": "Other domains (record limit reached)"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その他のドメイン（記録上限到達）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他網域（超出記錄上限）"
+          }
         }
       }
     },
@@ -85,6 +553,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Month"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月份"
           }
         }
       }
@@ -96,6 +576,18 @@
             "state": "translated",
             "value": "Traffic scope"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "集計対象"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "流量範圍"
+          }
         }
       }
     },
@@ -105,6 +597,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Total traffic"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "合計通信量"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "總流量"
           }
         }
       }
@@ -116,6 +620,18 @@
             "state": "translated",
             "value": "Upload"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アップロード"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上傳"
+          }
         }
       }
     },
@@ -125,6 +641,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Download"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダウンロード"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下載"
           }
         }
       }
@@ -136,6 +664,18 @@
             "state": "translated",
             "value": "Only traffic through Qingzhou on this device is counted. Search does not change the totals above."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このデバイスでQingzhouを経由した通信量のみを集計します。検索しても上の合計は変わりません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅統計這台裝置經過輕舟的流量；搜尋不改變上方總量。"
+          }
         }
       }
     },
@@ -145,6 +685,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "The traffic history cannot be read right now. The original file is preserved; the data below may be from the last successful read."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通信量履歴を読み込めませんでした。元のファイルは保持されており、以下は前回読み込み時のデータの可能性があります。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "統計檔案暫時無法讀取，已保留原檔案；下方可能是上次讀取的資料。"
           }
         }
       }
@@ -156,6 +708,18 @@
             "state": "translated",
             "value": "No traffic history for this month"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この月の通信量記録はまだありません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這個月還沒有流量記錄"
+          }
         }
       }
     },
@@ -165,6 +729,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Recording starts after installing this version and restarting the VPN. Earlier domain traffic cannot be recovered."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このバージョンをインストールしてVPNを再起動すると記録が始まります。それ以前のドメイン通信量は復元できません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安裝此版本並重新開啟 VPN 後開始記錄，無法補回此前的網域流量。"
           }
         }
       }
@@ -176,6 +752,18 @@
             "state": "translated",
             "value": "No traffic recorded in this scope yet."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この範囲ではまだ通信量が記録されていません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前範圍尚未記錄到流量。"
+          }
         }
       }
     },
@@ -185,6 +773,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "No matching domains."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致するドメインがありません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有符合的網域。"
           }
         }
       }
@@ -196,6 +796,18 @@
             "state": "translated",
             "value": "Traffic by domain"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ドメイン別通信量"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網域流量排行"
+          }
         }
       }
     },
@@ -205,6 +817,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Coverage and billing differences"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記録範囲と課金の差異"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記錄範圍與計費差異"
           }
         }
       }
@@ -216,6 +840,18 @@
             "state": "translated",
             "value": "First recorded"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記録開始"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開始記錄"
+          }
         }
       }
     },
@@ -225,6 +861,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Last updated"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最終更新"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近更新"
           }
         }
       }
@@ -236,6 +884,18 @@
             "state": "translated",
             "value": "Recording time zone"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記録タイムゾーン"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "歸檔時區"
+          }
         }
       }
     },
@@ -245,6 +905,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Traffic is grouped by parent domain and kept locally for 6 months, without cloud sync. Unidentified domains and traffic beyond the record limit still count toward the totals."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通信量は親ドメインごとに集計し、端末内に6か月間保存します（iCloud同期対象外）。不明なドメインや上限超過分も合計に含まれます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "依主網域合併，保留最近 6 個月，僅存本機，不參與雲端同步。無法識別網域或超出記錄上限的流量仍計入總量。"
           }
         }
       }
@@ -256,6 +928,18 @@
             "state": "translated",
             "value": "Recording continues with the main window closed and saves about every 10 seconds. Months follow local time at each save, so traffic near a month boundary may be slightly shifted. The final few seconds may be lost when the tunnel stops."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メインウィンドウを閉じても記録を続け、約10秒ごとに保存します。月は保存時の現地時間で区分されるため月末付近でわずかにずれる場合があり、停止直前の数秒間は保存されないことがあります。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉主視窗仍會記錄，約每 10 秒儲存一次。月份依儲存時的本機時間劃分，跨月附近可能有少量偏差；通道停止時最後數秒可能尚未儲存。"
+          }
         }
       }
     },
@@ -265,6 +949,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "These application payload totals are not your subscription bill. Node multipliers, encryption overhead, retransmissions and other devices may increase billed usage. Traffic outside Qingzhou is not included."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここはアプリケーションのペイロード集計であり、サブスクリプションの請求量とは異なります。ノード倍率、暗号化オーバーヘッド、再送、他デバイスの利用分により請求量は多くなる場合があり、Qingzhouを通らない通信は含まれません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這裡統計應用載荷，不等於訂閱帳單。節點倍率、加密封裝、重傳和其他裝置的用量，可能讓帳單更高；沒有經過輕舟的流量不在這裡。"
           }
         }
       }
@@ -277,6 +973,18 @@
             "state": "translated",
             "value": "Connection diagnostics"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続診断"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線診斷"
+          }
         }
       }
     },
@@ -287,6 +995,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Direct TCP"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接TCP"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP 直連"
           }
         }
       }
@@ -299,6 +1019,18 @@
             "state": "translated",
             "value": "Proxy request"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロキシ経路"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "真實代理鏈路"
+          }
         }
       }
     },
@@ -309,6 +1041,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copy sanitized diagnostic report"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匿名化診断レポートをコピー"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製去識別化診斷報告"
           }
         }
       }
@@ -321,6 +1065,18 @@
             "state": "translated",
             "value": "Run connection diagnostics"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続診断を実行"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "執行連線診斷"
+          }
         }
       }
     },
@@ -331,6 +1087,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cancel diagnostics"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断をキャンセル"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消診斷"
           }
         }
       }
@@ -343,6 +1111,18 @@
             "state": "translated",
             "value": "Diagnostics are no longer current. Save any node changes, then run again."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診断結果は古くなっています。ノードの変更を保存してから再実行してください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "診斷已失效，請重新執行。未儲存的節點修改請先儲存。"
+          }
         }
       }
     },
@@ -353,6 +1133,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tests direct connectivity and proxy requests separately without switching the current node. Reports omit node names, addresses, credentials, and subscription links."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のノードを切り替えずに直接接続とプロキシ経由の通信を個別に確認します。レポートにノード名、アドレス、認証情報、サブスクリプションURLは含まれません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分別檢查直連與真實代理，不切換目前節點。報告不含節點名稱、位址、憑證或訂閱連結。"
           }
         }
       }
@@ -365,6 +1157,18 @@
             "state": "translated",
             "value": "TCP handshakes do not apply to this UDP protocol"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このUDPプロトコルにはTCPハンドシェイクが適用されません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "UDP 協定不適用 TCP 交握"
+          }
         }
       }
     },
@@ -375,6 +1179,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "DNS returned a synthetic address; direct TCP was not attempted"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仮想アドレスが返されたため直接TCPは試行しませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解析得到虛擬位址，未執行直連"
           }
         }
       }
@@ -387,6 +1203,18 @@
             "state": "translated",
             "value": "System DNS did not return a usable address"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システムDNSが使用可能なアドレスを返しませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系統 DNS 未傳回可用位址"
+          }
         }
       }
     },
@@ -397,6 +1225,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Direct network is unavailable"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接ネットワークを利用できません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直連網路暫不可用"
           }
         }
       }
@@ -409,6 +1249,18 @@
             "state": "translated",
             "value": "TCP handshake timed out"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCPハンドシェイクがタイムアウトしました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP 交握逾時"
+          }
         }
       }
     },
@@ -419,6 +1271,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "TCP connection refused"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP接続が拒否されました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP 連線被拒絕"
           }
         }
       }
@@ -431,6 +1295,18 @@
             "state": "translated",
             "value": "Invalid node address or port"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ノードのアドレスまたはポートが無効です"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "節點位址或連接埠無效"
+          }
         }
       }
     },
@@ -441,6 +1317,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "TCP connection did not complete"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP接続が完了しませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TCP 連線未完成"
           }
         }
       }
@@ -453,6 +1341,18 @@
             "state": "translated",
             "value": "Node configuration failed core validation"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ノード設定がコア検証に通りませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "節點設定未通過核心校驗"
+          }
         }
       }
     },
@@ -463,6 +1363,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Proxy request failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロキシリクエストに失敗しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理鏈路測試失敗"
           }
         }
       }
@@ -475,6 +1387,18 @@
             "state": "translated",
             "value": "Proxy testing is unavailable; try again later"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロキシテストは現在利用できません。しばらくしてから再試行してください"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理測試暫不可用，請稍後重試"
+          }
         }
       }
     },
@@ -485,6 +1409,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not tested; connect the VPN first"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未テストです。先にVPNに接続してください"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未測試，請先連線 VPN"
           }
         }
       }
@@ -497,6 +1433,18 @@
             "state": "translated",
             "value": "The proxy request succeeded. This result applies only to this network and test target."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロキシリクエストに成功しました。この結果は現在のネットワークとテスト対象にのみ当てはまります。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本次節點代理請求成功。結果僅代表目前網路和測試目標。"
+          }
         }
       }
     },
@@ -507,6 +1455,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Check node credentials, transport settings, and the test target. TCP connectivity does not prove proxy usability."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ノードの認証情報、トランスポート設定、テスト対象を確認してください。TCP接続の成功はプロキシの疎通を保証しません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請檢查節點憑證、傳輸設定及測試目標；TCP 連通不能證明代理可用。"
           }
         }
       }
@@ -519,6 +1479,18 @@
             "state": "translated",
             "value": "Only direct connectivity was tested. Connect the VPN to verify a real proxy request."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接接続のみテスト済みです。VPNに接続すると実際のプロキシ経路を確認できます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前只有直連結果，連線 VPN 後可繼續驗證真實代理鏈路。"
+          }
         }
       }
     },
@@ -529,6 +1501,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "No valid proxy result was obtained. This does not establish a node failure."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有効なプロキシ結果を得られませんでした。これだけではノード障害とは断定できません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本次未獲得有效代理結果，不能據此判斷節點故障。"
           }
         }
       }
@@ -541,6 +1525,18 @@
             "state": "translated",
             "value": "Automatically select by region preference and overall score. Normal switches require a lead in two consecutive rounds. Turn this off to keep your manual selection."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オンにすると優先地域と総合スコアで自動選択します。通常の切り替えには2回連続で上回る必要があります。手動選択を保つ場合はオフにしてください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟後依地區偏好與綜合評分自動擇優。正常切換需連續兩輪領先；若希望保留手選節點，請關閉自動擇優。"
+          }
         }
       }
     },
@@ -551,6 +1547,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "While the VPN is running, each round tests up to 6 candidates through their proxies, with up to 2 additional checks. Candidates include the current node, eligible TCP nodes, and UDP nodes. If availability is not confirmed, the current selection is kept. Automatic latency testing still measures direct connections only. Turning this off clears proxy latency measurements."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN接続中、各ラウンドで最大6つの候補をプロキシ経由で実測し、最大2回の追加確認を行います（現在のノード、利用可能なTCP候補、UDPノードを含む）。疎通が確認できない場合は現在の選択を維持します。自動速度測定は直接接続のみを計測し、このスイッチをオフにするとプロキシ遅延記録は消去されます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN 執行中，每輪最多對 6 個候選做真實代理測量，並可額外複核 2 次；包含目前節點、可用 TCP 候選及 UDP 節點。未確認可用時保留目前選擇。自動測速仍只測直連，關閉本開關會清空經代理延遲。"
           }
         }
       }
@@ -563,6 +1571,18 @@
             "state": "translated",
             "value": "Scores combine latency, stability, recent download observations, and cost. Speed favors latency, Balanced considers all four, and Saver favors lower traffic multipliers. Changes apply in the next selection round."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "遅延、安定性、最近のダウンロード観測、コストから総合評価します。速度優先は遅延を重視、バランスは4項目を均等考慮、節約は低倍率を重視します。変更は次の選択ラウンドから反映されます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "依延遲、穩定性、近期下載觀測與成本綜合評分。速度優先更看重延遲；均衡兼顧四項；省流量更看重低倍率。改選下輪擇優生效。"
+          }
         }
       }
     },
@@ -573,6 +1593,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "None (use overall score)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "なし（総合スコア順）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無（依綜合評分）"
           }
         }
       }
@@ -585,6 +1617,18 @@
             "state": "translated",
             "value": "When the preferred region has eligible candidates, select within that region by overall score. Otherwise, select from all eligible candidates."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "優先地域に条件を満たす候補がある場合はその地域内で総合スコアにより選択し、ない場合は全候補から選択します。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "優先地區有符合條件的候選時，在該地區內依綜合評分選擇；否則在所有符合條件的候選中選擇。"
+          }
         }
       }
     },
@@ -595,6 +1639,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld nodes; turn on to exclude this region"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 個のノード；オンにするとこの地域を除外します"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 個節點；開啟後排除此地區"
           }
         }
       }
@@ -607,6 +1663,18 @@
             "state": "translated",
             "value": "Automatic testing checks up to 24 configurations per round; reused %1$lld recent results, with %2$lld configurations left for later rounds"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動測定は1ラウンド最大24件の設定を確認します。直近の結果 %1$lld 件を再利用し、残り %2$lld 件を次回以降へ回します"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動測速每輪最多 24 組設定；複用近期結果 %1$lld 組，餘下 %2$lld 組留待後續輪替"
+          }
         }
       }
     },
@@ -617,6 +1685,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "The network path changed; previous measurements from this round were discarded"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネットワーク経路が変更されたため、このラウンドの古い測定結果は破棄されました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網路路徑已變化，本輪舊測量已作廢"
           }
         }
       }
@@ -629,6 +1709,18 @@
             "state": "translated",
             "value": "Recent download observation"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近のダウンロード観測"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近期下載觀測"
+          }
         }
       }
     },
@@ -639,6 +1731,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Shortlisted %1$lld candidates, including %2$lld rotating candidates; up to 6 candidates and 2 confirmation probes"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このラウンドで %1$lld 件の候補を選出（ローテーション探索 %2$lld 件含む）；最大6候補・2回確認"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪精選 %1$lld 個候選，含輪替探索 %2$lld 個；最多 6 個候選及 2 次複核"
           }
         }
       }
@@ -651,6 +1755,18 @@
             "state": "translated",
             "value": "Proxy downloads attributable to this node in the last 30 minutes, covering at least 3 minutes and filtering isolated spikes. No extra downloads; this is not the maximum link capacity."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "過去30分間でこのノードに帰属できるプロキシ経由のダウンロード観測（3分以上のデータを使用し一時的なスパイクを除外）。追加通信は行っておらず、回線の最大帯域ではありません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近 30 分鐘可歸屬到此節點的代理下載觀測，至少覆蓋 3 個分鐘，過濾孤立尖峰。未額外下載，不能視為線路最大頻寬。"
+          }
         }
       }
     },
@@ -661,6 +1777,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "End-to-end availability is unconfirmed; keeping the existing selection"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エンドツーエンドの疎通が確認できないため、現在の選択を維持しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全鏈路可用性未確認，保持原選擇"
           }
         }
       }
@@ -673,6 +1801,18 @@
             "state": "translated",
             "value": "The current node failed both checks; selected a node verified this round"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のノードが両方の確認対象に失敗したため、このラウンドで疎通確認できたノードを選択しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前節點雙目標複核失敗，已選擇本輪測通的節點"
+          }
         }
       }
     },
@@ -683,6 +1823,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "No usable refinement result; keeping the existing selection. Exit availability is unconfirmed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有効な精査結果が得られなかったため、現在の選択を維持しました。出口の疎通は未確認です。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未取得可用的精選結果，本輪保持原選擇；出口可用性尚未確認"
           }
         }
       }
@@ -695,6 +1847,18 @@
             "state": "translated",
             "value": "%lld probes were unavailable or interrupted; no node penalty was applied for these results"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 回のプローブが条件不足または中断されたため、ノードへの減点は行いませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪有 %lld 次探測條件不足或被中斷，未據此懲罰節點"
+          }
         }
       }
     },
@@ -705,6 +1869,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld node configuration conversions failed this round"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このラウンドで %lld 件のノード設定変換に失敗しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪有 %lld 次節點設定轉換失敗"
           }
         }
       }
@@ -717,6 +1893,18 @@
             "state": "translated",
             "value": "%lld additional checks; %lld nodes failed both targets with a successful control. Automatic selection is paused for 5 minutes; a successful manual retest restores eligibility."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "追加確認 %1$lld 回；対照成功がある状態で両対象に失敗したノード %2$lld 件は5分間自動選択から除外されます（手動再測定成功で即時復帰）。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "額外複核 %1$lld 次；雙目標失敗且有成功對照的節點 %2$lld 個，暫緩自動選擇 5 分鐘，手動複測成功可立即恢復"
+          }
         }
       }
     },
@@ -728,6 +1916,18 @@
             "state": "translated",
             "value": "Skipped %lld candidates in cooldown this round"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クールダウン中の %lld 件の候補はこのラウンドの測定をスキップしました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪暫緩探測 %lld 個冷卻中的候選"
+          }
         }
       }
     },
@@ -738,6 +1938,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "The primary target produced no successful results; ranking uses successful measurements to one shared backup target."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主目標で成功結果が得られなかったため、共通の予備目標での成功測定に基づき順位付けしました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主目標未取得成功結果，本輪依同一備用目標的成功測量排名"
           }
         }
       }
@@ -929,153 +2141,438 @@
     "阻断 QUIC": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Block QUIC" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "QUIC をブロック" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "阻斷 QUIC" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block QUIC"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QUIC をブロック"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "阻斷 QUIC"
+          }
+        }
       }
     },
     "改善 YouTube 等站点兼容性（默认开启）": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Improves compatibility with sites like YouTube (on by default)" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "YouTube などのサイトとの互換性を改善します（デフォルトでオン）" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "改善 YouTube 等網站相容性（預設開啟）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Improves compatibility with sites like YouTube (on by default)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "YouTube などのサイトとの互換性を改善します（デフォルトでオン）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改善 YouTube 等網站相容性（預設開啟）"
+          }
+        }
       }
     },
     "自动": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Automatic" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "自動" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "自動" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動"
+          }
+        }
       }
     },
     "强制开启": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Always on" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "常に有効" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "強制開啟" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always on"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "常に有効"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "強制開啟"
+          }
+        }
       }
     },
     "强制关闭": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Always off" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "常に無効" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "強制關閉" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always off"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "常に無効"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "強制關閉"
+          }
+        }
       }
     },
     "自动：hysteria2 节点放行并实测，其余挡 QUIC 走 TCP": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Automatic: allow and test QUIC on hysteria2 nodes; block it on others to fall back to TCP" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "自動：hysteria2 ノードでは QUIC を許可して実測し、その他はブロックして TCP にフォールバックさせます" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "自動：hysteria2 節點放行並實測，其餘阻擋 QUIC 改走 TCP" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic: allow and test QUIC on hysteria2 nodes; block it on others to fall back to TCP"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動：hysteria2 ノードでは QUIC を許可して実測し、その他はブロックして TCP にフォールバックさせます"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動：hysteria2 節點放行並實測，其餘阻擋 QUIC 改走 TCP"
+          }
+        }
       }
     },
     "当前：已阻断 QUIC（策略强制开启）": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC blocked (forced on)" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC をブロック中（強制オン）" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：已阻斷 QUIC（策略強制開啟）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now: QUIC blocked (forced on)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在：QUIC をブロック中（強制オン）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前：已阻斷 QUIC（策略強制開啟）"
+          }
+        }
       }
     },
     "当前：放行 QUIC（策略强制关闭）": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC allowed (forced off)" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC を許可中（強制オフ）" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：放行 QUIC（策略強制關閉）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now: QUIC allowed (forced off)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在：QUIC を許可中（強制オフ）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前：放行 QUIC（策略強制關閉）"
+          }
+        }
       }
     },
     "当前：已阻断 QUIC（TCP 系协议节点）": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC blocked (TCP-based node)" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC をブロック中（TCP 系ノード）" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：已阻斷 QUIC（TCP 系協定節點）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now: QUIC blocked (TCP-based node)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在：QUIC をブロック中（TCP 系ノード）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前：已阻斷 QUIC（TCP 系協定節點）"
+          }
+        }
       }
     },
     "当前：暂放行 QUIC，HTTP/3 实测中…": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC temporarily allowed — testing HTTP/3…" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC を一時許可中、HTTP/3 実測中…" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：暫放行 QUIC，HTTP/3 實測中…" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now: QUIC temporarily allowed — testing HTTP/3…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在：QUIC を一時許可中、HTTP/3 実測中…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前：暫放行 QUIC，HTTP/3 實測中…"
+          }
+        }
       }
     },
     "当前：放行 QUIC（HTTP/3 实测通过）": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC allowed (HTTP/3 test passed)" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC を許可中（HTTP/3 実測合格）" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：放行 QUIC（HTTP/3 實測通過）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now: QUIC allowed (HTTP/3 test passed)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在：QUIC を許可中（HTTP/3 実測合格）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前：放行 QUIC（HTTP/3 實測通過）"
+          }
+        }
       }
     },
     "当前：已阻断 QUIC（实测不通，已自动改挡）": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Now: QUIC blocked (test failed — auto-switched to blocking)" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "現在：QUIC をブロック中（実測で不通のため自動的にブロックへ変更）" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前：已阻斷 QUIC（實測不通，已自動改擋）" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now: QUIC blocked (test failed — auto-switched to blocking)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在：QUIC をブロック中（実測で不通のため自動的にブロックへ変更）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前：已阻斷 QUIC（實測不通，已自動改擋）"
+          }
+        }
       }
     },
     "当前节点疑似故障": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Current node may be down" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "現在のノードに障害の疑い" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前節點疑似故障" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current node may be down"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のノードに障害の疑い"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前節點疑似故障"
+          }
+        }
       }
     },
     "代理上行还在发、下行却没有回流。可一键切换到最优健康节点。": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The proxy is still sending but nothing is coming back. Switch to the best healthy node in one tap." } },
-        "ja": { "stringUnit": { "state": "translated", "value": "プロキシは送信を続けているのに、受信がありません。ワンタップで最適な正常ノードに切り替えできます。" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "代理上行還在發、下行卻沒有回流。可一鍵切換到最優健康節點。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The proxy is still sending but nothing is coming back. Switch to the best healthy node in one tap."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロキシは送信を続けているのに、受信がありません。ワンタップで最適な正常ノードに切り替えできます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理上行還在發、下行卻沒有回流。可一鍵切換到最優健康節點。"
+          }
+        }
       }
     },
     "切换到最优节点": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Switch to best node" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "最適なノードに切り替え" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "切換到最優節點" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch to best node"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最適なノードに切り替え"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切換到最優節點"
+          }
+        }
       }
     },
     "节点故障提醒": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Node failure alerts" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "ノード障害の通知" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "節點故障提醒" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Node failure alerts"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ノード障害の通知"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "節點故障提醒"
+          }
+        }
       }
     },
     "当前节点疑似故障（代理上行还在发、下行却没有回流）时发通知提醒你，首页显示一键「切换到最优节点」。开启后会请求通知权限。只提醒不自动切换，不影响正常上网。": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "When the current node appears to be down (the proxy is still sending but nothing comes back), you get a notification and a one-tap 'Switch to best node' banner on the home screen. Turning this on requests notification permission. It only alerts — it never switches automatically — and doesn't affect normal browsing." } },
-        "ja": { "stringUnit": { "state": "translated", "value": "現在のノードに障害の疑い（プロキシは送信中なのに受信がない）があるとき、通知でお知らせし、ホーム画面にワンタップの「最適なノードに切り替え」バナーを表示します。オンにすると通知の許可を求めます。通知するだけで自動切り替えはせず、通常の通信には影響しません。" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "目前節點疑似故障（代理上行還在發、下行卻沒有回流）時發通知提醒你，首頁顯示一鍵「切換到最優節點」。開啟後會請求通知權限。只提醒不自動切換，不影響正常上網。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When the current node appears to be down (the proxy is still sending but nothing comes back), you get a notification and a one-tap 'Switch to best node' banner on the home screen. Turning this on requests notification permission. It only alerts — it never switches automatically — and doesn't affect normal browsing."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のノードに障害の疑い（プロキシは送信中なのに受信がない）があるとき、通知でお知らせし、ホーム画面にワンタップの「最適なノードに切り替え」バナーを表示します。オンにすると通知の許可を求めます。通知するだけで自動切り替えはせず、通常の通信には影響しません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前節點疑似故障（代理上行還在發、下行卻沒有回流）時發通知提醒你，首頁顯示一鍵「切換到最優節點」。開啟後會請求通知權限。只提醒不自動切換，不影響正常上網。"
+          }
+        }
       }
     },
     "暂无可切换的健康节点，机场可能整体不可用": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "No healthy node to switch to — the provider may be entirely unavailable" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "切り替え可能な正常ノードがありません。プロバイダー全体が利用できない可能性があります" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "暫無可切換的健康節點，機場可能整體不可用" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No healthy node to switch to — the provider may be entirely unavailable"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切り替え可能な正常ノードがありません。プロバイダー全体が利用できない可能性があります"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暫無可切換的健康節點，機場可能整體不可用"
+          }
+        }
       }
     },
     "已切换到 %@": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Switched to %@" } },
-        "ja": { "stringUnit": { "state": "translated", "value": "%@ に切り替えました" } },
-        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已切換到 %@" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switched to %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ に切り替えました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已切換到 %@"
+          }
+        }
       }
     },
     "%@ · 峰值 %@": {
@@ -4033,6 +5530,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "VPN Status"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN ステータス"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN 狀態"
           }
         }
       }
@@ -14929,6 +16438,18 @@
             "state": "translated",
             "value": "Last selection decision"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直近の選択結果"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近一次擇優"
+          }
         }
       }
     },
@@ -14939,6 +16460,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Selected: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選択済み：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已選擇：%@"
           }
         }
       }
@@ -14951,6 +16484,18 @@
             "state": "translated",
             "value": "No new node selected"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいノードは選択されませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未選擇新節點"
+          }
         }
       }
     },
@@ -14961,6 +16506,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Keeping the current node: best overall score this round"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のノードを維持：このラウンドでも総合スコアが最良です"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保持目前節點：綜合評分仍為本輪最優"
           }
         }
       }
@@ -14973,6 +16530,18 @@
             "state": "translated",
             "value": "Keeping the current node: score advantage is too small"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のノードを維持：スコア差が小さく頻繁な切り替えを回避しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保持目前節點：候選領先不足，避免頻繁切換"
+          }
         }
       }
     },
@@ -14983,6 +16552,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Keeping the current node: candidate led for %lld/%lld rounds"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のノードを維持：候補の連続リード %1$lld/%2$lld ラウンド"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保持目前節點：候選連續領先 %1$lld/%2$lld 輪"
           }
         }
       }
@@ -14995,6 +16576,18 @@
             "state": "translated",
             "value": "No eligible measured candidate this round; no new node selected"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このラウンドで条件を満たす測定済み候補がなく、新しいノードは選択されませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪沒有合格的測量候選，未選擇新節點"
+          }
         }
       }
     },
@@ -15005,6 +16598,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Your selection changed during testing; it was preserved"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測定中に選択が変更されたため、あなたの選択を上書きしませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測量期間選擇已變化，未覆蓋你的選擇"
           }
         }
       }
@@ -15017,6 +16622,18 @@
             "state": "translated",
             "value": "The candidate configuration changed; old results were discarded"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "候補設定が変更されたため、古い測定結果は破棄されました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "候選設定已變化，本輪未採用舊結果"
+          }
         }
       }
     },
@@ -15027,6 +16644,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "This selection round was cancelled"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この選択ラウンドはキャンセルされました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪擇優已取消"
           }
         }
       }
@@ -15039,6 +16668,18 @@
             "state": "translated",
             "value": "Trigger: manual action or configuration restore"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "トリガー：手動操作または設定の復元"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "觸發方式：手動或設定恢復"
+          }
         }
       }
     },
@@ -15049,6 +16690,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Trigger: automatic schedule"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "トリガー：自動スケジュール"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "觸發方式：自動排程"
           }
         }
       }
@@ -15061,6 +16714,18 @@
             "state": "translated",
             "value": "Preferred region: %@, used this round"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "優先地域：%@（このラウンドで使用）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "優先地區：%@，本輪已採用"
+          }
         }
       }
     },
@@ -15071,6 +16736,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Preferred region: %@, no eligible candidate; using another region"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "優先地域：%@ に適格な候補がないため、他の地域を使用しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "優先地區：%@，無合格候選，使用其他地區"
           }
         }
       }
@@ -15083,6 +16760,18 @@
             "state": "translated",
             "value": "%lld nodes excluded; direct handshakes succeeded for %lld nodes and failed for %lld this round"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld ノードを除外；直接ハンドシェイク成功 %2$lld 件、失敗 %3$lld 件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有效排除 %1$lld 個節點；本輪直連交握成功 %2$lld 個、失敗 %3$lld 個"
+          }
         }
       }
     },
@@ -15093,6 +16782,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld UDP nodes lack fresh proxy measurements; they were not marked unavailable by TCP tests"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 個の UDP ノードに新しいプロキシ測定がないため、TCP テストでの利用不可判定は行いませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 個 UDP 節點缺少新鮮代理測量，未用 TCP 失敗判定它們不可用"
           }
         }
       }
@@ -15105,6 +16806,18 @@
             "state": "translated",
             "value": "Automatic switching requires a lead of at least %lld points for %lld consecutive rounds. No wait applies when the current node has no valid measurement."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動切り替えには %2$lld ラウンド連続で %1$lld 点以上の差が必要です。現在のノードに有効な測定がない場合は待機しません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動切換需綜合分領先至少 %1$lld 分，並連續 %2$lld 輪滿足；目前節點無有效測量時不等待。"
+          }
         }
       }
     },
@@ -15115,6 +16828,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "This is the decision from that round. The Home connection status shows the node actually used by the VPN."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これはそのラウンドでの選択記録です。VPNが実際に使用しているノードはホームの接続状態を確認してください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這是當輪選擇記錄。VPN 實際使用的節點以首頁連線狀態為準。"
           }
         }
       }
@@ -15127,6 +16852,18 @@
             "state": "translated",
             "value": "Selection profile: %@, usage multiplier included"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選択プロファイル：%@、倍率をスコアに含む"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "擇優偏好：%@，倍率參與評分"
+          }
         }
       }
     },
@@ -15137,6 +16874,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Selection profile: %@, usage multiplier excluded"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選択プロファイル：%@、倍率をスコアに含まない"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "擇優偏好：%@，倍率不參與評分"
           }
         }
       }
@@ -15149,6 +16898,18 @@
             "state": "translated",
             "value": "No proxy refinement this round"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このラウンドではプロキシ精査を行いませんでした"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪未進行代理精選"
+          }
         }
       }
     },
@@ -15159,6 +16920,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "VPN was not running; proxy refinement was skipped. A successful direct handshake does not verify Internet access through the exit."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPNが停止中のためプロキシ精査をスキップしました。直接ハンドシェイク成功はインターネット疎通を保証しません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN 未執行，未進行代理精選；直連交握成功不代表出口可上網"
           }
         }
       }
@@ -15171,6 +16944,18 @@
             "state": "translated",
             "value": "VPN was switching; proxy refinement was skipped"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN切り替え中のためプロキシ精査をスキップしました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN 正在切換，未進行代理精選"
+          }
         }
       }
     },
@@ -15181,6 +16966,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Proxy probes this round: %lld attempts, %lld successes, %lld failures"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このラウンドのプロキシ測定 %1$lld 回：成功 %2$lld 回、失敗 %3$lld 回"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪代理探測 %1$lld 次：成功 %2$lld 次、失敗 %3$lld 次"
           }
         }
       }
@@ -15193,6 +16990,18 @@
             "state": "translated",
             "value": "Proxy refinement stopped before completion"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロキシ精査が完了前に停止しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理精選中途停止"
+          }
         }
       }
     },
@@ -15203,6 +17012,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "No usable refinement result; the initial selection was kept. Exit connectivity is unconfirmed."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有効な精査結果が得られず初期選択を維持しました。出口の疎通は未確認です。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未取得可用的精選結果，本輪保留初選結果；出口可用性尚未確認"
           }
         }
       }
@@ -15215,6 +17036,18 @@
             "state": "translated",
             "value": "Probe failures can come from the node, target site, network, or extension resource limits. They do not establish permanent node failure."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "測定の失敗はノード、対象サイト、ネットワーク、または拡張機能のメモリ制限による場合があり、ノードの恒久的な故障を示すものではありません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探測失敗可能來自節點、目標站點、網路或擴充功能資源限制，不能據此認定節點永久失效。"
+          }
         }
       }
     },
@@ -15225,6 +17058,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Selection at that time"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当時の選択"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "當時選擇"
           }
         }
       }
@@ -15237,6 +17082,18 @@
             "state": "translated",
             "value": "Candidate this round"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このラウンドの候補"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本輪候選"
+          }
         }
       }
     },
@@ -15247,6 +17104,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@: %@ · overall score %lld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@：%2$@ · 総合スコア %3$lld"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@：%2$@ · 綜合評分 %3$lld 分"
           }
         }
       }
@@ -15259,6 +17128,18 @@
             "state": "translated",
             "value": "Latency %lld · stability %lld · bandwidth %lld · cost %lld"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "遅延 %1$lld · 安定性 %2$lld · 帯域 %3$lld · コスト %4$lld"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "延遲 %1$lld · 穩定性 %2$lld · 頻寬 %3$lld · 成本 %4$lld"
+          }
         }
       }
     },
@@ -15269,6 +17150,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Insufficient stability samples; neutral score used"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安定性サンプル不足のため中立スコアを使用"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "穩定性樣本不足，使用中性分"
           }
         }
       }
@@ -15281,6 +17174,18 @@
             "state": "translated",
             "value": "No passive bandwidth observation; neutral score used"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "受動帯域観測がないため中立スコアを使用"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚無被動頻寬觀測，使用中性分"
+          }
         }
       }
     },
@@ -15291,6 +17196,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "No new selection round started: a measurement is already running or there are no nodes"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しい選択ラウンドを開始しませんでした：測定が実行中かノードがありません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未開始新一輪擇優，已有測速任務或沒有節點"
           }
         }
       }
@@ -15303,6 +17220,18 @@
             "state": "translated",
             "value": "Measure first, then select by region preference and overall score"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先に測定し、優先地域と総合スコアでノードを選択します"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先測速，再依地區偏好與綜合評分選擇節點"
+          }
         }
       }
     },
@@ -15313,6 +17242,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Score reference"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スコア参考"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "評分參考"
           }
         }
       }
@@ -15325,6 +17266,18 @@
             "state": "translated",
             "value": "This score is based on the detail data shown here. See the Nodes page for the last actual selection and reasons for keeping a node."
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このスコアはここに表示されている詳細データに基づく参考値です。直近の実際の選択結果と維持理由はノードページで確認できます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這裡是目前詳情資料的評分參考；最近一次實際擇優的結果與保持原因請看節點頁。"
+          }
         }
       }
     },
@@ -15335,6 +17288,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "Direct testing performs three TCP handshakes with the node server and takes the median of successful samples. It verifies the path to the server, not proxy credentials or exit connectivity.\n\nProxy latency measures a request through the node while the VPN is running, including handshakes and the exit path. The default target is Cloudflare; configured targets or frequently used domains may also be used. UDP nodes use proxy probes, not TCP handshakes.\n\nA failure can come from the node, target site, current network, or extension resource limits. One failure does not establish permanent failure or inability to reach every website."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通常測定はノードサーバーへの TCP ハンドシェイクを3回行い、成功サンプルの中央値を取ります。サーバーまでの経路のみを確認し、認証情報や出口疎通は検証しません。\n\nプロキシ遅延は VPN 実行中に完全なプロトコルでノード経由の測定サイトへアクセスする所要時間で、ハンドシェイクと出口経路を含みます。既定の対象は Cloudflare で、設定した対象やよく使うドメインも使用できます。UDP ノードは TCP ハンドシェイクではなくプロキシ実測を行います。\n\nプロキシ測定の失敗はノード、対象サイト、現在のネットワーク、または拡張機能のリソース制限が原因の場合があります。1回の失敗で恒久的な故障や全サイト到達不能とは判断できません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "普通測速是裝置對節點伺服器發起 TCP 交握，只說明到伺服器的路徑能否建立連線，不能驗證代理憑證和出口。每輪做三次，取成功樣本中位數。\n\n經代理延遲是在 VPN 執行時攜帶完整協定，透過該節點存取探測站點的耗時，包含交握和出口路徑。預設目標是 Cloudflare，也可使用設定的目標或常用網域。UDP 節點使用代理實測，不做 TCP 交握。\n\n代理探測失敗可能來自節點、目標站點、目前網路或擴充功能資源限制。單次失敗不能判定節點永久失效，也不能證明所有網站都無法存取。"
           }
         }
       }
@@ -15347,6 +17312,18 @@
             "state": "translated",
             "value": "Proxy refinement finished: %lld candidates tested, %lld probe failures this round"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プロキシ精査完了：%1$lld 候補を測定、%2$lld 回のプローブが失敗"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "經代理精選完成：實測 %1$lld 個候選，本輪 %2$lld 個探測失敗"
+          }
         }
       }
     },
@@ -15358,6 +17335,18 @@
             "state": "translated",
             "value": "No usable proxy refinement result after %lld probes; keeping the initial selection this round"
           }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 回の測定で有効なプロキシ精査結果が得られなかったため、このラウンドでは初期選択を維持しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "經代理精選未取得可用結果：探測 %lld 次，本輪保留初選結果"
+          }
         }
       }
     },
@@ -15368,6 +17357,1743 @@
           "stringUnit": {
             "state": "translated",
             "value": "The profile and node scores describe this round’s keep decision. The region record reflects the settings used to filter candidates."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここに表示されるプロファイルとノードスコアはこのラウンドの維持判断に使われました。地域記録は候補フィルタ時の設定を反映しています。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這裡顯示的評分偏好與節點分數用於本輪保持判斷；地區記錄反映候選篩選時的設定。"
+          }
+        }
+      }
+    },
+    "未选择「海外出口」节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Overseas Exit node selected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「海外出口」ノードが選択されていません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未選擇「海外出口」節點"
+          }
+        }
+      }
+    },
+    "未选择「跳板」节点": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Hop node selected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「中継（ホップ）」ノードが選択されていません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未選擇「跳板」節點"
+          }
+        }
+      }
+    },
+    "「海外出口」和「跳板」是同一个节点，会绕成死循环": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overseas Exit and Hop cannot be the same node (would loop)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「海外出口」と「中継」に同じノードが選ばれています（ループの原因になります）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「海外出口」和「跳板」是同一個節點，會繞成死循環"
+          }
+        }
+      }
+    },
+    "已开启「经 root 中继出网」，但读不到中继凭据。先安装 guard：sudo sh Tools/qingzhou-guard/install.sh": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Root relay is enabled, but relay credentials were not found. Install guard first: sudo sh Tools/qingzhou-guard/install.sh"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「root リレー経由」が有効ですが認証情報が見つかりません。先に guard をインストールしてください：sudo sh Tools/qingzhou-guard/install.sh"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已開啟「經 root 中繼出網」，但讀不到中繼憑證。先安裝 guard：sudo sh Tools/qingzhou-guard/install.sh"
+          }
+        }
+      }
+    },
+    "未知时区": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown time zone"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不明なタイムゾーン"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知時區"
+          }
+        }
+      }
+    },
+    "用户名（可留空）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Username (optional)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ユーザー名（空欄可）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用者名稱（可留空）"
+          }
+        }
+      }
+    },
+    "密码（可留空）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password (optional)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワード（空欄可）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密碼（可留空）"
+          }
+        }
+      }
+    },
+    "「%@」不在内置 geosite 分类白名单里，这条规则会被跳过。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"%@\" is not in the built-in geosite category whitelist; this rule will be skipped."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」は組み込み geosite カテゴリ許可リストにないため、このルールはスキップされます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「%@」不在內建 geosite 分類白名單裡，這條規則會被跳過。"
+          }
+        }
+      }
+    },
+    "PROCESS-NAME 仅用于本机规则模拟与命中归因，xray TUN 隧道不匹配进程名。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PROCESS-NAME is used only for local rule simulation and hit attribution; the xray TUN tunnel does not match process names."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PROCESS-NAME はローカルのルールシミュレーションとヒット帰属にのみ使用され、xray TUN トンネルではプロセス名を照合しません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PROCESS-NAME 僅用於本機規則模擬與命中歸因，xray TUN 通道不匹配程序名稱。"
+          }
+        }
+      }
+    },
+    "USER-AGENT 仅用于本机规则模拟，xray TUN 隧道无法匹配 HTTP User-Agent。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "USER-AGENT is used only for local rule simulation; the xray TUN tunnel cannot match HTTP User-Agent headers."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "USER-AGENT はローカルのルールシミュレーションにのみ使用され、xray TUN トンネルでは HTTP User-Agent を照合できません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "USER-AGENT 僅用於本機規則模擬，xray TUN 通道無法匹配 HTTP User-Agent。"
+          }
+        }
+      }
+    },
+    "no-resolve（不触发本地 DNS 解析）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no-resolve (do not trigger local DNS resolution)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no-resolve（ローカル DNS 解決を行わない）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no-resolve（不觸發本機 DNS 解析）"
+          }
+        }
+      }
+    },
+    "xray 隧道无单条 no-resolve 开关，规则模式全局使用 IPIfNonMatch。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "xray-core has no per-rule no-resolve flag; Rule mode uses global domainStrategy IPIfNonMatch."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "xray-core にはルール単位の no-resolve フラグがなく、ルールモードでは全体で domainStrategy IPIfNonMatch を使用します。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "xray 通道無單條 no-resolve 開關，規則模式全域使用 IPIfNonMatch。"
+          }
+        }
+      }
+    },
+    "GEOSITE（域名分类）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GEOSITE (Domain category)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GEOSITE（ドメインカテゴリ）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GEOSITE（網域分類）"
+          }
+        }
+      }
+    },
+    "已显示 %lld / %lld 条": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing %1$lld of %2$lld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / %2$lld 件を表示中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已顯示 %1$lld / %2$lld 條"
+          }
+        }
+      }
+    },
+    "再显示 200 条": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show 200 more"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "さらに 200 件表示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再顯示 200 條"
+          }
+        }
+      }
+    },
+    "全部显示（%lld 条，可能卡顿）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show all (%lld items, may lag)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべて表示（%lld 件・重くなる場合があります）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部顯示（%lld 條，可能卡頓）"
+          }
+        }
+      }
+    },
+    "不在内置 geosite 分类白名单里，xray 隧道将跳过此规则": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not in built-in geosite whitelist; skipped in xray tunnel"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "組み込み geosite 許可リストにないため xray トンネルではスキップされます"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不在內建 geosite 分類白名單裡，xray 通道將跳過此規則"
+          }
+        }
+      }
+    },
+    "仅本机规则模拟生效，xray TUN 隧道不匹配进程名": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local rule simulation only; xray TUN tunnel does not match process names"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ローカルルール模擬のみ有効（xray TUN トンネルはプロセス名非対応）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅本機規則模擬生效，xray TUN 通道不匹配程序名稱"
+          }
+        }
+      }
+    },
+    "仅本机规则模拟生效，xray TUN 隧道不匹配 User-Agent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local rule simulation only; xray TUN tunnel does not match User-Agent"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ローカルルール模擬のみ有効（xray TUN トンネルは User-Agent 非対応）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "僅本機規則模擬生效，xray TUN 通道不匹配 User-Agent"
+          }
+        }
+      }
+    },
+    "含 no-resolve（xray 隧道无单条开关，规则模式按 IPIfNonMatch 处理）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Includes no-resolve (xray has no per-rule flag; Rule mode uses global IPIfNonMatch)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no-resolve 指定あり（xray はルール個別指定非対応・IPIfNonMatch で処理）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "含 no-resolve（xray 通道無單條開關，規則模式依 IPIfNonMatch 處理）"
+          }
+        }
+      }
+    },
+    "分流方案": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split-Exit Routing"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スプリット出口プラン"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分流方案"
+          }
+        }
+      }
+    },
+    "国内直连、其余全走海外出口": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domestic direct, all other traffic via Overseas Exit"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "国内は直接接続、それ以外はすべて海外出口を経由"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "國內直連、其餘全走海外出口"
+          }
+        }
+      }
+    },
+    "海外出口": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overseas Exit"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "海外出口"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "海外出口"
+          }
+        }
+      }
+    },
+    "跳板": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hop Node"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中継ノード"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳板"
+          }
+        }
+      }
+    },
+    "出口的手选节点挂了就是断网，不会自动换节点、不会回落到直连。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "If the selected exit node fails, overseas traffic stops rather than switching nodes or falling back to direct."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選択した出口ノードが停止した場合、自動切替や直接接続へのフォールバックは行わず海外通信を遮断します。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出口的手選節點掛了就是斷網，不會自動換節點、不會回退到直連。"
+          }
+        }
+      }
+    },
+    "出口自身的流量经「跳板」连出去；跳板不通时海外整体不通，国内直连不受影响。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit traffic dials out through the Hop node. If the Hop is unreachable, overseas traffic stops while domestic direct remains unaffected."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出口ノード自体の通信は中継ノード経由で接続されます。中継が不通の場合は海外通信のみ停止し、国内直接接続には影響しません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出口自身的流量經「跳板」連出去；跳板不通時海外整體不通，國內直連不受影響。"
+          }
+        }
+      }
+    },
+    "住宅 SOCKS5 的地址/端口/账号/密码请在「节点」里编辑该节点。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit the residential SOCKS5 host, port, username, and password in the Nodes tab."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "住宅 SOCKS5 のアドレス・ポート・ユーザー名・パスワードは「ノード」画面で編集してください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "住宅 SOCKS5 的位址/連接埠/帳號/密碼請在「節點」裡編輯該節點。"
+          }
+        }
+      }
+    },
+    "跟随出口地区（全局系统时区 + 界面语言）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follow exit region (system time zone + app language)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出口地域に追従（システムタイムゾーン + 表示言語）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟隨出口地區（全域系統時區 + 介面語言）"
+          }
+        }
+      }
+    },
+    "出口地区：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit region: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出口地域：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出口地區：%@"
+          }
+        }
+      }
+    },
+    "界面语言 → %@（仅连接期间生效，不改你的语言设置）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App language → %@ (active only while connected; saved preference unchanged)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "表示言語 → %@（接続中のみ有効・設定は変更されません）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "介面語言 → %@（僅連線期間生效，不改你的語言設定）"
+          }
+        }
+      }
+    },
+    "该地区没有对应的界面语言，语言保持你现在的选择。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching app language for this region; keeping your current language."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この地域に対応する表示言語がないため、現在の言語を維持します。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "該地區沒有對應的介面語言，語言保持你現在的選擇。"
+          }
+        }
+      }
+    },
+    "系统时区将自动切换为 %@（由 guard 执行，断开 VPN 自动还原）。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System time zone will switch to %@ (applied by guard, restored when VPN disconnects)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システムタイムゾーンが %@ に自動変更されます（guard が実行し、VPN 切断時に自動復元します）。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系統時區將自動切換為 %@（由 guard 執行，中斷 VPN 自動還原）。"
+          }
+        }
+      }
+    },
+    "注意：需要先安装并启用 guard（见下方「断网开关」）。系统语言不自动改（需注销登录，副作用大），浏览器语言仍由浏览器自己决定。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Note: Requires guard installed and enabled (see Kill Switch below). System language is not changed automatically (requires logout), and browser language remains controlled by each browser."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注意：先に guard のインストールと有効化が必要です（下の「キルスイッチ」参照）。システム言語は自動変更されず（再ログインが必要なため）、ブラウザ言語も各ブラウザの設定に従います。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注意：需要先安裝並啟用 guard（見下方「斷網開關」）。系統語言不自動改（需登出登入，副作用大），瀏覽器語言仍由瀏覽器自己決定。"
+          }
+        }
+      }
+    },
+    "连上 VPN 并拿到出口信息后显示。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shown after connecting VPN and resolving exit region info."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPN 接続後に出口情報を取得すると表示されます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連上 VPN 並拿到出口資訊後顯示。"
+          }
+        }
+      }
+    },
+    "经 root 中继出网": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Route egress through root relay"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "root リレー経由で通信する"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "經 root 中繼出網"
+          }
+        }
+      }
+    },
+    "所有出站先连 127.0.0.1 的 root 中继，由它拨号。断网开关（pf 只放行 root）必须依赖这一条，否则开拦截会连代理一起拦死。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All outbound connections dial via the 127.0.0.1 root relay. Required by the kill switch (pf permits only root), otherwise enabling pf blocks the proxy itself."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての発信通信を 127.0.0.1 の root リレー経由で接続します。キルスイッチ（pf が root のみ許可）にはこの設定が必須です。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有出站先連 127.0.0.1 的 root 中繼，由它撥號。斷網開關（pf 只放行 root）必須依賴這一條，否則開攔截會連代理一起攔死。"
+          }
+        }
+      }
+    },
+    "需要先安装 guard：sudo sh Tools/qingzhou-guard/install.sh。没装时打开此项会拒绝连接并提示。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install guard first: sudo sh Tools/qingzhou-guard/install.sh. Enabling this without guard installed will block connection with an error."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先に guard のインストールが必要です：sudo sh Tools/qingzhou-guard/install.sh。未インストールのまま有効にすると接続が拒否されます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要先安裝 guard：sudo sh Tools/qingzhou-guard/install.sh。沒裝時開啟此項會拒絕連線並提示。"
+          }
+        }
+      }
+    },
+    "更新中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updating…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新中…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新中…"
+          }
+        }
+      }
+    },
+    "更新名单": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update Lists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リストを更新"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新名單"
+          }
+        }
+      }
+    },
+    "查看名单内容": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inspect Lists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リスト内容を表示"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢視名單內容"
+          }
+        }
+      }
+    },
+    "磁盘上还没有名单文件。先点上面的「更新名单」，成功后再看。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No cached list file on disk yet. Tap Update Lists above first."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ディスクにリストファイルがありません。先に上の「リストを更新」を実行してください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "磁碟上還沒有名單檔案。先點上面的「更新名單」，成功後再看。"
+          }
+        }
+      }
+    },
+    "已安装（中继 + 守护进程）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installed (relay + LaunchDaemon)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "インストール済み（リレー + デーモン）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已安裝（中繼 + 背景程式）"
+          }
+        }
+      }
+    },
+    "拦截已启用": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kill switch enabled"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "遮断が有効"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "攔截已啟用"
+          }
+        }
+      }
+    },
+    "中继在监听 10808": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relay listening on 10808"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リレーがポート 10808 で待機中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中繼正在監聽 10808"
+          }
+        }
+      }
+    },
+    "尚未安装。先装 guard，再配分流 + 「经 root 中继出网」，确认能上网后开拦截。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not installed yet. Install guard first, configure Split-Exit + Root Relay, verify connectivity, then enable the kill switch."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未インストールです。先に guard を導入し、スプリット出口と root リレーを設定して疎通確認後に遮断を有効にしてください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未安裝。先裝 guard，再配分流 + 「經 root 中繼出網」，確認能上網後開攔截。"
+          }
+        }
+      }
+    },
+    "断网开关": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kill Switch (guard)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キルスイッチ (guard)"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "斷網開關"
+          }
+        }
+      }
+    },
+    "以下命令需要 root（sudo）。App 无法代替你敲密码，请点「复制」后到终端粘贴执行。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The commands below require root (sudo). The app cannot enter your password; click Copy and run in Terminal."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以下のコマンドには root 権限（sudo）が必要です。アプリはパスワードを入力できないため、「コピー」してターミナルで実行してください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以下命令需要 root（sudo）。App 無法代替你輸入密碼，請點「複製」後到終端機貼上執行。"
+          }
+        }
+      }
+    },
+    "命令（复制到终端执行）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commands (copy and run in Terminal)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コマンド（ターミナルにコピーして実行）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命令（複製到終端機執行）"
+          }
+        }
+      }
+    },
+    "安装 guard（只装不拦）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install guard (install only, no blocking)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "guard をインストール（導入のみ・遮断なし）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安裝 guard（只裝不攔）"
+          }
+        }
+      }
+    },
+    "启用拦截": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable kill switch"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "遮断を有効化"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "啟用攔截"
+          }
+        }
+      }
+    },
+    "解除拦截（断网时急救）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disable kill switch (emergency recovery)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "遮断を解除（緊急復旧用）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解除攔截（斷網時急救）"
+          }
+        }
+      }
+    },
+    "彻底卸载": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uninstall completely"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完全にアンインストール"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "徹底解除安裝"
+          }
+        }
+      }
+    },
+    "复制": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コピー"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製"
+          }
+        }
+      }
+    },
+    "国内名单不可用：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domestic lists unavailable: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "国内リストを利用できません：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "國內名單不可用：%@"
+          }
+        }
+      }
+    },
+    "国内名单尚未下载，当前只用内置 geosite/geoip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domestic lists not downloaded yet; using built-in geosite/geoip only"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "国内リスト未取得のため組み込み geosite/geoip のみ使用中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "國內名單尚未下載，目前只用內建 geosite/geoip"
+          }
+        }
+      }
+    },
+    "国内名单：%@ 域名 / %@ 网段（%@）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domestic lists: %1$@ domains / %2$@ CIDRs (%3$@)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "国内リスト：%1$@ ドメイン / %2$@ CIDR（%3$@）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "國內名單：%1$@ 網域 / %2$@ 網段（%3$@）"
+          }
+        }
+      }
+    },
+    "未选择": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not selected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未選択"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未選擇"
+          }
+        }
+      }
+    },
+    "%@（%@）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ (%2$@)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@（%2$@）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@（%2$@）"
+          }
+        }
+      }
+    },
+    "无法写入 App Group 共享目录": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to write to the App Group shared container"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App Group 共有コンテナに書き込めません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法寫入 App Group 共享目錄"
+          }
+        }
+      }
+    },
+    "名单源配置错误（需要域名与 IP 两份）": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid list sources configuration (requires both domain and IP lists)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リストソース設定エラー（ドメイン用と IP 用の2件が必要です）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名單來源設定錯誤（需要網域與 IP 兩份）"
+          }
+        }
+      }
+    },
+    "%@：响应为空或非 UTF-8": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: empty response or invalid UTF-8"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@：空の応答または非 UTF-8 です"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@：回應為空或非 UTF-8"
+          }
+        }
+      }
+    },
+    "解析结果为空（域名 %lld 条 / IP %lld 条），已保留上一份": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parsed lists are empty (%1$lld domains / %2$lld CIDRs); kept previous cache"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解析結果が空のため（ドメイン %1$lld 件 / IP %2$lld 件）、前回のキャッシュを保持しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解析結果為空（網域 %1$lld 條 / IP %2$lld 條），已保留上一份"
+          }
+        }
+      }
+    },
+    "写入失败：%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write failed: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "書き込み失敗：%@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "寫入失敗：%@"
+          }
+        }
+      }
+    },
+    "写入后回读校验失败，已保留上一份": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read-back verification failed after write; kept previous cache"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "書き込み後の読み戻し検証に失敗したため、前回のキャッシュを保持しました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "寫入後回讀校驗失敗，已保留上一份"
+          }
+        }
+      }
+    },
+    "关键字": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keywords"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "キーワード"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關鍵字"
+          }
+        }
+      }
+    },
+    "更新时间": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新日時"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新時間"
+          }
+        }
+      }
+    },
+    "%lld / 源 %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / source %2$lld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / 元 %2$lld"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld / 來源 %2$lld"
+          }
+        }
+      }
+    },
+    "「实收 / 源」不相等说明按内存预算抽样过；未注入的部分仍由内置 geosite:cn / geoip:cn 兜底。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When loaded/source counts differ, entries were sampled to stay within the memory budget; remaining entries are still covered by built-in geosite:cn and geoip:cn."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「取得数 / 元数」が異なる場合はメモリ上限に合わせてサンプリングされています。未注入分も組み込み geosite:cn / geoip:cn で補完されます。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「實收 / 來源」不相等說明已依記憶體預算抽樣；未注入的部分仍由內建 geosite:cn / geoip:cn 兜底。"
+          }
+        }
+      }
+    },
+    "这一类是空的": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No entries in this category"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このカテゴリは空です"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這一類是空的"
+          }
+        }
+      }
+    },
+    "无匹配": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matches"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致なし"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無符合項目"
+          }
+        }
+      }
+    },
+    "%lld 条": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld items"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 件"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 條"
+          }
+        }
+      }
+    },
+    "搜索条目": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search entries"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "項目を検索"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜尋項目"
+          }
+        }
+      }
+    },
+    "国内名单": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domestic Lists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "国内リスト"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "國內名單"
+          }
+        }
+      }
+    },
+    "网段": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CIDRs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CIDR"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網段"
+          }
+        }
+      }
+    },
+    "已复制": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コピーしました"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已複製"
           }
         }
       }

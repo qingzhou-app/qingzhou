@@ -13,7 +13,8 @@ public enum RuleParseError: Error, Equatable, Sendable {
 ///
 /// 支持单行格式：
 /// - `DOMAIN-SUFFIX,google.com,PROXY`
-/// - `IP-CIDR,10.0.0.0/8,DIRECT,no-resolve`（第 4 个字段当作 flag 存在 comment）
+/// - `IP-CIDR,10.0.0.0/8,DIRECT,no-resolve`（`,no-resolve` 大小写不敏感解析到 `Rule.noResolve`）
+/// - `IP-CIDR,10.0.0.0/8,DIRECT,no-resolve # lan`（保留注释到 `Rule.comment`）
 /// - `FINAL,PROXY`
 /// - `# 注释` / 空行 → 跳过
 public enum RuleParser {
@@ -34,31 +35,66 @@ public enum RuleParser {
     }
 
     public static func parseLine(_ line: String) throws -> Rule {
-        let parts = line.split(separator: ",", omittingEmptySubsequences: false).map {
+        let (codePart, inlineComment) = splitInlineHashComment(line)
+        guard !codePart.isEmpty else { throw RuleParseError.empty }
+
+        let rawParts = codePart.split(separator: ",", omittingEmptySubsequences: false).map {
             $0.trimmingCharacters(in: .whitespaces)
         }
-        guard !parts.isEmpty else { throw RuleParseError.empty }
+        guard !rawParts.isEmpty else { throw RuleParseError.empty }
 
-        let typeRaw = parts[0].uppercased()
+        let typeRaw = rawParts[0].uppercased()
         guard let type = RuleType(rawValue: typeRaw) else {
             throw RuleParseError.unknownType(typeRaw)
         }
 
-        // FINAL 是特例：FINAL,PROXY
+        // FINAL 是特例：FINAL,PROXY（保留 `# ...` 中含逗号的行内注释）
         if type == .final {
-            guard parts.count >= 2 else { throw RuleParseError.missingFields(line) }
-            guard let target = RuleTarget(rawValue: parts[1].uppercased()) else {
-                throw RuleParseError.unknownTarget(parts[1])
+            guard rawParts.count >= 2 else { throw RuleParseError.missingFields(line) }
+            let targetPart = rawParts[1]
+            guard let target = RuleTarget(rawValue: targetPart.uppercased()) else {
+                throw RuleParseError.unknownTarget(targetPart)
             }
-            return Rule(type: .final, value: "", target: target)
+            let extraParts = rawParts.dropFirst(2).filter { !$0.isEmpty }
+            var commentParts: [String] = []
+            if !extraParts.isEmpty {
+                commentParts.append(extraParts.joined(separator: ","))
+            }
+            if let inlineComment {
+                commentParts.append(inlineComment)
+            }
+            let comment = commentParts.isEmpty ? nil : commentParts.joined(separator: " ")
+            return Rule(type: .final, value: "", target: target, comment: comment)
         }
 
-        guard parts.count >= 3 else { throw RuleParseError.missingFields(line) }
-        let value = parts[1]
-        guard let target = RuleTarget(rawValue: parts[2].uppercased()) else {
-            throw RuleParseError.unknownTarget(parts[2])
+        guard rawParts.count >= 3 else { throw RuleParseError.missingFields(line) }
+        let value = rawParts[1]
+        let targetPart = rawParts[2]
+        guard let target = RuleTarget(rawValue: targetPart.uppercased()) else {
+            throw RuleParseError.unknownTarget(targetPart)
         }
-        let comment = parts.count >= 4 ? parts[3...].joined(separator: ",") : nil
+
+        var noResolve = false
+        var remainingCommentParts: [String] = []
+        if rawParts.count >= 4 {
+            for idx in 3..<rawParts.count {
+                let token = rawParts[idx]
+                if token.lowercased() == "no-resolve" {
+                    noResolve = true
+                } else if !token.isEmpty {
+                    remainingCommentParts.append(token)
+                }
+            }
+        }
+
+        var commentComponents: [String] = []
+        if !remainingCommentParts.isEmpty {
+            commentComponents.append(remainingCommentParts.joined(separator: ","))
+        }
+        if let inlineComment {
+            commentComponents.append(inlineComment)
+        }
+        let comment = commentComponents.isEmpty ? nil : commentComponents.joined(separator: " ")
 
         // 对 IP-CIDR / IP-CIDR6 做轻量校验
         switch type {
@@ -70,6 +106,15 @@ public enum RuleParser {
             break
         }
 
-        return Rule(type: type, value: value, target: target, comment: comment)
+        return Rule(type: type, value: value, target: target, comment: comment, noResolve: noResolve)
+    }
+
+    private static func splitInlineHashComment(_ segment: String) -> (token: String, comment: String?) {
+        guard let hashIdx = segment.firstIndex(of: "#") else {
+            return (segment.trimmingCharacters(in: .whitespaces), nil)
+        }
+        let token = String(segment[..<hashIdx]).trimmingCharacters(in: .whitespaces)
+        let after = String(segment[segment.index(after: hashIdx)...]).trimmingCharacters(in: .whitespaces)
+        return (token, after.isEmpty ? nil : after)
     }
 }

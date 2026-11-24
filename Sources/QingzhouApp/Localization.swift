@@ -115,3 +115,12 @@ extension AppSection {
         return localizedBundle.localizedString(forKey: key, value: key, table: nil)
     }
 }
+
+extension ExitRegionProfile {
+    /// 本地化版本的出口地区摘要（把 `QingzhouCore` 里的 `"未知时区"` 走 `L(...)` 翻译）。
+    var localizedSummary: String {
+        let place = [country, city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        let tz = timezoneID ?? L("未知时区")
+        return place.isEmpty ? tz : "\(place) · \(tz)"
+    }
+}

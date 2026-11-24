@@ -364,13 +364,18 @@ public struct SplitExitPlan {
             // dns 模块发出的上游查询打标，routing 首两条按 inboundTag 分流
             "tag": "dns-module",
             "servers": servers,
-            // 只查 A：不返回 IPv6 地址。配合下面只有 IPv4 的假 IP 池，
-            // App 侧拿不到 AAAA，不会去试 IPv6 直连。
+            // 刻意保持 UseIPv4 + 单一 IPv4 FakeDNS 池（与普通模式 XrayConfigComposer 的 UseIP 双栈不同）：
+            // 1. 启用 root 中继（relay != nil）时，direct 出站去掉 ForceIP/happyEyeballs，把原始域名交给
+            //    127.0.0.1:10808 的 qingzhou-relay，其 RelayDNS 只解析 IPv4 A 记录；
+            // 2. 静态住宅 SOCKS5 出口普遍无 IPv6 且拒绝 UDP（rejectOverseasUDP = true），若用 UseIP 返回
+            //    AAAA 记录会在无 happyEyeballs 回退的 SOCKS5/中继链路上导致连接卡死。
+            // 详见 docs/IPV6.md 与 docs/DNS.md。
             "queryStrategy": "UseIPv4"
         ]
     }
 
-    /// 只有 IPv4 假 IP 池 —— 恒定的「不返回 IPv6 地址」。
+    /// 只有 IPv4 假 IP 池（`198.18.0.0/15`）—— 与上方 `queryStrategy: "UseIPv4"` 配套，
+    /// 不分配 `fc00::/18` 假 IPv6 地址（与 `XrayConfigComposer` 双栈模式的刻意差异）。
     public func fakeDNS() -> [[String: Any]] {
         [["ipPool": "198.18.0.0/15", "poolSize": 65535] as [String: Any]]
     }
