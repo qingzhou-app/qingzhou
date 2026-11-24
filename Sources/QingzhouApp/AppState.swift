@@ -1147,6 +1147,18 @@ public final class AppState {
         let splitExitActive = settings.splitExitEnabled
         let exitNode = splitExitActive ? splitExitExitNode : nil
         let hopNode = splitExitActive ? splitExitHopNode : nil
+        // 断网开关的 root 中继。开关打开但读不到凭据时**拒绝连接**而不是静默降级 ——
+        // 静默降级会让用户以为"正在经中继出网"，然后一开 pf 就整机断网，且看不出原因。
+        var guardRelay: GuardRelayCredentials?
+        if splitExitActive, settings.guardRelayEnabled {
+            guard let creds = GuardRelayCredentials.load() else {
+                tunnelError = L("已开启「经 root 中继出网」，但读不到中继凭据。先安装 guard：sudo sh Tools/qingzhou-guard/install.sh")
+                isVPNRunning = false
+                logger.error("Guard relay enabled but credentials missing", category: "tunnel")
+                return
+            }
+            guardRelay = creds
+        }
         let link = node.flatMap(NodeEncoder.shareLink)
         guard settings.proxyMode == .direct || link != nil else {
             tunnelError = L("无法把节点编码成分享链接")
@@ -1166,7 +1178,8 @@ public final class AppState {
                 blockQUIC: effBlockQUIC,
                 description: L("轻舟 · \((exitNode?.name ?? node?.name ?? L("直连")))"),
                 splitExitExit: exitNode,
-                splitExitHop: hopNode
+                splitExitHop: hopNode,
+                guardRelay: guardRelay
             )
             try await tunnelManager.start()
             activeTrafficSessionID = nil
@@ -1452,6 +1465,8 @@ public final class AppState {
         // 少了它们，configure() 会把 providerConfiguration 里残留的分流字段清掉，
         // 下一次连接就悄悄退回单节点 —— 用户以为还在分流，其实已经直连住宅代理了。
         let split = activeSplitExit
+        var guardRelay: GuardRelayCredentials?
+        if split != nil, settings.guardRelayEnabled { guardRelay = GuardRelayCredentials.load() }
         let node = settings.proxyMode == .direct ? nil : currentNode
         guard settings.proxyMode == .direct || node != nil || split != nil else {
             tunnelError = VPNTunnelManager.TunnelError.noCurrentNode.errorDescription
@@ -1547,7 +1562,8 @@ public final class AppState {
                 blockQUIC: effBlockQUIC,   // 全量重启会重建 routing，带上新有效阻断值
                 description: L("轻舟 · \((split?.exit.name ?? node?.name ?? L("直连")))"),
                 splitExitExit: split?.exit,
-                splitExitHop: split?.hop
+                splitExitHop: split?.hop,
+                guardRelay: guardRelay
             )
             // 切换窗口先关 On-Demand 再 stop：connect 规则匹配所有流量，stop 后系统
             // 会被任意流量触发抢跑重连 —— 复用半死的旧扩展进程（正是下面轮询要避免的

@@ -106,6 +106,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     }
     private let splitExitNodes = OSAllocatedUnfairLock(initialState: SplitExitNodes?.none)
 
+    /// 断网开关的 root 中继。非 nil 时所有出站都经它（详见 SplitExitPlan.RelayEndpoint）。
+    private let guardRelay = OSAllocatedUnfairLock<SplitExitPlan.RelayEndpoint?>(initialState: nil)
+
     // MARK: - 健康触发的故障切换（保守 MVP：检测 + 告警，首版**不自动切数据面**）
 
     /// 判死纯逻辑（QingzhouCore）。**只在 statsQueue 上碰**（随 reportXrayOutboundStats 喂样本），
@@ -202,6 +205,16 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             // 让自定义规则插进去会破坏 first-match 的优先级保证）。
             let splitExit = try resolveSplitExit(providerConfig: providerConfig)
             splitExitNodes.withLock { $0 = splitExit }
+            // 中继凭据：解不出来就当没有（不至于因此起不了 VPN），但会打日志。
+            let relayRaw = providerConfig?["guardRelayJSON"] as? String ?? ""
+            let relay = GuardRelayCredentials.decode(relayRaw).map {
+                SplitExitPlan.RelayEndpoint(host: $0.host, port: $0.port,
+                                            username: $0.username, password: $0.password)
+            }
+            guardRelay.withLock { $0 = relay }
+            if let relay {
+                os_log("split-exit: 出站经 root 中继 127.0.0.1:%d", log: log, type: .default, Int(relay.port))
+            }
             if let splitExit {
                 os_log("startTunnel: split-exit 模式（出口 %{public}@ 经跳板 %{public}@）",
                        log: log, type: .default, splitExit.exit.name, splitExit.hop.name)
@@ -501,7 +514,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                                   accessLogPath: String?,
                                   tunInterfaceName: String) throws -> String {
         let plan = SplitExitPlan(exitNode: nodes.exit, hopNode: nodes.hop,
-                                 lists: loadSplitExitLists())
+                                 lists: loadSplitExitLists(),
+                                 relay: guardRelay.withLock { $0 })
         return try plan.composeJSON(
             accessLogPath: accessLogPath,
             tunInterfaceName: tunInterfaceName,

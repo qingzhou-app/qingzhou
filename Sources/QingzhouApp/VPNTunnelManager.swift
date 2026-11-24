@@ -119,7 +119,8 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         blockQUIC: Bool = true,
         description: String = "VPN",
         splitExitExit: Node? = nil,
-        splitExitHop: Node? = nil
+        splitExitHop: Node? = nil,
+        guardRelay: GuardRelayCredentials? = nil
     ) async throws {
         guard mode == .direct || node != nil || splitExitExit != nil else { throw TunnelError.noCurrentNode }
         let node = mode == .direct ? nil : node
@@ -176,6 +177,8 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         providerConfig["splitExit"] = NSNumber(value: splitExitActive)
         providerConfig["exitNodeJSON"] = splitExitActive ? encodeNode(splitExitExit) : ""
         providerConfig["hopNodeJSON"] = splitExitActive ? encodeNode(splitExitHop) : ""
+        // root 中继凭据。同样**始终写**（空串表示不用），避免上一轮的凭据残留。
+        providerConfig["guardRelayJSON"] = (splitExitActive ? guardRelay?.jsonString : nil) ?? ""
         // 用户规则：压缩内联（Data 是合法 plist 类型）；超大时写 App Group 文件传路径。
         switch makeRulesPayload(rules) {
         case .inline(let gz):  providerConfig["userRulesGZ"] = gz

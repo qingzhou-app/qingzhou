@@ -245,6 +245,16 @@ public struct SettingsView: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
 
+                Divider()
+
+                Toggle("经 root 中继出网", isOn: state.setting(\.guardRelayEnabled))
+                if state.settings.guardRelayEnabled {
+                    Text("所有出站先连 127.0.0.1 的 root 中继，由它拨号。断网开关（pf 只放行 root）必须依赖这一条，否则开拦截会连代理一起拦死。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Text("需要先安装 guard：sudo sh Tools/qingzhou-guard/install.sh。没装时打开此项会拒绝连接并提示。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+
                 // 国内名单：每天自动更新一次；这里给当前状态 + 手动更新入口。
                 // 没拉到名单也能用（退回内置 geosite:cn / geoip:cn），所以不做成阻断项。
                 HStack {

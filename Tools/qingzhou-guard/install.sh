@@ -56,6 +56,23 @@ else
   echo "    已存在，保留原凭据"
 fi
 
+# App 需要同一份凭据来配置 xray 的 relay 出站；root 的 relay-auth 是 600，
+# App 读不到，所以另写一份到该用户的 App Group 容器（属主=用户，600）。
+echo "==> 把凭据同步给 App（App Group）"
+TARGET_USER="${SUDO_USER:-$(stat -f %Su /dev/console)}"
+TARGET_HOME="$(eval echo "~$TARGET_USER")"
+GROUP_DIR="$TARGET_HOME/Library/Group Containers/group.com.sbraveyoung.qingzhou"
+if [ -d "$GROUP_DIR" ]; then
+  U="$(grep -v '^#' "$BASE/relay-auth" | head -1 | cut -d: -f1)"
+  P="$(grep -v '^#' "$BASE/relay-auth" | head -1 | cut -d: -f2)"
+  printf '{"host":"127.0.0.1","port":%s,"username":"%s","password":"%s"}' "$PORT" "$U" "$P" > "$GROUP_DIR/guard-relay.json"
+  chown "$TARGET_USER" "$GROUP_DIR/guard-relay.json"
+  chmod 600 "$GROUP_DIR/guard-relay.json"
+  echo "    已写入 $GROUP_DIR/guard-relay.json（属主 $TARGET_USER）"
+else
+  echo "    ⚠️ 未找到 App Group 容器（先运行一次轻舟 App 再重跑本脚本），否则 App 读不到凭据"
+fi
+
 echo "==> LaunchDaemon"
 cat > "$PLIST" <<PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>

@@ -110,6 +110,12 @@ public struct Settings: Codable, Sendable {
     /// **只影响本 App**。系统时区/系统语言需要 root，浏览器语言/时区是各自浏览器的设置 ——
     /// 这些在设置页会给出可复制的命令，但不会自动改（改了会影响整台机器）。
     public var followExitRegion: Bool
+    /// 经 root 中继出网（断网开关的前提）。只有装在 Tools/qingzhou-guard 之后才有意义。
+    ///
+    /// 打开后 xray 的所有出站都先连 127.0.0.1 的中继，由 root 完成拨号 ——
+    /// 这样 pf 才能「只放行 root」，而普通程序（含 xray 本身）的出站被拒时不会误伤代理。
+    /// ⚠️ 只在分流模式下生效；普通模式没有串接，开了也没用（界面会提示）。
+    public var guardRelayEnabled: Bool
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -140,7 +146,8 @@ public struct Settings: Codable, Sendable {
         splitExitEnabled: Bool = false,
         splitExitExitNodeID: UUID? = nil,
         splitExitHopNodeID: UUID? = nil,
-        followExitRegion: Bool = false
+        followExitRegion: Bool = false,
+        guardRelayEnabled: Bool = false
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -171,6 +178,7 @@ public struct Settings: Codable, Sendable {
         self.splitExitExitNodeID = splitExitExitNodeID
         self.splitExitHopNodeID = splitExitHopNodeID
         self.followExitRegion = followExitRegion
+        self.guardRelayEnabled = guardRelayEnabled
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -194,6 +202,7 @@ public struct Settings: Codable, Sendable {
         case quicPolicy
         case splitExitEnabled, splitExitExitNodeID, splitExitHopNodeID
         case followExitRegion
+        case guardRelayEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -236,5 +245,6 @@ public struct Settings: Codable, Sendable {
         self.splitExitExitNodeID = try c.decodeIfPresent(UUID.self, forKey: .splitExitExitNodeID)
         self.splitExitHopNodeID = try c.decodeIfPresent(UUID.self, forKey: .splitExitHopNodeID)
         self.followExitRegion = try c.decodeIfPresent(Bool.self, forKey: .followExitRegion) ?? false
+        self.guardRelayEnabled = try c.decodeIfPresent(Bool.self, forKey: .guardRelayEnabled) ?? false
     }
 }
