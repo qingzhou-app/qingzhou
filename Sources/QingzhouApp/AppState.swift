@@ -882,6 +882,7 @@ public final class AppState {
         if enabled, settings.proxyMode != .rule {
             settings.proxyMode = .rule
         }
+        if enabled { loadSplitExitListsStatus() }   // 打开时立刻读一次，界面不用等下次启动
         applySettingsSideEffects()
         persist()
         // 分流开关改变出口身份 → VPN 在跑时必须重连，否则还在按旧配置走。

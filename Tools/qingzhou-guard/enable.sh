@@ -53,12 +53,28 @@ echo "    OK"
 echo "==> 4/4 加载规则"
 : > "$BASE/enabled"
 chmod 644 "$BASE/enabled"
-pfctl -a "$ANCHOR" -f "$RENDERED" 2>/dev/null
-pfctl -E 2>/dev/null || true
+# ⚠️ 不再吞掉 pfctl 的 stderr：语法错、权限不够都会在这里显形，
+# 之前 2>/dev/null 让"为什么没进锚点"变成黑箱。
+LOAD_ERR="$(pfctl -a "$ANCHOR" -f "$RENDERED" 2>&1)"
+LOAD_RC=$?
+[ -n "$LOAD_ERR" ] && echo "    pfctl: $LOAD_ERR"
+pfctl -E >/dev/null 2>&1 || true
 sleep 1
 
-if ! pfctl -s rules -a "$ANCHOR" 2>/dev/null | grep -q 'block out quick all'; then
+# 校验方式：看锚点里**有没有规则**，而不是匹配固定文案。
+# macOS 的 `pfctl -s rules` 会把 `block out quick all` 规范成
+# `block drop out quick all` —— 早先按原文案 grep 永远匹配不上，
+# 于是"规则其实加载成功了"也会被判成失败并回退（线上踩过）。
+RULES_OUT="$(pfctl -s rules -a "$ANCHOR" 2>&1)"
+if [ $LOAD_RC -ne 0 ] || [ -z "$RULES_OUT" ]; then
   echo "    规则没有进入锚点 —— 回退。" >&2
+  rm -f "$BASE/enabled"
+  pfctl -a "$ANCHOR" -F rules 2>/dev/null
+  exit 1
+fi
+# 兜底规则必须存在（允许 block / block drop 两种写法）
+if ! printf '%s\n' "$RULES_OUT" | grep -Eq 'block (drop )?out'; then
+  echo "    锚点里没有兜底 block 规则 —— 回退。" >&2
   rm -f "$BASE/enabled"
   pfctl -a "$ANCHOR" -F rules 2>/dev/null
   exit 1
@@ -66,7 +82,7 @@ fi
 
 echo
 echo "已启用。当前锚点规则："
-pfctl -s rules -a "$ANCHOR" 2>/dev/null | sed 's/^/    /'
+printf '%s\n' "$RULES_OUT" | sed 's/^/    /'
 echo
 echo "自检：在**另一个**终端里（不要在这个 sudo 窗口）跑"
 echo "    curl -sS -o /dev/null -w '%{http_code}\\n' https://claude.ai"

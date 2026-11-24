@@ -61,7 +61,8 @@ log "中继已启动 pid=$RELAY"
 while kill -0 "$RELAY" 2>/dev/null; do
   sleep 10
   if [ -f "$BASE/enabled" ]; then
-    if ! pfctl -s rules -a "$ANCHOR" 2>/dev/null | grep -q 'block out quick all'; then
+    # 同样的规范化坑：pfctl 输出是 `block drop out`，不能按原文案 grep。
+    if [ -z "$(pfctl -s rules -a "$ANCHOR" 2>/dev/null)" ]; then
       log "锚点规则不见了，重新加载"
       apply_rules
     else

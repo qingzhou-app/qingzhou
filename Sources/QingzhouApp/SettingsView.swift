@@ -13,6 +13,8 @@ public struct SettingsView: View {
     /// 名单查看器（sheet）。数据在打开时从 App Group 现读，避免长期占内存。
     @State private var listsForDisplay: SplitExitLists?
     @State private var showListsSheet = false
+    /// 点了「查看名单内容」但磁盘上还没有文件 —— 显示原因，而不是把按钮藏起来。
+    @State private var listsMissingHint = false
 
     public init(state: AppState) { self.state = state }
 
@@ -255,30 +257,40 @@ public struct SettingsView: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
 
-                // 国内名单：每天自动更新一次；这里给当前状态 + 手动更新入口。
-                // 没拉到名单也能用（退回内置 geosite:cn / geoip:cn），所以不做成阻断项。
-                HStack {
-                    Text(splitExitListsText)
-                        .font(.caption2)
-                        .foregroundStyle(state.splitExitListsStatus.error == nil ? Color.secondary : Color.orange)
-                    Spacer()
-                    Button(state.splitExitListsStatus.isLoading ? "更新中…" : "更新名单") {
-                        Task { await state.refreshSplitExitLists(force: true) }
-                    }
-                    .buttonStyle(.borderless)
+            }
+            // 国内名单：每天自动更新一次；这里给当前状态 + 手动更新入口。
+            // 没拉到名单也能用（退回内置 geosite:cn / geoip:cn），所以不做成阻断项。
+            HStack {
+                Text(splitExitListsText)
                     .font(.caption2)
-                    .disabled(state.splitExitListsStatus.isLoading)
+                    .foregroundStyle(state.splitExitListsStatus.error == nil ? Color.secondary : Color.orange)
+                Spacer()
+                Button(state.splitExitListsStatus.isLoading ? "更新中…" : "更新名单") {
+                    Task { await state.refreshSplitExitLists(force: true) }
                 }
-                if state.splitExitListsStatus.isLoaded {
-                    Button {
-                        listsForDisplay = SplitExitListsUpdater.loadCached()
-                        showListsSheet = listsForDisplay != nil
-                    } label: {
-                        Label("查看名单内容", systemImage: "list.bullet.rectangle")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.borderless)
+                .buttonStyle(.borderless)
+                .font(.caption2)
+                .disabled(state.splitExitListsStatus.isLoading)
+            }
+            // 按钮**始终可见**：之前按「已加载」隐藏，导致用户根本找不到入口
+            //（名单还没下载时连提示都没有）。现在点了没文件就说明原因。
+            Button {
+                if let lists = SplitExitListsUpdater.loadCached(), !lists.isEmpty {
+                    listsForDisplay = lists
+                    showListsSheet = true
+                    listsMissingHint = false
+                } else {
+                    listsForDisplay = nil
+                    listsMissingHint = true
                 }
+            } label: {
+                Label("查看名单内容", systemImage: "list.bullet.rectangle")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            if listsMissingHint {
+                Text("磁盘上还没有名单文件。先点上面的「更新名单」，成功后再看。")
+                    .font(.caption2).foregroundStyle(.orange)
             }
         }
         .onAppear { state.loadSplitExitListsStatus() }
