@@ -226,7 +226,14 @@ public struct SettingsView: View {
         if let error = status.error { return L("国内名单不可用：\(error)") }
         guard status.isLoaded else { return L("国内名单尚未下载，当前只用内置 geosite/geoip") }
         let when = status.updatedAt.map { $0.formatted(.relative(presentation: .named).locale(locale)) } ?? "—"
-        return L("国内名单：\(status.domainCount) 域名 / \(status.cidrCount) 网段（\(when)）")
+        // 截断后要显示「实收/源总数」，否则用户会以为 11 万条全生效了
+        let domainText = status.sourceDomainCount > status.domainCount
+            ? "\(status.domainCount)/\(status.sourceDomainCount)"
+            : "\(status.domainCount)"
+        let cidrText = status.sourceCIDRCount > status.cidrCount
+            ? "\(status.cidrCount)/\(status.sourceCIDRCount)"
+            : "\(status.cidrCount)"
+        return L("国内名单：\(domainText) 域名 / \(cidrText) 网段（\(when)）")
     }
 
     /// 节点下拉：`nil` 表示未选。列表用 `id` 作 tag，重名节点也不会串。

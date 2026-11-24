@@ -52,6 +52,35 @@ final class SplitExitListsTests: XCTestCase {
         XCTAssertEqual(parsed.domains, ["qq.com"])
     }
 
+    /// Loyalsoldier 的 release 分支是 Clash **rule-provider** 格式：
+    /// ```
+    /// payload:
+    ///   - '2mdn-cn.net'
+    /// ```
+    /// 不是 `DOMAIN-SUFFIX,xxx`。按后者解析会得到 0 条 —— 线上就踩过这个坑
+    /// （设置页显示"解析结果为空"）。
+    func testParsesClashRuleProviderFormat() {
+        let text = """
+        payload:
+          - '2mdn-cn.net'
+          - "a1.mzstatic.com"
+          - bare.example.cn
+          - 'singleword'
+        """
+        let parsed = SplitExitListParser.parseDomains(text)
+        XCTAssertEqual(parsed.domains, ["2mdn-cn.net", "a1.mzstatic.com", "bare.example.cn"])
+        XCTAssertEqual(parsed.keywords, ["singleword"])
+    }
+
+    func testParsesProviderFormatCIDRs() {
+        let text = """
+        payload:
+          - '1.0.1.0/24'
+          - '2400:3200::/32'
+        """
+        XCTAssertEqual(SplitExitListParser.parseCIDRs(text), ["1.0.1.0/24", "2400:3200::/32"])
+    }
+
     // MARK: - 更新容错
 
     private struct StubClient: HTTPClient, Sendable {
@@ -102,6 +131,27 @@ final class SplitExitListsTests: XCTestCase {
         XCTAssertNotNil(store.stored?.fetchedAt)
     }
 
+    /// 真实的 direct.txt 有 11 万条：必须按上限截断后再落盘，同时把源总数记下来，
+    /// 否则要么顶爆 NE 内存、要么让用户以为全量都生效了。
+    func testOversizedListIsTruncatedAndSourceCounted() async {
+        let many = (0..<(SplitExitListsLimits.domains + 500))
+            .map { "d\($0).example.cn" }
+            .joined(separator: "\n")
+        let store = MemoryStore()
+        let updater = SplitExitListsUpdater(
+            client: StubClient(bodies: ["direct.txt": many, "cncidr.txt": cidrBody]),
+            sources: sources(), store: store)
+        let outcome = await updater.refresh()
+        XCTAssertNil(outcome.error)
+        XCTAssertEqual(store.stored?.domains.count, SplitExitListsLimits.domains)
+        XCTAssertEqual(store.stored?.sourceDomainCount, SplitExitListsLimits.domains + 500)
+        // 等距抽样：必须覆盖到名单尾部，而不是只留前 3 万条
+        let last = store.stored?.domains.last ?? ""
+        let lastIndex = Int(last.dropFirst().prefix(while: { $0.isNumber })) ?? -1
+        XCTAssertGreaterThan(lastIndex, SplitExitListsLimits.domains,
+                             "抽样应覆盖到源名单尾部（实际最后一条：\(last)）")
+    }
+
     /// 一份拉失败 → 整份不更新，旧名单原样保留。
     func testPartialFailureKeepsPreviousLists() async {
         let old = SplitExitLists(domains: ["old.cn"], cidrs: ["9.9.9.0/24"], fetchedAt: Date(), sources: [])
@@ -139,6 +189,21 @@ final class SplitExitListsTests: XCTestCase {
         XCTAssertEqual(outcome.lists?.domains, ["a.cn"])
     }
 
+    func testSamplerSpreadsAcrossWholeList() {
+        let items = (0..<1000).map { $0 }
+        let sampled = SplitExitListSampler.sample(items, limit: 100)
+        XCTAssertEqual(sampled.count, 100)
+        XCTAssertEqual(sampled.first, 0)
+        XCTAssertEqual(sampled.last, 990)          // 覆盖到尾部，而不是前 100 个
+        XCTAssertEqual(Set(sampled).count, 100)    // 无重复
+        XCTAssertTrue(zip(sampled, sampled.dropFirst()).allSatisfy { $0 < $1 })
+    }
+
+    func testSamplerLeavesSmallListUntouched() {
+        let items = [1, 2, 3]
+        XCTAssertEqual(SplitExitListSampler.sample(items, limit: 100), items)
+    }
+
     func testStaleThreshold() {
         let fresh = SplitExitLists(domains: ["a"], cidrs: ["b"], fetchedAt: Date(), sources: [])
         XCTAssertFalse(SplitExitListsUpdater.isStale(fresh))
@@ -146,5 +211,31 @@ final class SplitExitListsTests: XCTestCase {
                                  fetchedAt: Date().addingTimeInterval(-25 * 3600), sources: [])
         XCTAssertTrue(SplitExitListsUpdater.isStale(old))
         XCTAssertTrue(SplitExitListsUpdater.isStale(nil))
+    }
+}
+
+/// 用真实名单文件跑一遍解析（默认跳过，避免 CI 依赖网络）。
+/// 手动验证：`QZ_REAL_LISTS=/tmp sh -c 'cd <repo> && swift test --filter RealList'`，
+/// 目录里放好 d.txt（direct.txt）与 c.txt（cncidr.txt）。
+final class RealListParsingTests: XCTestCase {
+    func testParsesRealDirectAndCIDRFiles() throws {
+        guard let dir = ProcessInfo.processInfo.environment["QZ_REAL_LISTS"] else {
+            throw XCTSkip("未设置 QZ_REAL_LISTS")
+        }
+        let dPath = dir + "/d.txt", cPath = dir + "/c.txt"
+        guard FileManager.default.fileExists(atPath: dPath),
+              FileManager.default.fileExists(atPath: cPath) else {
+            throw XCTSkip("样例文件不存在")
+        }
+        let dText = try String(contentsOfFile: dPath, encoding: .utf8)
+        let cText = try String(contentsOfFile: cPath, encoding: .utf8)
+
+        let parsed = SplitExitListParser.parseDomains(dText)
+        let cidrs = SplitExitListParser.parseCIDRs(cText)
+        // 量级断言（真实文件是 11 万 / 9.6 千），只要不是 0 就说明格式认对了
+        XCTAssertGreaterThan(parsed.domains.count, 50_000, "direct.txt 应解析出数万条")
+        XCTAssertGreaterThan(cidrs.count, 3_000, "cncidr.txt 应解析出数千条")
+        XCTAssertEqual(parsed.keywords.count, 0, "真实文件里的单标签条目都带 +. 前缀，应归到域名而非关键字")
+        print("real: domains=\(parsed.domains.count) keywords=\(parsed.keywords.count) cidrs=\(cidrs.count)")
     }
 }

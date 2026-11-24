@@ -484,10 +484,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             os_log("split-exit: 未找到名单文件 → 名单只用 geosite/geoip", log: log, type: .default)
             return .init()
         }
-        let maxDomains = 20_000, maxCIDRs = 10_000
-        let domains = Array(lists.domains.prefix(maxDomains))
-        let keywords = Array(lists.domainKeywords.prefix(2_000))
-        let cidrs = Array(lists.cidrs.prefix(maxCIDRs))
+        let domains = Array(lists.domains.prefix(SplitExitListsLimits.domains))
+        let keywords = Array(lists.domainKeywords.prefix(SplitExitListsLimits.keywords))
+        let cidrs = Array(lists.cidrs.prefix(SplitExitListsLimits.cidrs))
         if domains.count < lists.domains.count || cidrs.count < lists.cidrs.count {
             os_log("split-exit: 名单已截断 domains=%d/%d cidrs=%d/%d（NE 内存预算）",
                    log: log, type: .default,

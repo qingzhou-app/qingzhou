@@ -128,7 +128,18 @@ public actor SplitExitListsUpdater {
             return Outcome(lists: cached, error: message, usedCache: cached != nil)
         }
 
+        // 截断到注入上限：源文件 direct.txt 有 11 万条，整份塞给扩展会顶到
+        // NE 的 50 MiB jetsam 上限。截断后的真实条数记进 source*，UI 上显示
+        // 「30000/110251」——不让用户误以为全量都生效了。
+        let rawDomainCount = domains.count + keywords.count
+        let rawCIDRCount = cidrs.count
+        domains = SplitExitListSampler.sample(domains, limit: SplitExitListsLimits.domains)
+        keywords = SplitExitListSampler.sample(keywords, limit: SplitExitListsLimits.keywords)
+        cidrs = SplitExitListSampler.sample(cidrs, limit: SplitExitListsLimits.cidrs)
+
         let fresh = SplitExitLists(domains: domains, domainKeywords: keywords, cidrs: cidrs,
+                                   sourceDomainCount: rawDomainCount,
+                                   sourceCIDRCount: rawCIDRCount,
                                    fetchedAt: Date(), sources: sources.map(\.absoluteString))
         do {
             try store.save(fresh)
@@ -150,8 +161,10 @@ extension AppState {
     /// 启动/进设置页时把缓存状态读出来显示，不打网络。
     public func loadSplitExitListsStatus() {
         guard let lists = SplitExitListsUpdater.loadCached() else { return }
-        splitExitListsStatus.domainCount = lists.domains.count
+        splitExitListsStatus.domainCount = lists.domains.count + lists.domainKeywords.count
         splitExitListsStatus.cidrCount = lists.cidrs.count
+        splitExitListsStatus.sourceDomainCount = lists.sourceDomainCount
+        splitExitListsStatus.sourceCIDRCount = lists.sourceCIDRCount
         splitExitListsStatus.updatedAt = lists.fetchedAt
     }
 
@@ -168,10 +181,12 @@ extension AppState {
         splitExitListsStatus.error = outcome.error
 
         if let lists = outcome.lists {
-            let changed = lists.domains.count != splitExitListsStatus.domainCount
+            let changed = (lists.domains.count + lists.domainKeywords.count) != splitExitListsStatus.domainCount
                 || lists.cidrs.count != splitExitListsStatus.cidrCount
-            splitExitListsStatus.domainCount = lists.domains.count
+            splitExitListsStatus.domainCount = lists.domains.count + lists.domainKeywords.count
             splitExitListsStatus.cidrCount = lists.cidrs.count
+            splitExitListsStatus.sourceDomainCount = lists.sourceDomainCount
+            splitExitListsStatus.sourceCIDRCount = lists.sourceCIDRCount
             splitExitListsStatus.updatedAt = lists.fetchedAt
             // 分流运行中且名单变了 → 重连才会带上新名单（配置在扩展启动时构建一次）。
             if changed, outcome.error == nil, isVPNRunning, settings.splitExitEnabled {

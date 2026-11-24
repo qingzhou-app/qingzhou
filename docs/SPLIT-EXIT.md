@@ -64,6 +64,26 @@ Loyalsoldier/clash-rules 的 `release/direct.txt` 与 `release/cncidr.txt`，
 由 `SplitExitListsUpdater`（主 App）每天拉一次，写到 App Group 的
 `xray-data/split-exit-lists.json`，隧道扩展启动时读。
 
+**格式（实测）**：这两份文件是 Clash **rule-provider** 格式，不是规则行：
+
+```
+payload:
+  - '+.2mdn-cn.net'
+```
+
+- `payload:` 是表头，跳过；
+- `- '...'` 是列表项；
+- `+.domain` / `*.domain` 表示"该域及其子域"，前缀要剥掉（xray 的 `domain:` 本身就是含子域）；
+- 剥完只剩一个标签的（如 `+.app`）是**顶级域后缀**，归到域名而非关键字 ——
+  当关键字会变成子串匹配，`app` 会命中 happy/apple 之类。
+
+早期按 `DOMAIN-SUFFIX,x` 解析，结果 11 万条只认出 562 条，设置页显示"解析结果为空"。
+
+**截断方式**：源文件 `direct.txt` 有 110202 条域名、`cncidr.txt` 有 9665 条网段，
+全量注入会顶到 NE 的 50 MiB 内存上限。超限时用**等距抽样**（不是取前 N 条 ——
+源名单按字母序排，取前缀等于只保留 a–c，是有偏截断）。抽样后 UI 显示
+「30000/110202 域名」，让用户知道有多少条真正生效。
+
 几条刻意的取舍：
 
 - **两份都成功才更新**：只有域名没有 IP（或反之）会让国内直连出现看不见的缺口，
@@ -72,9 +92,9 @@ Loyalsoldier/clash-rules 的 `release/direct.txt` 与 `release/cncidr.txt`，
 - **写完回读校验**：写得进去但读不回来，和没写是一回事。
 - **关键字单独存**：`DOMAIN-KEYWORD,wechat` 这种不含点的条目如果加 `domain:` 前缀，
   就变成"以 `.wechat` 结尾"，等于把规则丢掉；它们按裸串（xray 的子串匹配）注入。
-- **注入有上限**：域名 20000 / 关键字 2000 / IP 段 10000。iOS 给 NE 扩展 50 MiB 的
-  jetsam 上限，几万条规则是实打实的常驻内存；超出部分由 `geosite:cn` / `geoip:cn` 兜。
-  这个上限要等真机内存实测后再调。
+- **注入有上限**：域名 30000 / 关键字 2000 / IP 段 8000（`SplitExitListsLimits`）。
+  iOS 给 NE 扩展 50 MiB 的 jetsam 上限；超出部分由 `geosite:cn` / `geoip:cn` 兜。
+  这个上限是按保守估计给的，**未做真机内存实测**，要等实测后再调。
 
 名单为空时仍是正确行为（只用内置 geosite/geoip），只是粒度粗一些。
 

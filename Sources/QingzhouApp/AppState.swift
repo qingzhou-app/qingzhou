@@ -2989,6 +2989,9 @@ public enum RemoteFetchStatus: Sendable, Equatable {
 public struct SplitExitListsStatus: Sendable, Equatable {
     public var domainCount = 0
     public var cidrCount = 0
+    /// 源文件总条数（截断前），用于显示「30000/110251」
+    public var sourceDomainCount = 0
+    public var sourceCIDRCount = 0
     public var updatedAt: Date?
     public var error: String?
     public var isLoading = false
