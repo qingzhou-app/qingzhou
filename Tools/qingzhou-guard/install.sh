@@ -68,7 +68,7 @@ if [ -d "$GROUP_DIR" ]; then
   printf '{"host":"127.0.0.1","port":%s,"username":"%s","password":"%s"}' "$PORT" "$U" "$P" > "$GROUP_DIR/guard-relay.json"
   chown "$TARGET_USER" "$GROUP_DIR/guard-relay.json"
   chmod 600 "$GROUP_DIR/guard-relay.json"
-  echo "    已写入 $GROUP_DIR/guard-relay.json（属主 $TARGET_USER）"
+  echo "    已写入 ${GROUP_DIR}/guard-relay.json（属主 ${TARGET_USER}）"
 else
   echo "    ⚠️ 未找到 App Group 容器（先运行一次轻舟 App 再重跑本脚本），否则 App 读不到凭据"
 fi
