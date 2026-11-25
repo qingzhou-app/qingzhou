@@ -1,6 +1,6 @@
 {
   "date": "2026-11-12",
-  "root": "/Users/sbraveyoung/code/src/github.com/sbraveyoung/qingzhou",
+  "root": "<repo-root>",
   "branch": "main",
   "head": "f3925d6dc34fe0e95b781ae7d92f24d7e9c4557c",
   "status_before_manifest": " M Apps/App-Shared/Localizable.xcstrings\n M Apps/Tunnel-Shared/PacketTunnelProvider.swift\n M Apps/project.yml\n M Sources/QingzhouApp/AppState.swift\n M Sources/QingzhouApp/ConnectionsView.swift\n M Sources/QingzhouApp/DomainTrafficView.swift\n M Sources/QingzhouApp/HomeView.swift\n M Sources/QingzhouApp/NetworkInfoService.swift\n M Sources/QingzhouApp/VPNTunnelManager.swift\n M Sources/QingzhouCore/AppliedTunnelConfiguration.swift\n M Sources/QingzhouCore/DomainTrafficLedger.swift\n M Sources/QingzhouCore/TunnelSessionInfo.swift\n M Sources/XrayConfig/XrayConfigComposer.swift\n M Sources/XrayCore/DomainTrafficRecorder.swift\n M Tests/QingzhouAppTests/AppliedTunnelStateTests.swift\n M Tests/QingzhouAppTests/PublicIPTests.swift\n M Tests/QingzhouCoreTests/AppliedTunnelConfigurationTests.swift\n M Tests/QingzhouCoreTests/DomainTrafficLedgerTests.swift\n M Tests/XrayConfigTests/PublicIPRoutingTests.swift\n M Tests/XrayConfigTests/XrayConfigComposerTests.swift\n M Tests/XrayCoreTests/XrayStatsAndProbeTests.swift\n M docs/ACCEPTANCE.md\n M docs/BUILD.md\n M docs/DOMAIN-TRAFFIC.md\n?? .brooks-lint-history.json\n?? .planning/\n?? AGENTS.md\n?? Apps/DeviceAcceptance/\n?? docs/HANDOFF-CLAUDE-CODE.md\n?? docs/SHADOWROCKET-FEATURE-COMPARISON.md\n",

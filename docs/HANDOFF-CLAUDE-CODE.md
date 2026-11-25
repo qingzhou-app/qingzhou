@@ -17,7 +17,7 @@
 ## 1. 工作区是唯一完整交接载体
 
 ```text
-/Users/sbraveyoung/code/src/github.com/sbraveyoung/qingzhou
+<repo-root>
 branch: main
 HEAD（交接时短哈希）: f3925d6
 HEAD title: Record daemon recovery and iPhone browser video acceptance

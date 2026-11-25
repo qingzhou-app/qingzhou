@@ -2,13 +2,30 @@
 
 > 这是 commercial App Store VPN 产品的 6 个月 part-time 路线图。MVP 目标是 W9-10 上架。
 
-## 当前工程状态（2026-10-23，build34静默恢复）
+## 当前工程状态（2026-11-25，`master/teamwork`：build 38 + `feat/split-exit` 集成与 M1–M4 加固）
 
-- 2026-10-26补验：iPhone14Pro的34普通启动、VPN启停、实际节点/模式一致、主App退出后同隧道及账本持续更新、重开保留统计均取得实机证据；四轮64样本无自动云恢复提示。测试后恢复未连接状态。Mac首页/月度页补验正常，旧完整UI/兼容性/跨月条目仍保留，见`ACCEPTANCE.md`。
+- **版本源与当前分支**：`Apps/project.yml`，当前版本 **`1.0(38)`**，集成分支 `master/teamwork`（以 `baseline/2026-11-24-build38` `74fe8841` 为基线合并 `feat/split-exit` `c6a908e1`，并完成 M1–M4 加固重构）。
+- **build 35–38（`baseline/2026-11-24-build38`，`8bbe74c9` / `74fe8841`）**：
+  - build 35–36：公网 IP 双路径（物理接口直连与固定代理入口分离）、节点 TCP A + AAAA 并发探测。
+  - build 37：无节点直连模式、会话/日度/月度域名流量账本（`DomainTrafficLedger` / `DomainTrafficRecorder`）与持久化。
+  - build 38：普通模式切换为双栈 FakeDNS（`198.18.0.0/15` + `fc00::/18`、`UseIP`、`direct` `AsIs` + `ForceIP` + `happyEyeballs`）及 `tun-in` `tcp,udp` 53 端口精确拦截，新增 `Apps/DeviceAcceptance`（代码与单测已合入，**尚待真机实网终验**，见 [docs/IPV6.md](IPV6.md) 与 [docs/ACCEPTANCE-CHECKLIST-teamwork.md](ACCEPTANCE-CHECKLIST-teamwork.md)）。
+- **`feat/split-exit` 与 M1–M3 加固重构（`e0ee9ea5`、`8c3b6168`、`6af9d359`）**：
+  - **M1（P0 加固）**：提取可测中继核心 `Sources/QingzhouGuardRelayCore/`；加固 `ClientSession` / `ControlSession` 并发队列、`RelayDNS` 异步 `recv()` 与有界缓存、`RelayLogger` 5 MiB 轮转；严格分离 `forward:` 与 `control:` 凭据；修复 `TimeZoneController` `SET-TZ` vs `currentTimeZone()` 比对与 `uninstall.sh` 时区还原、`AppState.sendControlCommand`；`guard-run.sh` 增加无 `utun` fail-closed 基础规则与 `<= 1s` 轮询，`off.sh` 改为锚点级清空（不再全局 `pfctl -d`），`enable.sh` 增加 Python 结构化 JSON 校验。
+  - **M2（P1 平台隔离与规则语义）**：macOS 专属分流/`qingzhou-guard`/`sudo` UI 全量 `#if os(macOS)` 隔离；4 语 `*.xcstrings` 补全与 `LocalizedStringKey` 修复；`PacketTunnelProvider+SplitExit` 透传 `self.blockQUIC`；`Rule.noResolve` 独立解析与 `RoutingRuleConverter` `PROCESS-NAME` / `USER-AGENT` 显式诊断。
+  - **M3（P2 优化与拆分）**：`Sources/QingzhouCore/Resources/geosite-cn.txt` + `GeoSiteCNMatcher` 前置去重（保持 `QingzhouApp` 不依赖 `XrayCore`）；通用 `SplitExitPolicyGroup` 替代硬编码站点规则；拆分 `AppState.swift`、`PacketTunnelProvider.swift`、`SettingsView.swift` 并通过 `xcodegen generate` 同步。
+  - **M4（文档与验收工程）**：路径脱敏、技术文档同步、新增本地脚本 `Tools/verify-local.sh` 与 `sudo` 交互脚本 `Tools/verify-guard-e2e.sh`，以及总验收清单 [docs/ACCEPTANCE-CHECKLIST-teamwork.md](ACCEPTANCE-CHECKLIST-teamwork.md)。
+- **本地验证实况（M3 `6af9d359`）**：`swift test` 1,205 项执行（2 项环境门控跳过、0 失败），`Qingzhou-iOS`（Simulator）与 `Qingzhou-macOS` 无签名构建通过，`xcstringstool compile` 20/20 通过，`extract-geosite-cn.py --check` 通过。
+- **待人工 / 真机 / 特权环境验收**：统一收敛在 [docs/ACCEPTANCE-CHECKLIST-teamwork.md](ACCEPTANCE-CHECKLIST-teamwork.md)（含 `sudo` `qingzhou-guard` E2E、真机签名构建与 50 MiB NE 内存实测、build 38 双栈 IPv6 与历史遗留手工核对、S4/S5 App Store Connect 上架操作与 `git push` 命令）。
+
+> 以下保留 build 20–34 与早期 Sprint 的历史归档记录（请勿将历史未勾项直接当作当前待办）：
+
+### 历史构建归档（build 20–34，2026-10-23 前后）
+
+- 2026-10-26补验（build 34）：iPhone14Pro的34普通启动、VPN启停、实际节点/模式一致、主App退出后同隧道及账本持续更新、重开保留统计均取得实机证据；四轮64样本无自动云恢复提示。测试后恢复未连接状态。Mac首页/月度页补验正常，旧完整UI/兼容性/跨月条目仍保留，见`ACCEPTANCE.md`。
 
 - build34：启动/后台云检查不再弹恢复提示，改为设置手动恢复，保留版本冲突写入保护。1043项工程回归（1042通过、1跳过）、双端构建与签名通过，Mac/iPhone14Pro已安装。Mac重复旧扩展注册已清理，新扩展恢复上报；手机后续运行及旧体验验收见`ACCEPTANCE.md`。宣发稿见[六平台内容包](marketing/2026-10-launch-kit.md)。
 
-- 版本源：`Apps/project.yml`，当前1.0(34)。以下保留各构建的历史结果；build33的1042项工程回归及Go六项race通过，Mac月度排行已有真实数据，手机新扩展运行及旧待验收项须区分，详见 `ACCEPTANCE.md`。
+- 版本源：历史归档对应 `1.0(34)`；build33的1042项工程回归及Go六项race通过，Mac月度排行已有真实数据，手机新扩展运行及旧待验收项须区分，详见 `ACCEPTANCE.md`。
 - build33：新增真实月度域名字节排行，代理/直连、上传/下载、月份/排序/搜索；扩展单写者持续记录，本机保留6个月，有界内存、未知/其他守恒；不回填旧历史、不等同订阅账单。参见[月度域名流量](DOMAIN-TRAFFIC.md)。
 - build32：修复Mac主窗口恢复、侧栏/标题语言刷新和TCP物理接口DNS解析；增加分层节点诊断、脱敏报告及过期结果保护。独立审查多IP回退问题已补回归修复。实机抽查6个TCP节点全握手成功，代理可用性仍须分别验证。
 - build30–31：网络测量分桶、带宽衰减、TCP自动预算/缓存、择优回放、详情隐私和说明修复已完成；两端31安装及基础运行证据见`ACCEPTANCE.md`，旧完整验收缺口保留。
@@ -104,22 +121,19 @@
 - [x] 每个 converter 单测（成功 + 各种字段缺失）
 - [x] AppState.startTunnel() 改成：拿当前节点 → converter → 写到 AppGroup → 启动 tunnel
 
-### S4：App Store 准备
-- [ ] Privacy Policy 网页（GitHub Pages）
-- [ ] App Store Connect：
-  - [ ] Bundle ID 真实注册
-  - [ ] App Privacy 详情填写
-  - [ ] iPhone 6.7" / 6.5" / 5.5" 各 5 张截图
-  - [ ] App 描述（中文）
-  - [ ] 关键词
-- [ ] TestFlight 内测组，5+ 名外部用户使用 1 周
-- [ ] Crash-free 率 99%+
+### S4：App Store 准备（进行中，实况与操作详见 [APP_STORE_STEP_BY_STEP.md](APP_STORE_STEP_BY_STEP.md)）
+- [x] 组织版 Apple Developer 账号就位（原地转换完成，Team ID 保持 `UK7MME38H9`）
+- [x] App Store Connect 记录已建（`轻舟 Qingzhou`，Apple ID `6787037928`，状态「准备提交」）
+- [x] 早期 TestFlight build `1.0 (2)` 已上传至内部测试群组
+- [ ] 将合并后最新 build（`1.0 (38)`+）Archive 并上传至 ASC / TestFlight
+- [ ] Privacy Policy 网页上线（GitHub Pages `main /docs` + 仓库转 public，按审核要求）
+- [ ] ASC 元数据与合规补齐：App 隐私（全 No）、加密合规（`ITSAppUsesNonExemptEncryption=false`）、EU DSA 交易商状态或排除欧盟地区、排除中国大陆、年龄分级 17+、6.9"/6.5" 真机截图、审核备注（附稳定测试节点/订阅）
+- [ ] TestFlight 外部测试（Beta App Review，5+ 名外部测试员运行 ≥1 周，Crash-free ≥99%）
 
-### S5：上架
-- [ ] 提交审核（VPN apps Apple 会仔细审，准备解释材料：节点不预设、用户自带订阅、不绕过 App Store IAP 等）
-- [ ] 等审核 + 处理 reject（VPN 类目首次提交常被 reject，准备 1-2 轮）
-- [ ] 通过 → 上架
-- [ ] 准备首批用户反馈渠道（GitHub Issues、Telegram、邮箱）
+### S5：上架（待 S4 完成，手工提审）
+- [ ] 版本页选中最新已验证 TestFlight build，确认元数据/截图/隐私/审核备注齐全后 **Submit for Review**
+- [ ] 跟进审核与 Resolution Center（VPN 类目需备好组织主体 5.4 与测试节点 2.1 说明）
+- [ ] 通过 → 上架并开放首批用户反馈渠道（GitHub Issues 等）
 
 ## 风险 & 缓解
 

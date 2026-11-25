@@ -49,6 +49,9 @@ settings:
     # build 29 = 网络路径会话与样本衰减、近期代理下载观测、6候选预算/轮换探索。
     # build 30 = 自动TCP预算/增量测量与真实择优编排场景回放。
     # build 31 = 验收修复：详情指纹只显示摘要、择优说明与地区无障碍名称。
+    # build 32–38 = TCP 物理接口 DNS、月度域名流量排行、无节点直连与会话/日度统计、
+    #               build 38 双栈 FakeDNS + tun-in TCP/UDP DNS 拦截（待真机终验）；
+    #               master/teamwork 合并 feat/split-exit（分流方案 + 断网开关 + M1–M4 加固重构）。
     CURRENT_PROJECT_VERSION: "38"
     # 调试期间用自动签名 + 你自己的 Personal Team
     CODE_SIGN_STYLE: Automatic
@@ -139,7 +142,7 @@ targets:
         product: QingzhouLogging
       # 主 App 不再 link XrayCore —— 那会拖进 LibXray.xcframework（85 MB Go runtime），
       # 让 dyld 在启动时多花 1–3 秒。share link → xray 配置的转换挪到了 Extension。
-      # PacketTunnel Extension：嵌入到 App，等 entitlement 批复后真机才能跑
+      # PacketTunnel Extension：嵌入到 App（真机运行需签名，entitlement 已在 Org Team UK7MME38H9 就位）
       - target: Qingzhou-Tunnel-iOS
         embed: true
         codeSign: true
@@ -223,7 +226,7 @@ targets:
         product: QingzhouLogging
       # 主 App 不再 link XrayCore —— 那会拖进 LibXray.xcframework（85 MB Go runtime），
       # 让 dyld 在启动时多花 1–3 秒。share link → xray 配置的转换挪到了 Extension。
-      # PacketTunnel Extension：嵌入到 App，等 entitlement 批复后才能签真机
+      # PacketTunnel Extension：嵌入到 App（真机运行需签名，entitlement 已在 Org Team UK7MME38H9 就位）
       - target: Qingzhou-Tunnel-macOS
         embed: true
         codeSign: true
@@ -234,11 +237,11 @@ targets:
         codeSign: true
 
   # ===========================================================================
-  # PacketTunnel Extension targets（阶段 2）
-  # 共享同一份 Tunnel-Shared/PacketTunnelProvider.swift；现在是 stub，
-  # 等接入 sing-box.xcframework 后改为真实现。
-  # 这两个 target 当前能编过；要在真机上签名运行，必须先拿到 Apple 的
-  # `packet-tunnel-provider` entitlement 批复。
+  # PacketTunnel Extension targets
+  # 共享 Tunnel-Shared/PacketTunnelProvider*.swift，基于 XrayCore（LibXray.xcframework）
+  # 与纯 Swift 的 XrayConfig 模块生成配置并运行 xray-core。
+  # `packet-tunnel-provider` entitlement 已在 Org Team（UK7MME38H9）就位，
+  # 非签名构建可用 CODE_SIGNING_ALLOWED=NO，真机运行完整 VPN 需签名构建。
   # ===========================================================================
   Qingzhou-Tunnel-iOS:
     type: app-extension
