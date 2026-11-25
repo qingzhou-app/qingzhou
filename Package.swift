@@ -96,6 +96,21 @@ let package = Package(
         .testTarget(
             name: "XrayCoreTests",
             dependencies: ["XrayCore", "XrayConfig", "QingzhouProtocols", "QingzhouCore"]
+        ),
+        // 端到端黑盒本地验证套件：跨模块验证 Relay/Control/DNS、规则转换、分流配置、
+        // 本地化、脚本沙盒与模块隔离边界。QingzhouApp 仍保持不依赖 XrayCore。
+        .testTarget(
+            name: "QingzhouE2ETests",
+            dependencies: [
+                "QingzhouCore",
+                "QingzhouRules",
+                "QingzhouProtocols",
+                "QingzhouSubscription",
+                "XrayConfig",
+                "XrayCore",
+                "QingzhouGuardRelayCore",
+                "QingzhouApp"
+            ]
         )
     ]
 )
