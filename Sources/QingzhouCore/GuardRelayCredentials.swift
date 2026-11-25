@@ -55,12 +55,32 @@ public struct GuardRelayCredentials: Codable, Sendable, Equatable {
         GuardRelayCredentials(host: host, port: port, username: username, password: password)
     }
 
-    /// 校验并提取控制凭据：要求控制用户名/密码非空、控制端口有效、且与转发凭据分离（不相同）。
+    private static func hasWhitespaceOrNewline(_ value: String) -> Bool {
+        value.contains { $0.isWhitespace || $0.isNewline || $0 == "\r" || $0 == "\n" }
+    }
+
+    private static func hasNewline(_ value: String) -> Bool {
+        value.contains { $0.isNewline || $0 == "\r" || $0 == "\n" }
+    }
+
+    private static func isValidUsername(_ value: String) -> Bool {
+        !value.isEmpty && !hasWhitespaceOrNewline(value) && !value.contains(":")
+    }
+
+    private static func isValidForwardPassword(_ value: String) -> Bool {
+        !value.isEmpty && !hasNewline(value)
+    }
+
+    private static func isValidControlPassword(_ value: String) -> Bool {
+        !value.isEmpty && !hasWhitespaceOrNewline(value)
+    }
+
+    /// 校验并提取控制凭据：要求控制用户名/密码非空且不含空白/换行/冒号、控制端口有效、且与转发凭据分离（不相同）。
     public func validatedControlCredentials() -> ControlCredentials? {
         let resolvedPort = controlPort ?? Self.controlPort
         guard resolvedPort > 0,
-              let cu = controlUsername, !cu.isEmpty,
-              let cp = controlPassword, !cp.isEmpty,
+              let cu = controlUsername, Self.isValidUsername(cu),
+              let cp = controlPassword, Self.isValidControlPassword(cp),
               !(cu == username && cp == password) else {
             return nil
         }
@@ -81,7 +101,11 @@ public struct GuardRelayCredentials: Codable, Sendable, Equatable {
     public static func decode(_ raw: String) -> GuardRelayCredentials? {
         guard !raw.isEmpty, let data = raw.data(using: .utf8) else { return nil }
         let creds = try? JSONDecoder().decode(GuardRelayCredentials.self, from: data)
-        guard let creds, !creds.host.isEmpty, !creds.username.isEmpty, !creds.password.isEmpty, creds.port > 0 else { return nil }
+        guard let creds,
+              !creds.host.isEmpty, !Self.hasWhitespaceOrNewline(creds.host),
+              Self.isValidUsername(creds.username),
+              Self.isValidForwardPassword(creds.password),
+              creds.port > 0 else { return nil }
         return creds
     }
 }

@@ -15,10 +15,13 @@ public final class ControlSession: @unchecked Sendable {
     private let timeZoneController: TimeZoneController
     private let registry: SessionRegistry<ControlSession>
     private let maxLineBytes: Int
+    private let drainTimeout: TimeInterval
     private let queue: DispatchQueue
 
     private var buffer = Data()
     private var authed = false
+    private var draining = false
+    private var pendingSends = 0
     private var closed = false
 
     public init(
@@ -26,13 +29,15 @@ public final class ControlSession: @unchecked Sendable {
         creds: CredentialPair,
         timeZoneController: TimeZoneController,
         registry: SessionRegistry<ControlSession>,
-        maxLineBytes: Int = ControlSession.defaultMaxLineBytes
+        maxLineBytes: Int = ControlSession.defaultMaxLineBytes,
+        drainTimeout: TimeInterval = 2.0
     ) {
         self.connection = connection
         self.creds = creds
         self.timeZoneController = timeZoneController
         self.registry = registry
         self.maxLineBytes = max(16, maxLineBytes)
+        self.drainTimeout = max(0.05, drainTimeout)
         self.queue = DispatchQueue(label: "com.sbraveyoung.qingzhou.relay.control.\(UUID().uuidString)")
     }
 
@@ -57,9 +62,9 @@ public final class ControlSession: @unchecked Sendable {
     }
 
     private func pumpOnQueue() {
-        guard !closed else { return }
+        guard !closed, !draining else { return }
         connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, isComplete, error in
-            guard let self, !self.closed else { return }
+            guard let self, !self.closed, !self.draining else { return }
 
             if let data, !data.isEmpty {
                 self.buffer.append(data)
@@ -90,8 +95,17 @@ public final class ControlSession: @unchecked Sendable {
                 return
             }
 
-            if error != nil || isComplete {
+            if error != nil {
                 self.closeOnQueue()
+                return
+            }
+
+            if isComplete {
+                if self.pendingSends > 0 {
+                    self.enterDrainingOnQueue()
+                } else {
+                    self.closeOnQueue()
+                }
                 return
             }
 
@@ -159,8 +173,26 @@ public final class ControlSession: @unchecked Sendable {
     }
 
     private func sendLineOnQueue(_ text: String, completion: (@Sendable () -> Void)? = nil) {
+        guard !closed else { return }
+        pendingSends += 1
         connection.send(content: Data((text + "\n").utf8),
-                        completion: .contentProcessed { _ in completion?() })
+                        completion: .contentProcessed { [weak self] sendError in
+            guard let self, !self.closed else { return }
+            self.pendingSends = max(0, self.pendingSends - 1)
+            completion?()
+            if sendError != nil || (self.draining && self.pendingSends == 0) {
+                self.closeOnQueue()
+            }
+        })
+    }
+
+    private func enterDrainingOnQueue() {
+        guard !draining, !closed else { return }
+        draining = true
+        queue.asyncAfter(deadline: .now() + drainTimeout) { [weak self] in
+            guard let self, !self.closed else { return }
+            self.closeOnQueue()
+        }
     }
 
     private func closeOnQueue() {

@@ -46,12 +46,14 @@ public actor SplitExitListsUpdater {
         public var lists: SplitExitLists?
         public var error: String?
         public var usedCache: Bool
+        public var changed: Bool
         public var metrics: SplitExitListMetrics?
 
-        public init(lists: SplitExitLists?, error: String?, usedCache: Bool, metrics: SplitExitListMetrics? = nil) {
+        public init(lists: SplitExitLists?, error: String?, usedCache: Bool, changed: Bool = false, metrics: SplitExitListMetrics? = nil) {
             self.lists = lists
             self.error = error
             self.usedCache = usedCache
+            self.changed = changed
             self.metrics = metrics
         }
     }
@@ -92,11 +94,19 @@ public actor SplitExitListsUpdater {
         return Date().timeIntervalSince(at) >= maxAge
     }
 
+    /// 比较前后两份名单的实际条目内容是否发生变化（不仅看条数，防止抽样上限 30,000 / 8,000 处等量更新漏检）。
+    public static func hasContentChanged(from previous: SplitExitLists?, to current: SplitExitLists) -> Bool {
+        guard let previous else { return true }
+        return current.domains != previous.domains
+            || current.domainKeywords != previous.domainKeywords
+            || current.cidrs != previous.cidrs
+    }
+
     /// 拉一次。`force == false` 且缓存新鲜时直接返回缓存，不打网络。
     public func refresh(force: Bool = true) async -> Outcome {
         let cached = store.load()
         if !force, !Self.isStale(cached) {
-            return Outcome(lists: cached, error: nil, usedCache: true)
+            return Outcome(lists: cached, error: nil, usedCache: true, changed: false)
         }
         guard sources.count == 2 else {
             return Outcome(lists: cached, error: L("名单源配置错误（需要域名与 IP 两份）"), usedCache: cached != nil)
@@ -177,11 +187,12 @@ public actor SplitExitListsUpdater {
               readBack.cidrs.count == cidrs.count else {
             return Outcome(lists: cached, error: L("写入后回读校验失败，已保留上一份"), usedCache: cached != nil)
         }
+        let contentChanged = Self.hasContentChanged(from: cached, to: readBack)
         logger?.info(
-            "Split-exit lists updated: raw=\(rawDomainCount) dedupedGeoSiteCN=\(dedupRemovedCount) postDedup=\(postDedupDomainCount) final=\(finalDomainCount) domains / \(cidrs.count) cidrs (rawCIDRs=\(rawCIDRCount))",
+            "Split-exit lists updated: raw=\(rawDomainCount) dedupedGeoSiteCN=\(dedupRemovedCount) postDedup=\(postDedupDomainCount) final=\(finalDomainCount) domains / \(cidrs.count) cidrs (rawCIDRs=\(rawCIDRCount)) changed=\(contentChanged)",
             category: "rules"
         )
-        return Outcome(lists: readBack, error: nil, usedCache: false, metrics: metrics)
+        return Outcome(lists: readBack, error: nil, usedCache: false, changed: contentChanged, metrics: metrics)
     }
 }
 
@@ -207,27 +218,48 @@ extension AppState {
         splitExitListsStatus.isLoading = true
         lastSplitExitListsAttempt = Date()
         let outcome = await SplitExitListsUpdater(logger: logger).refresh(force: force)
+        let shouldReapply = applySplitExitListsOutcome(outcome)
+        if shouldReapply {
+            await reapplyRunningTunnel()
+        }
+        #endif
+    }
+
+    #if os(macOS)
+    /// 应用分流名单刷新结果并返回是否需要热重启运行中的隧道。
+    /// 仅当非缓存命中、无错误且实际域名/关键字/CIDR 内容变化时返回 true，
+    /// 既解决抽样上限（30,000 / 8,000）处等量刷新漏检，又避免缓存复用或同内容刷新误断网。
+    @discardableResult
+    func applySplitExitListsOutcome(_ outcome: SplitExitListsUpdater.Outcome,
+                                    previousLists: SplitExitLists? = nil) -> Bool {
         splitExitListsStatus.isLoading = false
         splitExitListsStatus.error = outcome.error
 
         if let lists = outcome.lists {
-            let changed = (lists.domains.count + lists.domainKeywords.count) != splitExitListsStatus.domainCount
-                || lists.cidrs.count != splitExitListsStatus.cidrCount
+            let contentChanged: Bool
+            if outcome.usedCache || outcome.error != nil {
+                contentChanged = false
+            } else if outcome.changed {
+                contentChanged = true
+            } else if let previousLists {
+                contentChanged = SplitExitListsUpdater.hasContentChanged(from: previousLists, to: lists)
+            } else {
+                contentChanged = false
+            }
+
             splitExitListsStatus.domainCount = lists.domains.count + lists.domainKeywords.count
             splitExitListsStatus.cidrCount = lists.cidrs.count
             splitExitListsStatus.sourceDomainCount = lists.sourceDomainCount
             splitExitListsStatus.sourceCIDRCount = lists.sourceCIDRCount
             splitExitListsStatus.deduplicatedDomainCount = lists.deduplicatedDomainCount
             splitExitListsStatus.updatedAt = lists.fetchedAt
-            // 分流运行中且名单变了 → 重连才会带上新名单（配置在扩展启动时构建一次）。
-            if changed, outcome.error == nil, isVPNRunning, settings.splitExitEnabled {
-                await reapplyRunningTunnel()
-            }
+            return contentChanged && isVPNRunning && settings.splitExitEnabled
         } else if outcome.error != nil {
             logger.warn("Split-exit lists unavailable: \(outcome.error ?? "")", category: "rules")
         }
-        #endif
+        return false
     }
+    #endif
 
     /// 调度器每拍调用：24 小时一次，失败不重试到爆（失败也记 lastAttempt）。
     func refreshSplitExitListsIfDue() async {

@@ -128,8 +128,6 @@ fi
 echo "    OK"
 
 echo "==> 5/5 加载规则"
-: > "$BASE/enabled"
-chmod 644 "$BASE/enabled"
 LOAD_ERR="$(pfctl -a "$ANCHOR" -f "$RENDERED" 2>&1)"
 LOAD_RC=$?
 [ -n "$LOAD_ERR" ] && echo "    pfctl: $LOAD_ERR"
@@ -168,6 +166,9 @@ if ! printf '%s\n' "$RULES_OUT" | grep -Eq 'block (drop )?out'; then
   fi
   exit 1
 fi
+
+: > "$BASE/enabled"
+chmod 644 "$BASE/enabled"
 
 echo
 echo "已启用。当前锚点规则："

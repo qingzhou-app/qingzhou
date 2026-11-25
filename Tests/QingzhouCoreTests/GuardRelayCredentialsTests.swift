@@ -76,4 +76,56 @@ final class GuardRelayCredentialsTests: XCTestCase {
         )
         XCTAssertEqual(defaultPort.validatedControlCredentials()?.port, GuardRelayCredentials.controlPort)
     }
+
+    func testRejectsWhitespaceNewlinesAndColonsInCredentials() {
+        // 含合法标点的密码仍应通过
+        let validPunct = GuardRelayCredentials(
+            port: 10808, username: "fwd_u", password: "f!@#$%p",
+            controlPort: 10809, controlUsername: "ctrl_u", controlPassword: "c!@#$%p"
+        )
+        XCTAssertTrue(validPunct.hasValidControlCredentials)
+        XCTAssertNotNil(GuardRelayCredentials.decode(validPunct.jsonString))
+
+        // controlUsername / controlPassword 含空白 / CR / LF / 冒号 → 拒绝
+        let spaceCtrlUser = GuardRelayCredentials(
+            port: 10808, username: "fwd_u", password: "fwd_p",
+            controlPort: 10809, controlUsername: "ctrl user", controlPassword: "cp"
+        )
+        XCTAssertFalse(spaceCtrlUser.hasValidControlCredentials)
+        XCTAssertNil(spaceCtrlUser.validatedControlCredentials())
+
+        let colonCtrlUser = GuardRelayCredentials(
+            port: 10808, username: "fwd_u", password: "fwd_p",
+            controlPort: 10809, controlUsername: "ctrl:user", controlPassword: "cp"
+        )
+        XCTAssertFalse(colonCtrlUser.hasValidControlCredentials)
+
+        let newlineCtrlPass = GuardRelayCredentials(
+            port: 10808, username: "fwd_u", password: "fwd_p",
+            controlPort: 10809, controlUsername: "ctrl_u", controlPassword: "cp\nRESTORE"
+        )
+        XCTAssertFalse(newlineCtrlPass.hasValidControlCredentials)
+
+        let crCtrlPass = GuardRelayCredentials(
+            port: 10808, username: "fwd_u", password: "fwd_p",
+            controlPort: 10809, controlUsername: "ctrl_u", controlPassword: "cp\r"
+        )
+        XCTAssertFalse(crCtrlPass.hasValidControlCredentials)
+
+        let spaceCtrlPass = GuardRelayCredentials(
+            port: 10808, username: "fwd_u", password: "fwd_p",
+            controlPort: 10809, controlUsername: "ctrl_u", controlPassword: "cp pass"
+        )
+        XCTAssertFalse(spaceCtrlPass.hasValidControlCredentials)
+
+        // decode 拒绝 username 空白/冒号/换行、password 换行
+        let badFwdUser = GuardRelayCredentials(port: 10808, username: "fwd user", password: "fp")
+        XCTAssertNil(GuardRelayCredentials.decode(badFwdUser.jsonString))
+
+        let badFwdUserColon = GuardRelayCredentials(port: 10808, username: "fwd:user", password: "fp")
+        XCTAssertNil(GuardRelayCredentials.decode(badFwdUserColon.jsonString))
+
+        let badFwdPassNewline = GuardRelayCredentials(port: 10808, username: "fwd_u", password: "fp\nbad")
+        XCTAssertNil(GuardRelayCredentials.decode(badFwdPassNewline.jsonString))
+    }
 }

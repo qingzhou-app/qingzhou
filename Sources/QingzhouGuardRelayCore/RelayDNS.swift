@@ -91,50 +91,69 @@ public final class RelayDNS: @unchecked Sendable {
         return q
     }
 
-    public static func parseResponse(_ data: Data, expectedID: UInt16) -> String? {
+    enum ResponseOutcome: Equatable {
+        case address(String)
+        case negative(rcode: UInt8)
+        case ignore
+    }
+
+    static func parseResponseOutcome(_ data: Data, expectedID: UInt16) -> ResponseOutcome {
         let bytes = [UInt8](data)
-        guard bytes.count > 12 else { return nil }
+        guard bytes.count >= 12 else { return .ignore }
 
         // 校验 Transaction ID
         guard bytes[0] == UInt8(expectedID >> 8),
               bytes[1] == UInt8(expectedID & 0xFF) else {
-            return nil
+            return .ignore
         }
         // 校验 QR=1（必须是响应报文）
         guard (bytes[2] & 0x80) != 0 else {
-            return nil
-        }
-        // 校验 RCODE=0（NOERROR）
-        guard (bytes[3] & 0x0F) == 0 else {
-            return nil
+            return .ignore
         }
 
         let qdcount = Int(bytes[4]) << 8 | Int(bytes[5])
         let ancount = Int(bytes[6]) << 8 | Int(bytes[7])
-        guard qdcount <= 16 else { return nil }
-        guard ancount > 0 else { return nil }
+        guard qdcount <= 16 else { return .ignore }
 
         var offset = 12
         for _ in 0..<qdcount {
             guard let next = skipName(in: bytes, from: offset), next + 4 <= bytes.count else {
-                return nil
+                return .ignore
             }
             offset = next + 4
         }
 
+        let rcode = bytes[3] & 0x0F
+        guard rcode == 0 else {
+            return .negative(rcode: rcode)
+        }
+        guard ancount > 0 else {
+            return .negative(rcode: 0)
+        }
+
         for _ in 0..<min(ancount, 16) {
             guard let next = skipName(in: bytes, from: offset), next + 10 <= bytes.count else {
-                break
+                return .ignore
             }
             let rtype = Int(bytes[next]) << 8 | Int(bytes[next + 1])
             let rclass = Int(bytes[next + 2]) << 8 | Int(bytes[next + 3])
             let rdlen = Int(bytes[next + 8]) << 8 | Int(bytes[next + 9])
             let rdataStart = next + 10
-            guard rdataStart + rdlen <= bytes.count else { break }
+            guard rdataStart + rdlen <= bytes.count else {
+                return .ignore
+            }
             if rtype == 1, rclass == 1, rdlen == 4 {
-                return (0..<4).map { String(bytes[rdataStart + $0]) }.joined(separator: ".")
+                let ip = (0..<4).map { String(bytes[rdataStart + $0]) }.joined(separator: ".")
+                return .address(ip)
             }
             offset = rdataStart + rdlen
+        }
+        return .negative(rcode: 0)
+    }
+
+    public static func parseResponse(_ data: Data, expectedID: UInt16) -> String? {
+        if case .address(let ip) = parseResponseOutcome(data, expectedID: expectedID) {
+            return ip
         }
         return nil
     }
@@ -168,23 +187,25 @@ public final class RelayDNS: @unchecked Sendable {
     }
 
     public func cachedIP(for host: String) -> String? {
+        let key = host.lowercased()
         let now = nowProvider()
         cacheLock.lock()
         defer { cacheLock.unlock() }
-        guard let hit = cache[host] else { return nil }
+        guard let hit = cache[key] else { return nil }
         if now.timeIntervalSince(hit.at) < ttl {
             return hit.ip
         }
-        cache.removeValue(forKey: host)
+        cache.removeValue(forKey: key)
         return nil
     }
 
     public func storeCachedIP(_ ip: String, for host: String) {
+        let key = host.lowercased()
         let now = nowProvider()
         cacheLock.lock()
         defer { cacheLock.unlock() }
 
-        cache[host] = (ip, now)
+        cache[key] = (ip, now)
         if cache.count > maxEntries {
             // 先清过期条目
             let expiredKeys = cache.compactMap { key, value in
@@ -304,10 +325,16 @@ public final class RelayDNS: @unchecked Sendable {
             if n == 0 {
                 return nil
             }
-            if n > 12, let ip = Self.parseResponse(Data(buf[0..<n]), expectedID: id) {
+            switch Self.parseResponseOutcome(Data(buf[0..<n]), expectedID: id) {
+            case .address(let ip):
                 return ip
+            case .negative:
+                // 合法 TXID + QR=1 的否定响应（NXDOMAIN / NODATA / SERVFAIL 等）：立即结束当前服务器等待
+                return nil
+            case .ignore:
+                // 错误 TXID、QR=0 或畸形/截断响应报文：丢弃并继续在总截止时间内等待合法响应
+                break
             }
-            // 错误 TXID、QR=0 或畸形响应报文：丢弃并继续在总截止时间内等待合法响应
         }
     }
 }

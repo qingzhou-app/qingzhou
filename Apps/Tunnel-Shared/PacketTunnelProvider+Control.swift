@@ -282,11 +282,27 @@ extension PacketTunnelProvider {
             let userRules = loadUserRules(inlineData: nil,
                                           base64: obj["userRulesGZ"],
                                           path: obj["userRulesPath"])
+            let blockQUICOverride = Self.parseOptionalBool(obj["blockQUIC"])
+            let splitExitOverride = Self.parseOptionalBool(obj["splitExit"])
+            let exitNodeJSON = obj["exitNodeJSON"] ?? ""
+            let hopNodeJSON = obj["hopNodeJSON"] ?? ""
+            let guardRelayJSON = obj["guardRelayJSON"] ?? ""
+            let splitExitPolicyGroupsJSON = obj["splitExitPolicyGroupsJSON"] ?? ""
             probeQueue.async { [weak self] in
                 guard let self else { completionHandler?(nil); return }
                 let payload: [String: Any]
-                if let error = self.performTest(nodeJSON: nodeJSON, shareLink: shareLink,
-                                                mode: mode, userRules: userRules) {
+                if let error = self.performTest(
+                    nodeJSON: nodeJSON,
+                    shareLink: shareLink,
+                    mode: mode,
+                    userRules: userRules,
+                    blockQUICOverride: blockQUICOverride,
+                    splitExitOverride: splitExitOverride,
+                    exitNodeJSON: exitNodeJSON,
+                    hopNodeJSON: hopNodeJSON,
+                    guardRelayJSON: guardRelayJSON,
+                    splitExitPolicyGroupsJSON: splitExitPolicyGroupsJSON
+                ) {
                     payload = ["ok": false, "error": error.localizedDescription]
                 } else {
                     payload = ["ok": true]
@@ -295,6 +311,15 @@ extension PacketTunnelProvider {
             }
         default:
             completionHandler?(nil)
+        }
+    }
+
+    private static func parseOptionalBool(_ raw: String?) -> Bool? {
+        guard let raw else { return nil }
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "true", "1": return true
+        case "false", "0": return false
+        default: return nil
         }
     }
 }

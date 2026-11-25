@@ -76,7 +76,10 @@ struct SettingsSplitExitSection: View {
 
                 Divider()
 
-                Toggle("经 root 中继出网", isOn: state.setting(\.guardRelayEnabled))
+                Toggle("经 root 中继出网", isOn: Binding(
+                    get: { state.settings.guardRelayEnabled },
+                    set: { state.setGuardRelayEnabled($0) }
+                ))
                 if state.settings.guardRelayEnabled {
                     Text("所有出站先连 127.0.0.1 的 root 中继，由它拨号。断网开关（pf 只放行 root）必须依赖这一条，否则开拦截会连代理一起拦死。")
                         .font(.caption2).foregroundStyle(.secondary)

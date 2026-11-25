@@ -275,6 +275,68 @@ final class SplitExitListsTests: XCTestCase {
         XCTAssertTrue(SplitExitListsUpdater.isStale(old))
         XCTAssertTrue(SplitExitListsUpdater.isStale(nil))
     }
+
+    @MainActor
+    func testEqualCountRefreshAtSamplerCapDetectsContentChangeAndSkipsIdenticalReload() async {
+        // 构造超过 SplitExitListsLimits.domains (30,000) 与 cidrs (8,000) 上限的两批不同内容，
+        // 使抽样后条目数完全相同（30,000 / 8,000），验证内容变化仍被准确检出，而同内容或缓存命中不触发重连。
+        let domainCount = SplitExitListsLimits.domains + 200
+        let cidrCount = SplitExitListsLimits.cidrs + 100
+        let domainsA = (0..<domainCount).map { "a\($0).example.org" }.joined(separator: "\n")
+        let domainsB = (0..<domainCount).map { "b\($0).example.org" }.joined(separator: "\n")
+        let cidrsA = (0..<cidrCount).map { "10.\(($0 >> 16) & 0xFF).\(($0 >> 8) & 0xFF).\($0 & 0xFF)/32" }.joined(separator: "\n")
+        let cidrsB = (0..<cidrCount).map { "172.\(16 + (($0 >> 16) & 0x0F)).\(($0 >> 8) & 0xFF).\($0 & 0xFF)/32" }.joined(separator: "\n")
+
+        let store = MemoryStore()
+        let updaterA = SplitExitListsUpdater(
+            client: StubClient(bodies: ["direct.txt": domainsA, "cncidr.txt": cidrsA]),
+            sources: sources(), store: store, geoSiteCNMatcher: .empty
+        )
+        let firstOutcome = await updaterA.refresh(force: true)
+        XCTAssertNil(firstOutcome.error)
+        XCTAssertFalse(firstOutcome.usedCache)
+        XCTAssertTrue(firstOutcome.changed)
+        XCTAssertEqual(firstOutcome.lists?.domains.count, SplitExitListsLimits.domains)
+        XCTAssertEqual(firstOutcome.lists?.cidrs.count, SplitExitListsLimits.cidrs)
+
+        // 同内容强制刷新：条数相同、内容完全相同 → changed == false
+        let sameOutcome = await updaterA.refresh(force: true)
+        XCTAssertNil(sameOutcome.error)
+        XCTAssertFalse(sameOutcome.usedCache)
+        XCTAssertFalse(sameOutcome.changed)
+
+        // 缓存命中（force: false 且未过期）→ usedCache == true, changed == false
+        let cachedOutcome = await updaterA.refresh(force: false)
+        XCTAssertNil(cachedOutcome.error)
+        XCTAssertTrue(cachedOutcome.usedCache)
+        XCTAssertFalse(cachedOutcome.changed)
+
+        // 新内容刷新：抽样后依然恰好 30,000 / 8,000，但条目内容不同 → changed == true
+        let updaterB = SplitExitListsUpdater(
+            client: StubClient(bodies: ["direct.txt": domainsB, "cncidr.txt": cidrsB]),
+            sources: sources(), store: store, geoSiteCNMatcher: .empty
+        )
+        let secondOutcome = await updaterB.refresh(force: true)
+        XCTAssertNil(secondOutcome.error)
+        XCTAssertFalse(secondOutcome.usedCache)
+        XCTAssertTrue(secondOutcome.changed)
+        XCTAssertEqual(secondOutcome.lists?.domains.count, SplitExitListsLimits.domains)
+        XCTAssertEqual(secondOutcome.lists?.cidrs.count, SplitExitListsLimits.cidrs)
+
+        #if os(macOS)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let state = AppState(persistence: Persistence(directory: dir))
+        state.settings.iCloudSyncEnabled = false
+        state.settings.splitExitEnabled = true
+        state.isVPNRunning = true
+
+        XCTAssertTrue(state.applySplitExitListsOutcome(firstOutcome))
+        XCTAssertFalse(state.applySplitExitListsOutcome(sameOutcome))
+        XCTAssertFalse(state.applySplitExitListsOutcome(cachedOutcome))
+        XCTAssertTrue(state.applySplitExitListsOutcome(secondOutcome))
+        #endif
+    }
 }
 
 /// 用真实名单文件跑一遍解析（默认跳过，避免 CI 依赖网络）。

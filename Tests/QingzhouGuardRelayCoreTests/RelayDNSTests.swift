@@ -74,6 +74,16 @@ final class RelayDNSTests: XCTestCase {
         XCTAssertNil(dns.cachedIP(for: "b.example"))
     }
 
+    func testCacheLookupAndStoreAreCaseInsensitive() {
+        let dns = RelayDNS(servers: [], ttl: 60, maxEntries: 8)
+        dns.storeCachedIP("1.2.3.4", for: "Example.COM")
+        XCTAssertEqual(dns.cachedIP(for: "example.com"), "1.2.3.4")
+        XCTAssertEqual(dns.cachedIP(for: "EXAMPLE.COM"), "1.2.3.4")
+        dns.storeCachedIP("5.6.7.8", for: "example.com")
+        XCTAssertEqual(dns.cacheCount, 1)
+        XCTAssertEqual(dns.cachedIP(for: "Example.Com"), "5.6.7.8")
+    }
+
     func testLoopbackUDPRejectsMismatchedTXIDAndAcceptsValidTXID() throws {
         // 先起一个返回错误 TXID 的本地 UDP 桩，再起一个返回正确 TXID 的本地 UDP 桩
         let badServer = try LoopbackUDPStub { query in
@@ -136,6 +146,164 @@ final class RelayDNSTests: XCTestCase {
             timeoutSeconds: 2
         )
         XCTAssertEqual(dns.resolveSync("example.com", interface: nil), "1.2.3.4")
+    }
+
+    func testLoopbackUDPReturnsImmediatelyOnNXDOMAINAndNODATAWithoutWaitingTimeout() throws {
+        // 1. NXDOMAIN (RCODE=3, ANCOUNT=0) across 2 servers with timeoutSeconds=3 -> < 1.0s
+        let nxServer1 = try LoopbackUDPStub { query in
+            guard query.count >= 12 else { return nil }
+            let qID = UInt16(query[0]) << 8 | UInt16(query[1])
+            return Self.makeNegativeDNSResponse(txid: qID, rcode: 3)
+        }
+        defer { nxServer1.close() }
+        let nxServer2 = try LoopbackUDPStub { query in
+            guard query.count >= 12 else { return nil }
+            let qID = UInt16(query[0]) << 8 | UInt16(query[1])
+            return Self.makeNegativeDNSResponse(txid: qID, rcode: 3)
+        }
+        defer { nxServer2.close() }
+
+        let nxDNS = RelayDNS(
+            servers: [
+                RelayDNS.Server(host: "127.0.0.1", port: nxServer1.port),
+                RelayDNS.Server(host: "127.0.0.1", port: nxServer2.port)
+            ],
+            timeoutSeconds: 3
+        )
+        let nxStart = Date()
+        XCTAssertNil(nxDNS.resolveSync("nxdomain.example", interface: nil))
+        let nxElapsed = Date().timeIntervalSince(nxStart)
+        XCTAssertLessThan(nxElapsed, 1.0, "NXDOMAIN stalled for \(nxElapsed)s instead of returning immediately")
+
+        // 2. NODATA: server 1 returns ANCOUNT=0 (RCODE=0), server 2 returns AAAA-only (RCODE=0, ANCOUNT=1, no A)
+        let nodataEmpty = try LoopbackUDPStub { query in
+            guard query.count >= 12 else { return nil }
+            let qID = UInt16(query[0]) << 8 | UInt16(query[1])
+            return Self.makeNegativeDNSResponse(txid: qID, rcode: 0)
+        }
+        defer { nodataEmpty.close() }
+        let nodataAAAA = try LoopbackUDPStub { query in
+            guard query.count >= 12 else { return nil }
+            let qID = UInt16(query[0]) << 8 | UInt16(query[1])
+            return Self.makeAAAAOnlyDNSResponse(txid: qID)
+        }
+        defer { nodataAAAA.close() }
+
+        let nodataDNS = RelayDNS(
+            servers: [
+                RelayDNS.Server(host: "127.0.0.1", port: nodataEmpty.port),
+                RelayDNS.Server(host: "127.0.0.1", port: nodataAAAA.port)
+            ],
+            timeoutSeconds: 3
+        )
+        let nodataStart = Date()
+        XCTAssertNil(nodataDNS.resolveSync("nodata.example", interface: nil))
+        let nodataElapsed = Date().timeIntervalSince(nodataStart)
+        XCTAssertLessThan(nodataElapsed, 1.0, "NODATA stalled for \(nodataElapsed)s instead of returning immediately")
+    }
+
+    func testLoopbackUDPFallsBackImmediatelyOnSERVFAILToSecondaryServer() throws {
+        let servfailServer = try LoopbackUDPStub { query in
+            guard query.count >= 12 else { return nil }
+            let qID = UInt16(query[0]) << 8 | UInt16(query[1])
+            return Self.makeNegativeDNSResponse(txid: qID, rcode: 2) // SERVFAIL
+        }
+        defer { servfailServer.close() }
+
+        let goodServer = try LoopbackUDPStub { query in
+            guard query.count >= 12 else { return nil }
+            let qID = UInt16(query[0]) << 8 | UInt16(query[1])
+            return Self.makeDNSResponseStatic(txid: qID, isResponse: true, rcode: 0, ip: [1, 2, 3, 4])
+        }
+        defer { goodServer.close() }
+
+        let dns = RelayDNS(
+            servers: [
+                RelayDNS.Server(host: "127.0.0.1", port: servfailServer.port),
+                RelayDNS.Server(host: "127.0.0.1", port: goodServer.port)
+            ],
+            timeoutSeconds: 3
+        )
+        let start = Date()
+        XCTAssertEqual(dns.resolveSync("example.com", interface: nil), "1.2.3.4")
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 1.0, "SERVFAIL fallback stalled for \(elapsed)s")
+    }
+
+    func testSinglePortDiscardsTruncatedPacketBeforeValidResponse() throws {
+        // Direct unit check on parseResponseOutcome for truncated vs valid/negative
+        let fullValid = Self.makeDNSResponseStatic(txid: 0x2222, isResponse: true, rcode: 0, ip: [1, 2, 3, 4])
+        let truncatedQuestion = fullValid.prefix(16) // matching TXID & QR=1, truncated inside Question
+        let truncatedAnswer = fullValid.prefix(fullValid.count - 2) // matching TXID & QR=1, truncated inside Answer RDATA
+        XCTAssertEqual(RelayDNS.parseResponseOutcome(Data(truncatedQuestion), expectedID: 0x2222), .ignore)
+        XCTAssertEqual(RelayDNS.parseResponseOutcome(Data(truncatedAnswer), expectedID: 0x2222), .ignore)
+        XCTAssertEqual(RelayDNS.parseResponseOutcome(Self.makeNegativeDNSResponse(txid: 0x2222, rcode: 3), expectedID: 0x2222), .negative(rcode: 3))
+        XCTAssertEqual(RelayDNS.parseResponseOutcome(fullValid, expectedID: 0x2222), .address("1.2.3.4"))
+
+        // Header-only 12-byte SERVFAIL with QDCOUNT=0 is valid negative; QDCOUNT=1 with 12 bytes is truncated (.ignore)
+        let headerOnlyServfail = Data([0x22, 0x22, 0x81, 0x82, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+        XCTAssertEqual(RelayDNS.parseResponseOutcome(headerOnlyServfail, expectedID: 0x2222), .negative(rcode: 2))
+        let headerTruncatedQuestion = Data([0x22, 0x22, 0x81, 0x82, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+        XCTAssertEqual(RelayDNS.parseResponseOutcome(headerTruncatedQuestion, expectedID: 0x2222), .ignore)
+
+        let server = try LoopbackUDPStub(multiHandler: { query, sendPacket in
+            guard query.count >= 12 else { return }
+            let qID = UInt16(query[0]) << 8 | UInt16(query[1])
+            let valid = Self.makeDNSResponseStatic(txid: qID, isResponse: true, rcode: 0, ip: [1, 2, 3, 4])
+            // 1. Truncated Question with matching TXID & QR=1 -> must be ignored
+            sendPacket(Data(valid.prefix(16)))
+            // 2. Truncated Answer with matching TXID & QR=1 -> must be ignored
+            sendPacket(Data(valid.prefix(valid.count - 2)))
+            // 3. 2 ms later send valid A response
+            Thread.sleep(forTimeInterval: 0.002)
+            sendPacket(valid)
+        })
+        defer { server.close() }
+
+        let dns = RelayDNS(
+            servers: [RelayDNS.Server(host: "127.0.0.1", port: server.port)],
+            timeoutSeconds: 2
+        )
+        XCTAssertEqual(dns.resolveSync("example.com", interface: nil), "1.2.3.4")
+    }
+
+    private static func makeNegativeDNSResponse(txid: UInt16, rcode: UInt8) -> Data {
+        var d = Data()
+        d.append(contentsOf: [
+            UInt8(txid >> 8), UInt8(txid & 0xFF),
+            0x81, 0x80 | (rcode & 0x0F),
+            0x00, 0x01, // QDCOUNT=1
+            0x00, 0x00, // ANCOUNT=0
+            0x00, 0x00,
+            0x00, 0x00
+        ])
+        d.append(contentsOf: [7])
+        d.append(contentsOf: "example".utf8)
+        d.append(contentsOf: [3])
+        d.append(contentsOf: "com".utf8)
+        d.append(contentsOf: [0, 0, 1, 0, 1])
+        return d
+    }
+
+    private static func makeAAAAOnlyDNSResponse(txid: UInt16) -> Data {
+        var d = Data()
+        d.append(contentsOf: [
+            UInt8(txid >> 8), UInt8(txid & 0xFF),
+            0x81, 0x80,
+            0x00, 0x01, // QDCOUNT=1
+            0x00, 0x01, // ANCOUNT=1
+            0x00, 0x00,
+            0x00, 0x00
+        ])
+        d.append(contentsOf: [7])
+        d.append(contentsOf: "example".utf8)
+        d.append(contentsOf: [3])
+        d.append(contentsOf: "com".utf8)
+        d.append(contentsOf: [0, 0, 1, 0, 1])
+        // Answer: pointer to offset 12, TYPE AAAA (28), CLASS IN (1), TTL 60, RDLEN 16
+        d.append(contentsOf: [0xC0, 0x0C, 0x00, 0x1C, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3C, 0x00, 0x10])
+        d.append(contentsOf: [0x20, 0x01, 0x0d, 0xb8] + Array(repeating: UInt8(0), count: 12))
+        return d
     }
 
     private func makeDNSResponse(txid: UInt16, isResponse: Bool, rcode: UInt8, ip: [UInt8]) -> Data {

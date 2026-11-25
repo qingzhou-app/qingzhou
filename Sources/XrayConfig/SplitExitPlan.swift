@@ -177,6 +177,8 @@ public struct SplitExitPlan {
             guard !v.isEmpty else { return nil }
             let forbidden = CharacterSet(charactersIn: " ,/\\:@\"'*").union(.whitespacesAndNewlines)
             guard v.rangeOfCharacter(from: forbidden) == nil else { return nil }
+            let labels = v.split(separator: ".", omittingEmptySubsequences: false)
+            guard !labels.isEmpty, labels.allSatisfy({ !$0.isEmpty }) else { return nil }
             return v
         }
 
@@ -459,7 +461,8 @@ public struct SplitExitPlan {
         publicIPPort: Int? = nil
     ) throws -> [String: Any] {
         guard !exitNode.host.isEmpty else { throw PlanError.missingExitNode }
-        if exitNode.host == hopNode.host, exitNode.port == hopNode.port,
+        if exitNode.host.lowercased() == hopNode.host.lowercased(),
+           exitNode.port == hopNode.port,
            exitNode.protocolType == hopNode.protocolType {
             throw PlanError.hopEqualsExit
         }
@@ -534,6 +537,72 @@ public struct SplitExitPlan {
             options: [.sortedKeys]
         )
         return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    /// 从主 App 控制消息 / `providerConfiguration` 负载解码并构造分流方案（供配置预检复用）。
+    public static func fromPayload(
+        exitNodeJSON: String,
+        hopNodeJSON: String,
+        guardRelayJSON: String = "",
+        policyGroupsJSON: String = "",
+        lists: Lists = Lists(),
+        blockQUIC: Bool = true
+    ) throws -> SplitExitPlan {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        func decodeNode(_ raw: String, key: String) throws -> Node {
+            guard !raw.isEmpty, let data = raw.data(using: .utf8) else {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1010,
+                              userInfo: [NSLocalizedDescriptionKey: "分流方案缺少 \(key)"])
+            }
+            do {
+                return try decoder.decode(Node.self, from: data)
+            } catch {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1011,
+                              userInfo: [NSLocalizedDescriptionKey: "分流方案的 \(key) 无法解析：\(error.localizedDescription)"])
+            }
+        }
+
+        let exit = try decodeNode(exitNodeJSON, key: "exitNodeJSON")
+        let hop = try decodeNode(hopNodeJSON, key: "hopNodeJSON")
+
+        let relay: RelayEndpoint?
+        if guardRelayJSON.isEmpty {
+            relay = nil
+        } else {
+            guard let creds = GuardRelayCredentials.decode(guardRelayJSON) else {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1016,
+                              userInfo: [NSLocalizedDescriptionKey: "中继凭据无效"])
+            }
+            relay = RelayEndpoint(host: creds.host, port: creds.port,
+                                  username: creds.username, password: creds.password)
+        }
+
+        let policyGroups: [SplitExitPolicyGroup]
+        if policyGroupsJSON.isEmpty {
+            policyGroups = []
+        } else {
+            guard let data = policyGroupsJSON.data(using: .utf8) else {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1015,
+                              userInfo: [NSLocalizedDescriptionKey: "分流策略组配置编码无效"])
+            }
+            do {
+                policyGroups = try JSONDecoder().decode([SplitExitPolicyGroup].self, from: data)
+            } catch {
+                throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1015,
+                              userInfo: [NSLocalizedDescriptionKey: "分流策略组无法解析：\(error.localizedDescription)"])
+            }
+        }
+
+        return SplitExitPlan(
+            exitNode: exit,
+            hopNode: hop,
+            lists: lists,
+            blockQUIC: blockQUIC,
+            relay: relay,
+            policyGroups: policyGroups
+        )
     }
 
     // MARK: - 小工具

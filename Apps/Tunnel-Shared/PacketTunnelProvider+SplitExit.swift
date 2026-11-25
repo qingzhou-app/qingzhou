@@ -33,7 +33,7 @@ extension PacketTunnelProvider {
         }
         let exit = try decode("exitNodeJSON")
         let hop = try decode("hopNodeJSON")
-        guard exit.host != hop.host || exit.port != hop.port || exit.protocolType != hop.protocolType else {
+        guard exit.host.lowercased() != hop.host.lowercased() || exit.port != hop.port || exit.protocolType != hop.protocolType else {
             throw NSError(domain: "com.sbraveyoung.qingzhou.tunnel", code: 1012,
                           userInfo: [NSLocalizedDescriptionKey: "海外出口与跳板是同一个节点，会绕成死循环"])
         }
@@ -63,7 +63,7 @@ extension PacketTunnelProvider {
     /// 主 App 写入 `split-exit-lists.json` 时已由 `SplitExitListsUpdater` 按内存预算
     /// （`SplitExitListsLimits`）完成采样裁剪，扩展侧直接全量加载即可，不再重复截断；
     /// 未入表的国内域名/IP 仍由内置 `geosite:cn` / `geoip:cn` 兜底。
-    private func loadSplitExitLists() -> SplitExitPlan.Lists {
+    func loadSplitExitLists() -> SplitExitPlan.Lists {
         guard let dir = TunnelAppGroup.ensureWorkingDirectory() else {
             os_log("split-exit: App Group 不可用 → 名单只用 geosite/geoip", log: log, type: .error)
             return .init()

@@ -24,7 +24,9 @@ extension AppState {
         guard settings.splitExitEnabled else { return nil }
         guard let exit = splitExitExitNode else { return L("未选择「海外出口」节点") }
         guard let hop = splitExitHopNode else { return L("未选择「跳板」节点") }
-        if exit.host == hop.host, exit.port == hop.port, exit.protocolType == hop.protocolType {
+        if exit.host.lowercased() == hop.host.lowercased(),
+           exit.port == hop.port,
+           exit.protocolType == hop.protocolType {
             return L("「海外出口」和「跳板」是同一个节点，会绕成死循环")
         }
         return nil
@@ -87,6 +89,18 @@ extension AppState {
         #if os(macOS)
         guard settings.splitExitPolicyGroups != groups else { return }
         settings.splitExitPolicyGroups = groups
+        persist()
+        if settings.splitExitEnabled {
+            Task { await reapplyRunningTunnel() }
+        }
+        #endif
+    }
+
+    public func setGuardRelayEnabled(_ enabled: Bool) {
+        #if os(macOS)
+        guard settings.guardRelayEnabled != enabled else { return }
+        settings.guardRelayEnabled = enabled
+        applySettingsSideEffects()
         persist()
         if settings.splitExitEnabled {
             Task { await reapplyRunningTunnel() }

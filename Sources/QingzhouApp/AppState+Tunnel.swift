@@ -108,17 +108,41 @@ extension AppState {
     /// 3. Extension 自己跑 libXray.ConvertShareLinksToXrayJson + XrayConfigComposer.compose
     ///    把 share link 展开成完整 xray 配置 —— 主 App 因此不需要 link LibXray.xcframework，
     ///    启动不会被 85 MB Go runtime 拖慢。
+    /// 计算当前隧道目标节点对应的有效 `blockQUIC`：分流方案激活时以 `splitExitNode`（海外出口）为准，
+    /// 普通模式以 `normalNode`（`currentNode`）为准。
+    func effectiveBlockQUICForTunnel(normalNode: Node?, splitExitNode: Node?) -> Bool {
+        (splitExitNode ?? normalNode).map { effectiveBlockQUIC(for: $0) } ?? false
+    }
+
+    #if os(macOS)
+    /// 断网开关的 root 中继（仅 macOS）。开关打开但读不到凭据时**拒绝连接 / 中止重连**而不是静默降级 ——
+    /// 静默降级会让用户以为"正在经中继出网"，然后一开 pf 就整机断网，且看不出原因。
+    /// `stopOnFailure == true`（首次启动）同步把 `isVPNRunning` 置回 `false`；
+    /// `stopOnFailure == false`（热重连）保持 `isVPNRunning` 不变，留住当前健康隧道。
+    private func resolveGuardRelayCredentials(
+        isSplitExitActive: Bool,
+        stopOnFailure: Bool
+    ) -> (ok: Bool, credentials: GuardRelayCredentials?) {
+        guard isSplitExitActive, settings.guardRelayEnabled else {
+            return (true, nil)
+        }
+        guard let creds = loadGuardRelayCredentials() else {
+            tunnelError = L("已开启「经 root 中继出网」，但读不到中继凭据。先安装 guard：sudo sh Tools/qingzhou-guard/install.sh")
+            if stopOnFailure {
+                isVPNRunning = false
+            }
+            logger.error("Guard relay enabled but credentials missing", category: "tunnel")
+            return (false, nil)
+        }
+        return (true, creds)
+    }
+    #endif
+
     public func startTunnel() async {
         // 截图 demo：模拟器没有 NE，真启动必失败弹错 → 只翻状态位维持「已连接」观感
         if ScreenshotDemoMode.isActive {
             isVPNRunning = true
             tunnelError = nil
-            return
-        }
-        let node = settings.proxyMode == .direct ? nil : currentNode
-        guard settings.proxyMode == .direct || node != nil else {
-            tunnelError = VPNTunnelManager.TunnelError.noCurrentNode.errorDescription
-            isVPNRunning = false
             return
         }
         #if os(macOS)
@@ -135,32 +159,30 @@ extension AppState {
         let exitNode = splitExitActive ? splitExitExitNode : nil
         let hopNode = splitExitActive ? splitExitHopNode : nil
         let splitExitPolicyGroups = splitExitActive ? settings.splitExitPolicyGroups : []
-        // 断网开关的 root 中继（仅 macOS）。开关打开但读不到凭据时**拒绝连接**而不是静默降级 ——
-        // 静默降级会让用户以为"正在经中继出网"，然后一开 pf 就整机断网，且看不出原因。
-        var guardRelay: GuardRelayCredentials?
-        if splitExitActive, settings.guardRelayEnabled {
-            guard let creds = GuardRelayCredentials.load() else {
-                tunnelError = L("已开启「经 root 中继出网」，但读不到中继凭据。先安装 guard：sudo sh Tools/qingzhou-guard/install.sh")
-                isVPNRunning = false
-                logger.error("Guard relay enabled but credentials missing", category: "tunnel")
-                return
-            }
-            guardRelay = creds
-        }
+        let guardResult = resolveGuardRelayCredentials(isSplitExitActive: splitExitActive, stopOnFailure: true)
+        guard guardResult.ok else { return }
+        let guardRelay = guardResult.credentials
         #else
+        let splitExitActive = false
         let exitNode: Node? = nil
         let hopNode: Node? = nil
         let guardRelay: GuardRelayCredentials? = nil
         let splitExitPolicyGroups: [SplitExitPolicyGroup] = []
         #endif
+        let node = settings.proxyMode == .direct ? nil : currentNode
+        guard settings.proxyMode == .direct || node != nil || splitExitActive else {
+            tunnelError = VPNTunnelManager.TunnelError.noCurrentNode.errorDescription
+            isVPNRunning = false
+            return
+        }
         let link = node.flatMap(NodeEncoder.shareLink)
-        guard settings.proxyMode == .direct || link != nil else {
+        guard settings.proxyMode == .direct || link != nil || splitExitActive else {
             tunnelError = L("无法把节点编码成分享链接")
             isVPNRunning = false
             return
         }
         let shareLink = link ?? ""
-        let effBlockQUIC = node.map { effectiveBlockQUIC(for: $0) } ?? false
+        let effBlockQUIC = effectiveBlockQUICForTunnel(normalNode: node, splitExitNode: exitNode)
         do {
             // description 带节点名，方便用户在「系统设置 → 网络 → VPN」里识别
             try await tunnelManager.configure(
@@ -181,7 +203,7 @@ extension AppState {
             tunnelSession.startSubmitted(at: Date(), requestID: tunnelManager.configuredRequestID)
             isVPNRunning = true
             tunnelError = nil
-            logger.info("Tunnel started for node \((node?.name ?? L("直连")))", category: "tunnel")
+            logger.info("Tunnel started for node \((exitNode?.name ?? node?.name ?? L("直连")))", category: "tunnel")
             #if DEBUG
             AcceptanceTrace.record(.startSubmitted)
             #endif
@@ -452,7 +474,7 @@ extension AppState {
         }
     }
 
-    private func performReapply(scope: ReapplyScope) async {
+    func performReapply(scope: ReapplyScope) async {
         guard isVPNRunning else { return }
         // Selecting a future proxy node does not change a direct tunnel.
         if scope == .nodeOnly && settings.proxyMode == .direct { return }
@@ -462,8 +484,9 @@ extension AppState {
         // 下一次连接就悄悄退回单节点 —— 用户以为还在分流，其实已经直连住宅代理了。
         let split = activeSplitExit
         let splitExitPolicyGroups = split != nil ? settings.splitExitPolicyGroups : []
-        var guardRelay: GuardRelayCredentials?
-        if split != nil, settings.guardRelayEnabled { guardRelay = GuardRelayCredentials.load() }
+        let guardResult = resolveGuardRelayCredentials(isSplitExitActive: split != nil, stopOnFailure: false)
+        guard guardResult.ok else { return }
+        let guardRelay = guardResult.credentials
         #else
         let split: (exit: Node, hop: Node)? = nil
         let guardRelay: GuardRelayCredentials? = nil
@@ -490,18 +513,27 @@ extension AppState {
             isSwitchingTunnel = false
             WidgetRefresher.reload()
         }
-        // 新节点在当前 QUIC 策略下的有效阻断值。
-        let effBlockQUIC = node.map { effectiveBlockQUIC(for: $0) } ?? false
+        // 新节点在当前 QUIC 策略下的有效阻断值（分流方案取出口节点）。
+        let effBlockQUIC = effectiveBlockQUICForTunnel(normalNode: node, splitExitNode: split?.exit)
         // 配置预检：趁旧隧道还在跑，先让扩展用同款构建流程校验新节点的配置（libXray
         // TestXray）。配置非法 → 不拆在跑的隧道，直接报错返回 —— 否则坏配置会把好隧道
         // 换成起不来的新会话，用户直接断网。预检本身没跑成（超时等）不拦：尽力而为继续切。
         do {
             try await tunnelManager.testNodeConfig(
-                node: node, mode: mode, shareLink: shareLink, rules: rules
+                node: node,
+                mode: mode,
+                shareLink: shareLink,
+                rules: rules,
+                blockQUIC: effBlockQUIC,
+                splitExit: split != nil,
+                splitExitExit: split?.exit,
+                splitExitHop: split?.hop,
+                guardRelay: guardRelay,
+                splitExitPolicyGroups: splitExitPolicyGroups
             )
         } catch VPNTunnelManager.TunnelError.configRejected(let reason) {
             tunnelError = L("已保持当前节点连接不变。切换目标节点配置无效：\(reason)")
-            logger.error("Pre-switch config test rejected \((node?.name ?? L("直连"))): \(reason)", category: "tunnel")
+            logger.error("Pre-switch config test rejected \((split?.exit.name ?? node?.name ?? L("直连"))): \(reason)", category: "tunnel")
             return   // 旧隧道原样保留
         } catch {
             logger.warn("Pre-switch config test unavailable (\(error)) — continuing switch", category: "tunnel")

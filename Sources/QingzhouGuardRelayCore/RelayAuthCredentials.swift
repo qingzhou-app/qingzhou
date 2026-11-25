@@ -22,9 +22,23 @@ public struct RelayAuthCredentials: Sendable, Equatable {
     public let forwarding: CredentialPair
     public let control: CredentialPair
 
+    private static func isValidUser(_ user: String) -> Bool {
+        !user.isEmpty && !user.contains { $0.isWhitespace || $0.isNewline || $0 == "\r" || $0 == "\n" || $0 == ":" }
+    }
+
+    private static func isValidForwardPassword(_ pass: String) -> Bool {
+        !pass.isEmpty && !pass.contains { $0.isNewline || $0 == "\r" || $0 == "\n" }
+    }
+
+    private static func isValidControlPassword(_ pass: String) -> Bool {
+        !pass.isEmpty && !pass.contains { $0.isWhitespace || $0.isNewline || $0 == "\r" || $0 == "\n" }
+    }
+
     public init?(forwarding: CredentialPair, control: CredentialPair) {
-        guard !forwarding.user.isEmpty, !forwarding.pass.isEmpty,
-              !control.user.isEmpty, !control.pass.isEmpty,
+        guard Self.isValidUser(forwarding.user),
+              Self.isValidForwardPassword(forwarding.pass),
+              Self.isValidUser(control.user),
+              Self.isValidControlPassword(control.pass),
               forwarding != control else {
             return nil
         }

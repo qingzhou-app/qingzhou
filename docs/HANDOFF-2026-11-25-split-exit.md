@@ -1,6 +1,6 @@
 # 交接文档 —— 分流方案（split-exit）与断网开关（guard）
 
-初版写于 2026-11-25 05:15（北京时间），并已在 `master/teamwork`（M1–M4）同步合并与加固状态。接手者请先读完"30 秒速览"和"纪律"两节，
+初版写于 2026-11-25 05:15（北京时间），并已在 `master/teamwork`（M1–M5）同步合并与加固状态。接手者请先读完"30 秒速览"和"纪律"两节，
 其余按需查。**本文只写核实过的事实**，凡未实机/特权环境验证的项目均已明确标出并收敛至 `docs/ACCEPTANCE-CHECKLIST-teamwork.md`。
 
 ---
@@ -17,7 +17,8 @@
   - **M1（`e0ee9ea5`）**：提取 `Sources/QingzhouGuardRelayCore/`、修复 `SET-TZ` vs `currentTimeZone()` / `uninstall.sh` 时区还原 / `AppState.sendControlCommand` / 会话并发安全 / `RelayDNS` 阻塞 `recv()` 与有界缓存 / `RelayLogger` 5 MiB 轮转 / `forward:` 与 `control:` 凭据分离 / `guard-run.sh` fail-closed 1s 轮询 / `off.sh` 锚点级清理 / `enable.sh` 结构化 JSON 校验。
   - **M2（`8c3b6168`）**：macOS 专属 UI（`SettingsSplitExitSection` / `SettingsGuardSection` 等）用 `#if os(macOS)` 隔离、4 语 `*.xcstrings` 补全与 `LocalizedStringKey` 修复、`PacketTunnelProvider+SplitExit` 透传 `self.blockQUIC` 与清理冗余 `.prefix`、`Rule.noResolve` 语义分离及 `PROCESS-NAME` / `USER-AGENT` 显式诊断。
   - **M3（`6af9d359`）**：`Sources/QingzhouCore/Resources/geosite-cn.txt` + `GeoSiteCNMatcher` 前置去重、通用 `SplitExitPolicyGroup` 替代硬编码站点规则、拆分 `AppState.swift` / `PacketTunnelProvider.swift` / `SettingsView.swift` 并通过 `xcodegen generate` 对齐工程。
-  - **M4**：仓库路径脱敏、文档同步、自动化脚本（`Tools/verify-local.sh`、`Tools/verify-guard-e2e.sh`）与验收清单（`docs/ACCEPTANCE-CHECKLIST-teamwork.md`）。
+  - **M4（`48cf4ef8`）**：仓库路径脱敏、文档同步、自动化脚本（`Tools/verify-local.sh`、`Tools/verify-guard-e2e.sh`）与验收清单（`docs/ACCEPTANCE-CHECKLIST-teamwork.md`）。
+  - **M5（`21a84c1c` + Tier 5 加固）**：新增 65 项黑盒端到端测试套件（`Tests/QingzhouE2ETests/`），并完成 Tier 5 对抗探针加固（`ClientSession`/`ControlSession` 半关闭 drain、`startTunnel` 无 `currentNodeId` 分流启动、`effBlockQUIC` 与 `testNode`/`performTest` 负载校验、`setGuardRelayEnabled` 重连联动与 `performReapply` 缺失凭据 fail-closed 防护、凭据空白/换行校验、分流名单等量刷新内容比对与 `enable.sh` 启动竞态修复）。
 
 **现在的状态**：代码加固、跨平台隔离、本地单测 / TSan 与无签名 Xcode 构建（iOS Simulator & macOS）已通过；
 目标机 `sudo` 安装 / 实机时区与 `pf` E2E、真机签名构建与 50 MiB NE 内存实测列入 [docs/ACCEPTANCE-CHECKLIST-teamwork.md](ACCEPTANCE-CHECKLIST-teamwork.md)。
@@ -29,17 +30,17 @@
 | 事项 | 说明 |
 |---|---|
 | **不能擅自跑 sudo / 改 VPN** | 自动化流程不执行 `sudo`（root 安装/时区/pf）也不断开或切换用户运行中的 VPN。所有 root 验收集中在 `Tools/verify-guard-e2e.sh` 与 `docs/ACCEPTANCE-CHECKLIST-teamwork.md`，由用户确认后执行 |
-| **沙箱与构建边界** | `swift test` 在普通终端可跑全套 10 个 target；`xcodebuild` 真机签名需用户本机环境与签名证书，本地无签名编译用 `Tools/verify-local.sh`（`CODE_SIGNING_ALLOWED=NO`） |
+| **沙箱与构建边界** | `swift test` 在普通终端可跑全套 11 个 target；`xcodebuild` 真机签名需用户本机环境与签名证书，本地无签名编译用 `Tools/verify-local.sh`（`CODE_SIGNING_ALLOWED=NO`） |
 | **不能读 TCC 保护路径** | `~/Library/Group Containers/...`、`~/Library/Containers/.../Data` 在非授权终端读文件可能报 `Operation not permitted`（`ls -l` 拿 stat 可以，`cat`/`xxd`/python open 不行） |
 | **提交前跑脚本自检** | `sh Tools/check-scripts.sh` —— 专抓"`$VAR` 紧跟非 ASCII 字符"，这类错在 `set -u` 下直接 unbound variable 崩脚本 |
 | **验证优先于推断** | 多个历史误判都是"看起来该对"的假设造成的（见 §7）。任何结论都要有一条命令或一段日志支撑 |
 
-构建/测试基准（`master/teamwork` M3 `6af9d359` 实测）：
+构建/测试基准（`master/teamwork` M5 实测）：
 
 ```sh
 cd <repo-root>
 sh Tools/verify-local.sh                         # 一键跑完下方本地非 root 检查（或加 --skip-xcodebuild）
-swift test                                       # 1,205 tests executed，2 个环境条件跳过，0 失败（覆盖 10 个 target）
+swift test                                       # 1,292 tests executed，2 个环境条件跳过，0 失败（覆盖 11 个 target）
 sh Tools/qingzhou-guard/build-relay.sh           # 编译中继二进制到 Tools/qingzhou-guard/build/
 sh Tools/check-scripts.sh                        # shell 脚本自检
 python3 scripts/extract-geosite-cn.py --check    # 校验 geosite-cn.txt 与 geosite.dat 一致（domain=5675, full=40, regexp=3）
@@ -53,9 +54,9 @@ python3 scripts/extract-geosite-cn.py --check    # 校验 geosite-cn.txt 与 geo
   - 起点：`baseline/2026-11-24-build38`（`74fe8841`，在 `main` `f3925d6d` 之上含 `8bbe74c9` + `74fe8841`）
   - 合并来源：`feat/split-exit`（`c6a908e1`，在 `main` `f3925d6d` 之上共 29 个 commit）
   - 合并提交：`8f104bbd`（`git merge --no-ff feat/split-exit`，0 冲突）
-  - 后续里程碑提交：`e0ee9ea5`（M1 P0 加固）、`8c3b6168`（M2 P1 隔离/本地化/规则/Tunnel）、`6af9d359`（M3 P2 去重/通用策略组/核心文件拆分）、M4（文档与验收脚本）
-- 本地构建与测试实况（M3 `6af9d359` Gate 记录）：
-  - `swift test`：`1,205` 项执行，`2` 项环境门控跳过，`0` 项失败（含 `QingzhouGuardRelayCoreTests` 15 项与 TSan 验证）；
+  - 后续里程碑提交：`e0ee9ea5`（M1 P0 加固）、`8c3b6168`（M2 P1 隔离/本地化/规则/Tunnel）、`6af9d359`（M3 P2 去重/通用策略组/核心文件拆分）、`48cf4ef8`（M4 文档与验收脚本）、`21a84c1c` + Tier 5 加固（M5 E2E 套件与对抗探针加固）
+- 本地构建与测试实况（M5 实测）：
+  - `swift test`：`1,292` 项执行（覆盖 `11` 个 SPM target），`2` 项环境门控跳过，`0` 项失败（含 `QingzhouGuardRelayCoreTests` 24 项与 TSan 验证、`QingzhouE2ETests` 65 项）；
   - `xcodebuild`（`CODE_SIGNING_ALLOWED=NO`）：`Qingzhou-iOS`（iOS Simulator）与 `Qingzhou-macOS` 均 `** BUILD SUCCEEDED **`；
   - `xcstringstool compile`：20/20 `OK`；`extract-geosite-cn.py --check`：退出码 `0`。
 
@@ -224,7 +225,7 @@ sudo sh Tools/qingzhou-guard/install.sh
 
 ---
 
-## 8. 文件地图（M1–M4 更新后）
+## 8. 文件地图（M1–M5 更新后）
 
 ```
 Tools/
@@ -262,6 +263,9 @@ Sources/QingzhouCore/
   GeoSiteCNMatcher.swift + Resources/geosite-cn.txt   主 App 轻量化 geosite:cn 匹配器
 Apps/Tunnel-Shared/
   PacketTunnelProvider.swift + PacketTunnelProvider+{Bridge,Control,Probing,SplitExit,Stats}.swift
+Tests/
+  QingzhouGuardRelayCoreTests/          Relay/Control/DNS/Auth/Drain/TSan 回归测试（24 项）
+  QingzhouE2ETests/                     ★ 4 层黑盒本地 E2E 测试套件（65 项，覆盖 F1–F5 与平台隔离）
 scripts/
   extract-geosite-cn.py                 从 geosite.dat 提取/校验 Sources/QingzhouCore/Resources/geosite-cn.txt
 docs/

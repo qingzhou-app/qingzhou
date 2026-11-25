@@ -58,6 +58,9 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
     private(set) public var manager: NETunnelProviderManager?
     private(set) public var configuredRequestID: UUID?
     private var observer: NSObjectProtocol?
+    var onTestNodeConfigAttempt: (@MainActor () -> Void)?
+    var onConfigureAttempt: (@MainActor () -> Void)?
+    var onStartAttempt: (@MainActor () -> Void)?
 
     // Extension 的 Bundle Identifier，必须和 project.yml 里 VPN-Tunnel-* target 的 PRODUCT_BUNDLE_IDENTIFIER 一致
     #if os(iOS)
@@ -123,6 +126,7 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         guardRelay: GuardRelayCredentials? = nil,
         splitExitPolicyGroups: [SplitExitPolicyGroup] = []
     ) async throws {
+        onConfigureAttempt?()
         guard mode == .direct || node != nil || splitExitExit != nil else { throw TunnelError.noCurrentNode }
         let node = mode == .direct ? nil : node
         if manager == nil { try await load() }
@@ -323,24 +327,89 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
     /// （扩展 handleAppMessage "testNode"）。
     /// - 扩展明确回「配置非法」→ 抛 `TunnelError.configRejected(可读错误)`；
     /// - 预检本身没跑成（无会话 / 超时）→ 抛其他错误 —— 调用方应视为「无法预检」尽力继续。
-    public func testNodeConfig(node: Node?, mode: ProxyMode, shareLink: String, rules: [Rule] = []) async throws {
-        var msg: [String: String] = [
-            "command": "testNode",
-            "nodeJSON": node.map(Self.encodeNodeJSON) ?? "",
-            "shareLink": shareLink,
-            "proxyMode": mode.rawValue
-        ]
-        switch makeRulesPayload(rules) {
-        case .inline(let gz):  msg["userRulesGZ"] = gz.base64EncodedString()
-        case .file(let path):  msg["userRulesPath"] = path
-        case .none:            break
-        }
+    public func testNodeConfig(
+        node: Node?,
+        mode: ProxyMode,
+        shareLink: String,
+        rules: [Rule] = [],
+        blockQUIC: Bool? = nil,
+        splitExit: Bool? = nil,
+        splitExitExit: Node? = nil,
+        splitExitHop: Node? = nil,
+        guardRelay: GuardRelayCredentials? = nil,
+        splitExitPolicyGroups: [SplitExitPolicyGroup] = []
+    ) async throws {
+        onTestNodeConfigAttempt?()
+        let msg = makeTestNodeMessage(
+            node: node,
+            mode: mode,
+            shareLink: shareLink,
+            rules: rules,
+            blockQUIC: blockQUIC,
+            splitExit: splitExit,
+            splitExitExit: splitExitExit,
+            splitExitHop: splitExitHop,
+            guardRelay: guardRelay,
+            splitExitPolicyGroups: splitExitPolicyGroups
+        )
         let reply = try await sendCommandForReply(
             msg, timeoutSeconds: 8,
             timeoutLabel: L("配置预检超时"), failureLabel: L("配置预检失败"),
             rejectionAsConfigError: true
         )
         _ = reply
+    }
+
+    func makeTestNodeMessage(
+        node: Node?,
+        mode: ProxyMode,
+        shareLink: String,
+        rules: [Rule] = [],
+        blockQUIC: Bool? = nil,
+        splitExit: Bool? = nil,
+        splitExitExit: Node? = nil,
+        splitExitHop: Node? = nil,
+        guardRelay: GuardRelayCredentials? = nil,
+        splitExitPolicyGroups: [SplitExitPolicyGroup] = []
+    ) -> [String: String] {
+        var msg: [String: String] = [
+            "command": "testNode",
+            "nodeJSON": node.map(Self.encodeNodeJSON) ?? "",
+            "shareLink": shareLink,
+            "proxyMode": mode.rawValue
+        ]
+        if let blockQUIC {
+            msg["blockQUIC"] = blockQUIC ? "true" : "false"
+        }
+        if let splitExit {
+            msg["splitExit"] = splitExit ? "true" : "false"
+            if splitExit {
+                msg["exitNodeJSON"] = splitExitExit.map(Self.encodeNodeJSON) ?? ""
+                msg["hopNodeJSON"] = splitExitHop.map(Self.encodeNodeJSON) ?? ""
+                msg["guardRelayJSON"] = guardRelay?.forwardingOnly.jsonString ?? ""
+                if !splitExitPolicyGroups.isEmpty,
+                   let data = try? JSONEncoder().encode(splitExitPolicyGroups),
+                   let text = String(data: data, encoding: .utf8) {
+                    if data.count > Self.inlineRulesLimit {
+                        logger?.warn("splitExitPolicyGroupsJSON size \(data.count)B exceeds 200KB inline threshold", category: "tunnel")
+                    }
+                    msg["splitExitPolicyGroupsJSON"] = text
+                } else {
+                    msg["splitExitPolicyGroupsJSON"] = ""
+                }
+            } else {
+                msg["exitNodeJSON"] = ""
+                msg["hopNodeJSON"] = ""
+                msg["guardRelayJSON"] = ""
+                msg["splitExitPolicyGroupsJSON"] = ""
+            }
+        }
+        switch makeRulesPayload(rules) {
+        case .inline(let gz):  msg["userRulesGZ"] = gz.base64EncodedString()
+        case .file(let path):  msg["userRulesPath"] = path
+        case .none:            break
+        }
+        return msg
     }
 
     /// 系统记录的最近一次隧道断开原因（含扩展 startTunnel completionHandler 带回的错误）。
@@ -506,6 +575,7 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
     }
 
     public func start() async throws {
+        onStartAttempt?()
         if manager == nil { try await load() }
         guard let manager = manager else { throw TunnelError.managerNotLoaded }
         do {

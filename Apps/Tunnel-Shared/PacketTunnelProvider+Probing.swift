@@ -73,12 +73,46 @@ extension PacketTunnelProvider {
     /// 配置预检：用与真实连接**完全相同**的 compose 产物（同 mode / 用户规则 / geo 数据）
     /// 走一遍 xray 的配置解析 + 组件构建，把 xray-core 原生错误文本带回主 App。
     /// 不写 access log（会清空在跑会话的日志）、不配 metrics（预检无需统计）。
-    func performTest(nodeJSON: String, shareLink: String, mode: ProxyMode, userRules: [Rule]) -> Swift.Error? {
+    func performTest(
+        nodeJSON: String,
+        shareLink: String,
+        mode: ProxyMode,
+        userRules: [Rule],
+        blockQUICOverride: Bool? = nil,
+        splitExitOverride: Bool? = nil,
+        exitNodeJSON: String = "",
+        hopNodeJSON: String = "",
+        guardRelayJSON: String = "",
+        splitExitPolicyGroupsJSON: String = ""
+    ) -> Swift.Error? {
         let geo = resolveGeoData()
+        let effectiveBlockQUIC = blockQUICOverride ?? self.blockQUIC
         do {
-            // 分流方案：预检必须与实跑同一份配置，否则「预检通过、真连失败」。
-            if let splitExit = splitExitNodes.withLock({ $0 }) {
-                let xrayJSON = try composeSplitExit(splitExit, accessLogPath: nil, tunInterfaceName: "utun9")
+            // 当控制消息显式指明目标 splitExit 开关时，严格按目标负载构建预检配置，
+            // 绝不复用旧会话遗留的 splitExitNodes / guardRelay / policyGroups / blockQUIC。
+            if splitExitOverride == true {
+                let plan = try SplitExitPlan.fromPayload(
+                    exitNodeJSON: exitNodeJSON,
+                    hopNodeJSON: hopNodeJSON,
+                    guardRelayJSON: guardRelayJSON,
+                    policyGroupsJSON: splitExitPolicyGroupsJSON,
+                    lists: loadSplitExitLists(),
+                    blockQUIC: effectiveBlockQUIC
+                )
+                let xrayJSON = try plan.composeJSON(accessLogPath: nil, tunInterfaceName: "utun9")
+                try XrayCore.testConfig(configJSON: xrayJSON, datDir: geo.dir)
+                return nil
+            }
+            if splitExitOverride == nil, let splitExit = splitExitNodes.withLock({ $0 }) {
+                let plan = SplitExitPlan(
+                    exitNode: splitExit.exit,
+                    hopNode: splitExit.hop,
+                    lists: loadSplitExitLists(),
+                    blockQUIC: effectiveBlockQUIC,
+                    relay: guardRelay.withLock { $0 },
+                    policyGroups: splitExitPolicyGroups.withLock { $0 }
+                )
+                let xrayJSON = try plan.composeJSON(accessLogPath: nil, tunInterfaceName: "utun9")
                 try XrayCore.testConfig(configJSON: xrayJSON, datDir: geo.dir)
                 return nil
             }
@@ -93,7 +127,7 @@ extension PacketTunnelProvider {
                 // 否则 xray 报「interface name must be utunN」把好配置误判成无效、中止热切换。
                 tunInterfaceName: "utun9",
                 // 预检要与真实连接**完全相同**的产物：blockQUIC 也带上，否则预检配置和实跑不一致。
-                blockQUIC: self.blockQUIC
+                blockQUIC: effectiveBlockQUIC
             )
             try XrayCore.testConfig(configJSON: xrayJSON, datDir: geo.dir)
             return nil

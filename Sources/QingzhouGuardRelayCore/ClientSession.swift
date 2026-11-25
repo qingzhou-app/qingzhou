@@ -52,8 +52,13 @@ public final class ClientSession: @unchecked Sendable {
     private var authed = false
     private var clientToUpstreamEOF = false
     private var upstreamToClientEOF = false
+    private var pendingClientSends = 0
+    private var pendingUpstreamSends = 0
+    private var clientFailed = false
+    private var upstreamFailed = false
+    private let drainTimeout: TimeInterval
 
-    private enum Stage { case greeting, auth, request, connecting, piping, closed }
+    private enum Stage { case greeting, auth, request, connecting, piping, draining, closed }
 
     public init(
         _ connection: NWConnection,
@@ -62,7 +67,8 @@ public final class ClientSession: @unchecked Sendable {
         dns: RelayDNS,
         egressProvider: @escaping @Sendable () -> NWInterface?,
         requirePhysicalInterface: Bool = true,
-        logger: RelayLogger? = nil
+        logger: RelayLogger? = nil,
+        drainTimeout: TimeInterval = 2.0
     ) {
         self.connection = connection
         self.creds = creds
@@ -71,6 +77,7 @@ public final class ClientSession: @unchecked Sendable {
         self.egressProvider = egressProvider
         self.requirePhysicalInterface = requirePhysicalInterface
         self.logger = logger
+        self.drainTimeout = max(0.05, drainTimeout)
         self.queue = DispatchQueue(label: "com.sbraveyoung.qingzhou.relay.client.\(UUID().uuidString)")
     }
 
@@ -80,8 +87,8 @@ public final class ClientSession: @unchecked Sendable {
             registry.add(self)
             connection.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
-                if case .failed = state { self.closeOnQueue() }
-                if case .cancelled = state { self.closeOnQueue() }
+                if case .failed = state { self.handleClientTerminatedOnQueue() }
+                if case .cancelled = state { self.handleClientTerminatedOnQueue() }
             }
             connection.start(queue: queue)
             pumpOnQueue()
@@ -95,11 +102,11 @@ public final class ClientSession: @unchecked Sendable {
     }
 
     private func pumpOnQueue() {
-        guard stage != .piping && stage != .connecting && stage != .closed else { return }
+        guard stage != .piping && stage != .connecting && stage != .draining && stage != .closed else { return }
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self else { return }
             guard self.stage != .closed else { return }
-            if let data, !data.isEmpty {
+            if let data, !data.isEmpty, self.stage != .draining {
                 self.buffer.append(data)
                 if self.buffer.count > Self.maxHandshakeBufferBytes {
                     self.closeOnQueue()
@@ -107,13 +114,21 @@ public final class ClientSession: @unchecked Sendable {
                 }
             }
             self.drainOnQueue()
-            if error != nil || isComplete {
-                if self.stage != .connecting && self.stage != .piping {
+            if error != nil {
+                if self.stage == .draining {
+                    self.handleClientTerminatedOnQueue()
+                } else if self.stage != .connecting && self.stage != .piping {
                     self.closeOnQueue()
                 }
                 return
             }
-            if self.stage != .piping && self.stage != .connecting && self.stage != .closed {
+            if isComplete {
+                if self.stage != .connecting && self.stage != .piping && self.stage != .draining {
+                    self.closeOnQueue()
+                }
+                return
+            }
+            if self.stage != .piping && self.stage != .connecting && self.stage != .draining && self.stage != .closed {
                 self.pumpOnQueue()
             }
         }
@@ -134,9 +149,8 @@ public final class ClientSession: @unchecked Sendable {
                 let methods = [UInt8](buffer[(buffer.startIndex + 2)..<(buffer.startIndex + 2 + n)])
                 buffer.removeFirst(2 + n)
                 guard methods.contains(0x02) else {
-                    sendOnQueue([0x05, 0xFF]) { [weak self] in self?.closeOnQueue() }
                     logger?.log("拒绝：客户端不支持用户名/密码认证")
-                    stage = .closed
+                    sendFinalReplyAndDrainOnQueue([0x05, 0xFF])
                     return
                 }
                 sendOnQueue([0x05, 0x02])
@@ -146,8 +160,7 @@ public final class ClientSession: @unchecked Sendable {
                 guard buffer.count >= 2 else { return }
                 let subVer = buffer[buffer.startIndex]
                 guard subVer == 0x01 else {
-                    sendOnQueue([0x01, 0x01]) { [weak self] in self?.closeOnQueue() }
-                    stage = .closed
+                    sendFinalReplyAndDrainOnQueue([0x01, 0x01])
                     return
                 }
                 let ulen = Int(buffer[buffer.index(buffer.startIndex, offsetBy: 1)])
@@ -159,9 +172,8 @@ public final class ClientSession: @unchecked Sendable {
                 let pass = String(decoding: buffer[(plenIndex + 1)..<(plenIndex + 1 + plen)], as: UTF8.self)
                 buffer.removeFirst(2 + ulen + 1 + plen)
                 guard user == creds.user, pass == creds.pass else {
-                    sendOnQueue([0x01, 0x01]) { [weak self] in self?.closeOnQueue() }
                     logger?.log("拒绝：认证失败")
-                    stage = .closed
+                    sendFinalReplyAndDrainOnQueue([0x01, 0x01])
                     return
                 }
                 sendOnQueue([0x01, 0x00])
@@ -201,7 +213,7 @@ public final class ClientSession: @unchecked Sendable {
                     return
                 }
 
-            case .connecting, .piping, .closed:
+            case .connecting, .piping, .draining, .closed:
                 return
             }
         }
@@ -300,18 +312,19 @@ public final class ClientSession: @unchecked Sendable {
 
         let up = NWConnection(to: endpoint, using: params)
         upstream = up
-        up.stateUpdateHandler = { [weak self] state in
-            guard let self, self.stage != .closed else { return }
+        up.stateUpdateHandler = { [weak self, weak up] state in
+            guard let self, self.stage != .closed, let up, self.upstream === up else { return }
             switch state {
             case .ready:
+                guard self.stage == .connecting else { return }
                 self.stage = .piping
-                self.sendOnQueue([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                self.sendToClientOnQueue(Data([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
                 self.logger?.log("CONNECT \(originalHost):\(port)\(resolvedNote)")
                 self.pipeUpstreamToClientOnQueue()
                 if !self.buffer.isEmpty {
                     let pending = self.buffer
                     self.buffer.removeAll()
-                    up.send(content: pending, completion: .contentProcessed { _ in })
+                    self.sendToUpstreamOnQueue(pending)
                 }
                 self.pipeClientToUpstreamOnQueue()
             case .failed(let error):
@@ -319,10 +332,10 @@ public final class ClientSession: @unchecked Sendable {
                 if self.stage == .connecting {
                     self.replyFailureOnQueue(0x05)
                 } else {
-                    self.closeOnQueue()
+                    self.handleUpstreamTerminatedOnQueue()
                 }
             case .cancelled:
-                self.closeOnQueue()
+                self.handleUpstreamTerminatedOnQueue()
             default:
                 break
             }
@@ -333,22 +346,18 @@ public final class ClientSession: @unchecked Sendable {
     private func pipeClientToUpstreamOnQueue() {
         guard stage == .piping, !clientToUpstreamEOF else { return }
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            guard let self, self.stage == .piping, let up = self.upstream else { return }
+            guard let self, self.stage == .piping else { return }
             if let data, !data.isEmpty {
-                up.send(content: data, completion: .contentProcessed { _ in })
+                self.sendToUpstreamOnQueue(data)
             }
             if error != nil {
-                self.closeOnQueue()
+                self.handleClientTerminatedOnQueue()
                 return
             }
             if isComplete {
                 self.clientToUpstreamEOF = true
-                up.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] sendError in
-                    guard let self, self.stage == .piping else { return }
-                    if sendError != nil || self.upstreamToClientEOF {
-                        self.closeOnQueue()
-                    }
-                })
+                self.sendToUpstreamOnQueue(nil, contentContext: .finalMessage, isComplete: true)
+                self.evaluateLifecycleAfterSendOnQueue()
                 return
             }
             self.pipeClientToUpstreamOnQueue()
@@ -357,26 +366,104 @@ public final class ClientSession: @unchecked Sendable {
 
     private func pipeUpstreamToClientOnQueue() {
         guard stage == .piping, !upstreamToClientEOF, let up = upstream else { return }
-        up.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            guard let self, self.stage == .piping else { return }
+        up.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self, weak up] data, _, isComplete, error in
+            guard let self, self.stage == .piping, let up, self.upstream === up else { return }
             if let data, !data.isEmpty {
-                self.connection.send(content: data, completion: .contentProcessed { _ in })
+                self.sendToClientOnQueue(data)
             }
             if error != nil {
-                self.closeOnQueue()
+                self.handleUpstreamTerminatedOnQueue()
                 return
             }
             if isComplete {
                 self.upstreamToClientEOF = true
-                self.connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] sendError in
-                    guard let self, self.stage == .piping else { return }
-                    if sendError != nil || self.clientToUpstreamEOF {
-                        self.closeOnQueue()
-                    }
-                })
+                self.sendToClientOnQueue(nil, contentContext: .finalMessage, isComplete: true)
+                self.evaluateLifecycleAfterSendOnQueue()
                 return
             }
             self.pipeUpstreamToClientOnQueue()
+        }
+    }
+
+    private func sendToClientOnQueue(
+        _ data: Data?,
+        contentContext: NWConnection.ContentContext = .defaultMessage,
+        isComplete: Bool = false
+    ) {
+        guard stage == .piping || stage == .draining, !clientFailed else { return }
+        pendingClientSends += 1
+        connection.send(content: data, contentContext: contentContext, isComplete: isComplete, completion: .contentProcessed { [weak self] sendError in
+            guard let self, self.stage != .closed else { return }
+            self.pendingClientSends = max(0, self.pendingClientSends - 1)
+            if sendError != nil {
+                self.clientFailed = true
+                self.connection.cancel()
+            }
+            self.evaluateLifecycleAfterSendOnQueue()
+        })
+    }
+
+    private func sendToUpstreamOnQueue(
+        _ data: Data?,
+        contentContext: NWConnection.ContentContext = .defaultMessage,
+        isComplete: Bool = false
+    ) {
+        guard stage == .piping || stage == .draining, !upstreamFailed, let up = upstream else { return }
+        pendingUpstreamSends += 1
+        up.send(content: data, contentContext: contentContext, isComplete: isComplete, completion: .contentProcessed { [weak self, weak up] sendError in
+            guard let self, self.stage != .closed else { return }
+            self.pendingUpstreamSends = max(0, self.pendingUpstreamSends - 1)
+            if sendError != nil, let up, self.upstream === up {
+                self.upstreamFailed = true
+                up.cancel()
+                self.upstream = nil
+            }
+            self.evaluateLifecycleAfterSendOnQueue()
+        })
+    }
+
+    private func handleClientTerminatedOnQueue() {
+        guard stage != .closed else { return }
+        clientFailed = true
+        connection.cancel()
+        if stage == .piping || stage == .draining {
+            evaluateLifecycleAfterSendOnQueue()
+        } else {
+            closeOnQueue()
+        }
+    }
+
+    private func handleUpstreamTerminatedOnQueue() {
+        guard stage != .closed else { return }
+        upstreamFailed = true
+        upstream?.cancel()
+        upstream = nil
+        if stage == .piping || stage == .draining {
+            evaluateLifecycleAfterSendOnQueue()
+        } else {
+            closeOnQueue()
+        }
+    }
+
+    private func evaluateLifecycleAfterSendOnQueue() {
+        guard stage == .piping || stage == .draining else { return }
+        let clientDrained = clientFailed || pendingClientSends == 0
+        let upstreamDrained = upstreamFailed || upstream == nil || pendingUpstreamSends == 0
+        if stage == .draining || clientFailed || upstreamFailed || (clientToUpstreamEOF && upstreamToClientEOF) {
+            if clientDrained && upstreamDrained {
+                closeOnQueue()
+            } else {
+                enterDrainingOnQueue()
+            }
+        }
+    }
+
+    private func enterDrainingOnQueue() {
+        guard stage != .draining && stage != .closed else { return }
+        stage = .draining
+        queue.asyncAfter(deadline: .now() + drainTimeout) { [weak self] in
+            guard let self, self.stage == .draining else { return }
+            self.closeOnQueue()
         }
     }
 
@@ -384,16 +471,21 @@ public final class ClientSession: @unchecked Sendable {
         connection.send(content: Data(bytes), completion: .contentProcessed { _ in completion?() })
     }
 
-    private func replyFailureOnQueue(_ code: UInt8) {
-        guard stage != .closed else { return }
-        stage = .closed
+    private func sendFinalReplyAndDrainOnQueue(_ bytes: [UInt8]) {
+        guard stage != .closed && stage != .draining else { return }
         buffer.removeAll()
+        upstreamFailed = true
         upstream?.cancel()
         upstream = nil
-        sendOnQueue([0x05, code, 0x00, 0x01, 0, 0, 0, 0, 0, 0]) { [weak self] in
-            self?.connection.cancel()
-            self?.scheduleUnregister()
-        }
+        clientToUpstreamEOF = true
+        upstreamToClientEOF = true
+        enterDrainingOnQueue()
+        sendToClientOnQueue(Data(bytes), contentContext: .finalMessage, isComplete: true)
+        evaluateLifecycleAfterSendOnQueue()
+    }
+
+    private func replyFailureOnQueue(_ code: UInt8) {
+        sendFinalReplyAndDrainOnQueue([0x05, code, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
     }
 
     private func closeOnQueue() {

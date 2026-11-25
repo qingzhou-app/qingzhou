@@ -551,4 +551,73 @@ final class SplitExitPlanTests: XCTestCase {
                 && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.reject
         })
     }
+
+    func testPolicyGroupRejectsLeadingOrDoubleDots() {
+        let invalid = SplitExitPolicyGroup(
+            name: "Bad Dots",
+            target: .direct,
+            domains: [".example.com", "a..b.com", "good.example.com"],
+            fullDomains: [".sub.example.com", "x..y.com", "ok.example.com"]
+        )
+        let resolved = SplitExitPlan.resolvedEntries(for: invalid)
+        XCTAssertEqual(resolved.domains, ["full:ok.example.com", "domain:good.example.com"])
+    }
+
+    func testSameHopAndExitIsRejectedCaseInsensitively() {
+        let exit = node("住宅", .socks5, host: "Proxy.Example.COM", port: 1080, password: "p")
+        let hop = node("跳板", .socks5, host: "proxy.example.com", port: 1080, password: "p")
+        let plan = SplitExitPlan(exitNode: exit, hopNode: hop)
+        XCTAssertThrowsError(try plan.compose()) { error in
+            XCTAssertEqual(error as? SplitExitPlan.PlanError, .hopEqualsExit)
+        }
+    }
+
+    func testFromPayloadBuildsValidAndRejectsInvalidPayloads() throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let exit = node("住宅", .socks5, host: "203.0.113.9", port: 1080, password: "p", params: ["username": "u"])
+        let hop = node("HK-01", .trojan, host: "hk.example.com", port: 443, password: "pw")
+        let exitJSON = String(data: try encoder.encode(exit), encoding: .utf8)!
+        let hopJSON = String(data: try encoder.encode(hop), encoding: .utf8)!
+        let relay = GuardRelayCredentials(port: 10808, username: "fwd_u", password: "fwd_p")
+        let groups = [SplitExitPolicyGroup(name: "Custom", target: .exit, domains: ["custom.example.com"])]
+        let groupsJSON = String(data: try JSONEncoder().encode(groups), encoding: .utf8)!
+
+        let plan = try SplitExitPlan.fromPayload(
+            exitNodeJSON: exitJSON,
+            hopNodeJSON: hopJSON,
+            guardRelayJSON: relay.jsonString,
+            policyGroupsJSON: groupsJSON,
+            blockQUIC: false
+        )
+        XCTAssertFalse(plan.blockQUIC)
+        XCTAssertEqual(plan.relay?.username, "fwd_u")
+        XCTAssertEqual(plan.policyGroups.count, 1)
+        let config = try plan.compose()
+        let outbounds = try XCTUnwrap(config["outbounds"] as? [[String: Any]])
+        XCTAssertTrue(outbounds.contains { $0["tag"] as? String == "relay" })
+
+        // Case-insensitive hopEqualsExit via payload
+        let hopUpper = node("Dup", .socks5, host: "EXAMPLE.COM", port: 1080, password: "p")
+        let exitLower = node("Dup2", .socks5, host: "example.com", port: 1080, password: "p")
+        let badPlan = try SplitExitPlan.fromPayload(
+            exitNodeJSON: String(data: try encoder.encode(exitLower), encoding: .utf8)!,
+            hopNodeJSON: String(data: try encoder.encode(hopUpper), encoding: .utf8)!
+        )
+        XCTAssertThrowsError(try badPlan.composeJSON(tunInterfaceName: "utun9")) { error in
+            XCTAssertEqual(error as? SplitExitPlan.PlanError, .hopEqualsExit)
+        }
+
+        // Corrupt relay or policyGroups JSON fails explicitly
+        XCTAssertThrowsError(try SplitExitPlan.fromPayload(
+            exitNodeJSON: exitJSON,
+            hopNodeJSON: hopJSON,
+            guardRelayJSON: "{bad"
+        ))
+        XCTAssertThrowsError(try SplitExitPlan.fromPayload(
+            exitNodeJSON: exitJSON,
+            hopNodeJSON: hopJSON,
+            policyGroupsJSON: "{bad"
+        ))
+    }
 }

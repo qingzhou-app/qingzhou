@@ -67,5 +67,49 @@ final class RelayLoggerAndAuthTests: XCTestCase {
         XCTAssertNil(RelayAuthCredentials.parse("forward:u:p\ncontrol::cp\n"))
         // 转发与控制凭据相同 → nil（fail closed）
         XCTAssertNil(RelayAuthCredentials.parse("forward:same:secret\ncontrol:same:secret\n"))
+
+        // 含特殊符号的合法密码应允许
+        XCTAssertNotNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd_u", pass: "fwd!@#$%:pass"),
+            control: CredentialPair(user: "ctrl_u", pass: "ctrl!@#$%")
+        ))
+
+        // user 含空白 / CR / LF / 冒号 → nil
+        XCTAssertNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd user", pass: "fp"),
+            control: CredentialPair(user: "ctrl_u", pass: "cp")
+        ))
+        XCTAssertNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd_u", pass: "fp"),
+            control: CredentialPair(user: "ctrl\tuser", pass: "cp")
+        ))
+        XCTAssertNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd:user", pass: "fp"),
+            control: CredentialPair(user: "ctrl_u", pass: "cp")
+        ))
+        XCTAssertNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd\nuser", pass: "fp"),
+            control: CredentialPair(user: "ctrl_u", pass: "cp")
+        ))
+
+        // pass 含 CR / LF → nil；control pass 含空白 → nil
+        XCTAssertNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd_u", pass: "fp\nRESTORE"),
+            control: CredentialPair(user: "ctrl_u", pass: "cp")
+        ))
+        XCTAssertNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd_u", pass: "fp\r"),
+            control: CredentialPair(user: "ctrl_u", pass: "cp")
+        ))
+        XCTAssertNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd_u", pass: "fp"),
+            control: CredentialPair(user: "ctrl_u", pass: "cp\nRESTORE")
+        ))
+        XCTAssertNil(RelayAuthCredentials(
+            forwarding: CredentialPair(user: "fwd_u", pass: "fp"),
+            control: CredentialPair(user: "ctrl_u", pass: "cp pass")
+        ))
+        XCTAssertNil(RelayAuthCredentials.parse("forward:fwd u:fp\ncontrol:ctrl_u:cp\n"))
+        XCTAssertNil(RelayAuthCredentials.parse("forward:fwd_u:fp\ncontrol:ctrl_u:cp pass\n"))
     }
 }

@@ -23,7 +23,7 @@ sh Tools/verify-local.sh --skip-xcodebuild
 - [ ] `sh Tools/check-scripts.sh` 通过（无 `$VAR` 紧跟非 ASCII 字符）。
 - [ ] `sh -n Tools/*.sh Tools/qingzhou-guard/*.sh` 全部退出码 `0`。
 - [ ] `python3 scripts/extract-geosite-cn.py --check` 输出 `OK: Sources/QingzhouCore/Resources/geosite-cn.txt matches geosite.dat (domain=5675, full=40, regexp=3)`。
-- [ ] `swift test` 全部通过（`1,205`+ 项执行、`0` 失败）。
+- [ ] `swift test` 全部通过（`1,292` 项执行、`2` 项环境门控跳过、`0` 失败，覆盖 `11` 个 target）。
 - [ ] `sh Tools/qingzhou-guard/build-relay.sh` 编译成功。
 - [ ] `xcodegen generate --spec Apps/project.yml` 后，15 个受跟踪 `.entitlements` 与 `Info.plist` 无漂移。
 - [ ] 无签名 `xcodebuild`：`Qingzhou-iOS`（Simulator）与 `Qingzhou-macOS` 均 `** BUILD SUCCEEDED **`。

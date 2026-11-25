@@ -2,19 +2,20 @@
 
 > 这是 commercial App Store VPN 产品的 6 个月 part-time 路线图。MVP 目标是 W9-10 上架。
 
-## 当前工程状态（2026-11-25，`master/teamwork`：build 38 + `feat/split-exit` 集成与 M1–M4 加固）
+## 当前工程状态（2026-11-25，`master/teamwork`：build 38 + `feat/split-exit` 集成与 M1–M5 加固）
 
-- **版本源与当前分支**：`Apps/project.yml`，当前版本 **`1.0(38)`**，集成分支 `master/teamwork`（以 `baseline/2026-11-24-build38` `74fe8841` 为基线合并 `feat/split-exit` `c6a908e1`，并完成 M1–M4 加固重构）。
+- **版本源与当前分支**：`Apps/project.yml`，当前版本 **`1.0(38)`**，集成分支 `master/teamwork`（以 `baseline/2026-11-24-build38` `74fe8841` 为基线合并 `feat/split-exit` `c6a908e1`，并完成 M1–M5 加固重构）。
 - **build 35–38（`baseline/2026-11-24-build38`，`8bbe74c9` / `74fe8841`）**：
   - build 35–36：公网 IP 双路径（物理接口直连与固定代理入口分离）、节点 TCP A + AAAA 并发探测。
   - build 37：无节点直连模式、会话/日度/月度域名流量账本（`DomainTrafficLedger` / `DomainTrafficRecorder`）与持久化。
   - build 38：普通模式切换为双栈 FakeDNS（`198.18.0.0/15` + `fc00::/18`、`UseIP`、`direct` `AsIs` + `ForceIP` + `happyEyeballs`）及 `tun-in` `tcp,udp` 53 端口精确拦截，新增 `Apps/DeviceAcceptance`（代码与单测已合入，**尚待真机实网终验**，见 [docs/IPV6.md](IPV6.md) 与 [docs/ACCEPTANCE-CHECKLIST-teamwork.md](ACCEPTANCE-CHECKLIST-teamwork.md)）。
-- **`feat/split-exit` 与 M1–M3 加固重构（`e0ee9ea5`、`8c3b6168`、`6af9d359`）**：
+- **`feat/split-exit` 与 M1–M5 加固重构（`e0ee9ea5`、`8c3b6168`、`6af9d359`、`48cf4ef8`、`21a84c1c`）**：
   - **M1（P0 加固）**：提取可测中继核心 `Sources/QingzhouGuardRelayCore/`；加固 `ClientSession` / `ControlSession` 并发队列、`RelayDNS` 异步 `recv()` 与有界缓存、`RelayLogger` 5 MiB 轮转；严格分离 `forward:` 与 `control:` 凭据；修复 `TimeZoneController` `SET-TZ` vs `currentTimeZone()` 比对与 `uninstall.sh` 时区还原、`AppState.sendControlCommand`；`guard-run.sh` 增加无 `utun` fail-closed 基础规则与 `<= 1s` 轮询，`off.sh` 改为锚点级清空（不再全局 `pfctl -d`），`enable.sh` 增加 Python 结构化 JSON 校验。
   - **M2（P1 平台隔离与规则语义）**：macOS 专属分流/`qingzhou-guard`/`sudo` UI 全量 `#if os(macOS)` 隔离；4 语 `*.xcstrings` 补全与 `LocalizedStringKey` 修复；`PacketTunnelProvider+SplitExit` 透传 `self.blockQUIC`；`Rule.noResolve` 独立解析与 `RoutingRuleConverter` `PROCESS-NAME` / `USER-AGENT` 显式诊断。
   - **M3（P2 优化与拆分）**：`Sources/QingzhouCore/Resources/geosite-cn.txt` + `GeoSiteCNMatcher` 前置去重（保持 `QingzhouApp` 不依赖 `XrayCore`）；通用 `SplitExitPolicyGroup` 替代硬编码站点规则；拆分 `AppState.swift`、`PacketTunnelProvider.swift`、`SettingsView.swift` 并通过 `xcodegen generate` 同步。
   - **M4（文档与验收工程）**：路径脱敏、技术文档同步、新增本地脚本 `Tools/verify-local.sh` 与 `sudo` 交互脚本 `Tools/verify-guard-e2e.sh`，以及总验收清单 [docs/ACCEPTANCE-CHECKLIST-teamwork.md](ACCEPTANCE-CHECKLIST-teamwork.md)。
-- **本地验证实况（M3 `6af9d359`）**：`swift test` 1,205 项执行（2 项环境门控跳过、0 失败），`Qingzhou-iOS`（Simulator）与 `Qingzhou-macOS` 无签名构建通过，`xcstringstool compile` 20/20 通过，`extract-geosite-cn.py --check` 通过。
+  - **M5（E2E 与 Tier 5 对抗加固）**：新增 65 项黑盒端到端测试套件（`Tests/QingzhouE2ETests/`），并修复 `ClientSession`/`ControlSession` 半关闭 drain、`startTunnel` 无 `currentNodeId` 分流启动、`effBlockQUIC` 与 `testNode`/`performTest` 负载校验、`setGuardRelayEnabled` 重连联动、凭据空白/换行校验及分流名单等量刷新内容比对。
+- **本地验证实况（M5）**：`swift test` 1,292 项执行（覆盖 11 个 SPM target、2 项环境门控跳过、0 失败，含 `QingzhouE2ETests` 65 项与 `QingzhouGuardRelayCoreTests` 24 项含 TSan），`Qingzhou-iOS`（Simulator）与 `Qingzhou-macOS` 无签名构建通过，`xcstringstool compile` 20/20 通过，`extract-geosite-cn.py --check` 通过。
 - **待人工 / 真机 / 特权环境验收**：统一收敛在 [docs/ACCEPTANCE-CHECKLIST-teamwork.md](ACCEPTANCE-CHECKLIST-teamwork.md)（含 `sudo` `qingzhou-guard` E2E、真机签名构建与 50 MiB NE 内存实测、build 38 双栈 IPv6 与历史遗留手工核对、S4/S5 App Store Connect 上架操作与 `git push` 命令）。
 
 > 以下保留 build 20–34 与早期 Sprint 的历史归档记录（请勿将历史未勾项直接当作当前待办）：

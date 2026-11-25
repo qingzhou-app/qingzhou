@@ -63,12 +63,18 @@ extension AppState {
                                                creds: GuardRelayCredentials,
                                                port: UInt16? = nil,
                                                timeoutSeconds: TimeInterval = 3) async throws {
+        if let cu = creds.controlUsername,
+           cu.contains(where: { $0.isWhitespace || $0.isNewline || $0 == ":" }) {
+            throw URLError(.badURL)
+        }
+        if let cp = creds.controlPassword,
+           cp.contains(where: { $0.isWhitespace || $0.isNewline }) {
+            throw URLError(.badURL)
+        }
         guard let control = creds.validatedControlCredentials() else {
             throw URLError(.userAuthenticationRequired)
         }
-        guard !control.username.contains(where: \.isWhitespace),
-              !control.password.contains(where: { $0 == "\n" || $0 == "\r" }),
-              !command.contains(where: { $0 == "\n" || $0 == "\r" }) else {
+        guard !command.contains(where: { $0 == "\n" || $0 == "\r" }) else {
             throw URLError(.badURL)
         }
         let targetPort = port ?? control.port

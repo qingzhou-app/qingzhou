@@ -341,6 +341,8 @@ public final class AppState {
     #if os(macOS)
     /// 内容过滤扩展以 root 运行，App Group 文件与用户 App 不通，故通过 XPC 查询端口→App 映射。
     let filterControl = FilterControlClient()
+    /// 测试注入点：默认从 App Group 读 root 中继凭据；单测可替换，避免触碰真实 App Group 文件。
+    var loadGuardRelayCredentials: @MainActor () -> GuardRelayCredentials? = { GuardRelayCredentials.load() }
     #endif
 
     public init(
