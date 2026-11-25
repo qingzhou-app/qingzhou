@@ -21,12 +21,23 @@ final class SplitExitPlanTests: XCTestCase {
              password: password, parameters: params)
     }
 
-    /// 住宅 SOCKS5（出口）+ 香港 trojan（跳板）
-    private func makePlan(lists: SplitExitPlan.Lists = .init()) -> SplitExitPlan {
+    private func makePlan(
+        lists: SplitExitPlan.Lists = .init(),
+        blockQUIC: Bool = true,
+        rejectOverseasUDP: Bool = true,
+        policyGroups: [SplitExitPolicyGroup] = []
+    ) -> SplitExitPlan {
         let exit = node("住宅", .socks5, host: "203.0.113.9", port: 1080,
                         password: "p@ss", params: ["username": "u"])
         let hop = node("HK-01", .trojan, host: "hk.example.com", port: 443, password: "pw")
-        return SplitExitPlan(exitNode: exit, hopNode: hop, lists: lists)
+        return SplitExitPlan(
+            exitNode: exit,
+            hopNode: hop,
+            lists: lists,
+            blockQUIC: blockQUIC,
+            rejectOverseasUDP: rejectOverseasUDP,
+            policyGroups: policyGroups
+        )
     }
 
     // MARK: - 出口结构
@@ -105,61 +116,216 @@ final class SplitExitPlanTests: XCTestCase {
         XCTAssertLessThan(overseas, cnIP)
     }
 
-    /// 需求：Claude、B 站/微信、局域网 都要排在海外分类之前。
-    func testPriorityOrderMatchesSpec() throws {
-        let rules = try XCTUnwrap(makePlan().routing()["rules"] as? [[String: Any]])
-
-        let claude = try XCTUnwrap(ruleIndex(rules) { rule in
-            (rule["domain"] as? [String])?.contains("domain:claude.ai") == true
-        })
-        let lan = try XCTUnwrap(ruleIndex(rules) { rule in
-            (rule["ip"] as? [String])?.contains("100.64.0.0/10") == true
-        })
-        let bilibili = try XCTUnwrap(ruleIndex(rules) { rule in
-            (rule["domain"] as? [String])?.contains("geosite:bilibili") == true
-        })
-        let overseas = try XCTUnwrap(ruleIndex(rules) { rule in
-            (rule["domain"] as? [String])?.contains("geosite:geolocation-!cn") == true
-        })
-        XCTAssertLessThan(claude, lan)
-        XCTAssertLessThan(lan, bilibili)
-        XCTAssertLessThan(bilibili, overseas)
-    }
-
-    func testClaudeRuleCoversDomainsAndKeywords() throws {
-        let rules = try XCTUnwrap(makePlan().routing()["rules"] as? [[String: Any]])
-        let rule = try XCTUnwrap(rules.first { r in
-            (r["domain"] as? [String])?.contains("domain:claude.ai") == true
-        })
-        let entries = try XCTUnwrap(rule["domain"] as? [String])
-        XCTAssertEqual(rule["outboundTag"] as? String, SplitExitPlan.Tag.exit)
-        for expected in ["full:claude.ai", "domain:claude.com", "domain:anthropic.com",
-                         "domain:claudeusercontent.com", "domain:claudemcpclient.com",
-                         "claude", "anthropic"] {
-            XCTAssertTrue(entries.contains(expected), "缺 \(expected)")
+    /// 默认配置不包含任何硬编码个人服务/品牌规则。
+    func testDefaultPlanContainsNoHardcodedPersonalRules() throws {
+        let json = try makePlan().composeJSON()
+        for legacyToken in ["claude.ai", "anthropic", "bilibili", "mirrorakam", "weixin.qq.com", "wechat.com"] {
+            XCTAssertFalse(json.contains(legacyToken), "不应再硬编码 \(legacyToken)")
         }
     }
 
-    func testBilibiliMatchesMirrorAkamByKeyword() throws {
-        let rules = try XCTUnwrap(makePlan().routing()["rules"] as? [[String: Any]])
-        let rule = try XCTUnwrap(rules.first { r in
-            (r["domain"] as? [String])?.contains("geosite:bilibili") == true
+    /// 通用策略组按声明顺序生效，且排在保留网段、geolocation-!cn 与国内名单之前。
+    func testPolicyGroupsOrderBeforeGeoCategoriesAndReservedCIDRs() throws {
+        let gExit = SplitExitPolicyGroup(
+            name: "Group Exit",
+            target: .exit,
+            domains: ["service-exit.example.com"],
+            keywords: ["exitkw"]
+        )
+        let gDirect = SplitExitPolicyGroup(
+            name: "Group Direct",
+            target: .direct,
+            domains: ["service-direct.example.cn"],
+            geoSites: ["apple"]
+        )
+        let gReject = SplitExitPolicyGroup(
+            name: "Group Reject",
+            target: .reject,
+            geoSites: ["category-ads-all"],
+            cidrs: ["198.51.100.0/24"]
+        )
+        let rules = try XCTUnwrap(makePlan(policyGroups: [gExit, gDirect, gReject]).routing()["rules"] as? [[String: Any]])
+
+        let exitIdx = try XCTUnwrap(ruleIndex(rules) {
+            ($0["domain"] as? [String])?.contains("domain:service-exit.example.com") == true
         })
-        let entries = try XCTUnwrap(rule["domain"] as? [String])
-        XCTAssertTrue(entries.contains("mirrorakam"), "mirrorakam 只能按关键字匹配")
-        XCTAssertTrue(entries.contains("domain:bilibili.com"))
-        XCTAssertEqual(rule["outboundTag"] as? String, SplitExitPlan.Tag.direct)
+        let directIdx = try XCTUnwrap(ruleIndex(rules) {
+            ($0["domain"] as? [String])?.contains("domain:service-direct.example.cn") == true
+        })
+        let rejectDomainIdx = try XCTUnwrap(ruleIndex(rules) {
+            ($0["domain"] as? [String])?.contains("geosite:category-ads-all") == true
+        })
+        let rejectIPIdx = try XCTUnwrap(ruleIndex(rules) {
+            ($0["ip"] as? [String])?.contains("198.51.100.0/24") == true
+        })
+        let lanIdx = try XCTUnwrap(ruleIndex(rules) {
+            ($0["ip"] as? [String])?.contains("100.64.0.0/10") == true
+        })
+        let overseasIdx = try XCTUnwrap(ruleIndex(rules) {
+            ($0["domain"] as? [String])?.contains("geosite:geolocation-!cn") == true
+        })
+
+        XCTAssertLessThan(exitIdx, directIdx)
+        XCTAssertLessThan(directIdx, rejectDomainIdx)
+        XCTAssertLessThan(rejectDomainIdx, rejectIPIdx)
+        XCTAssertLessThan(rejectIPIdx, lanIdx)
+        XCTAssertLessThan(lanIdx, overseasIdx)
     }
 
-    func testWechatUsesTencentCategoryBecauseWechatCategoryMissing() throws {
-        let rules = try XCTUnwrap(makePlan().routing()["rules"] as? [[String: Any]])
-        let rule = try XCTUnwrap(rules.first { r in
-            (r["domain"] as? [String])?.contains("geosite:tencent") == true
+    func testPolicyGroupExitTargetRespectsRejectOverseasUDP() throws {
+        let group = SplitExitPolicyGroup(
+            name: "Exit Group",
+            target: .exit,
+            domains: ["exit.example.org"],
+            fullDomains: ["api.exit.example.org"],
+            keywords: ["exitkw"],
+            cidrs: ["203.0.113.0/24"]
+        )
+
+        let strictRules = try XCTUnwrap(makePlan(rejectOverseasUDP: true, policyGroups: [group]).routing()["rules"] as? [[String: Any]])
+        XCTAssertTrue(strictRules.contains {
+            ($0["domain"] as? [String]) == ["full:api.exit.example.org", "domain:exit.example.org", "exitkw"]
+                && ($0["network"] as? String) == "tcp"
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.exit
         })
-        let entries = try XCTUnwrap(rule["domain"] as? [String])
-        XCTAssertTrue(entries.contains("domain:weixin.qq.com"))
-        XCTAssertTrue(entries.contains("full:wechat.com"))
-        XCTAssertEqual(rule["outboundTag"] as? String, SplitExitPlan.Tag.direct)
+        XCTAssertTrue(strictRules.contains {
+            ($0["domain"] as? [String]) == ["full:api.exit.example.org", "domain:exit.example.org", "exitkw"]
+                && ($0["network"] as? String) == "udp"
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.reject
+        })
+        XCTAssertTrue(strictRules.contains {
+            ($0["ip"] as? [String]) == ["203.0.113.0/24"]
+                && ($0["network"] as? String) == "tcp"
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.exit
+        })
+        XCTAssertTrue(strictRules.contains {
+            ($0["ip"] as? [String]) == ["203.0.113.0/24"]
+                && ($0["network"] as? String) == "udp"
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.reject
+        })
+
+        let relaxedRules = try XCTUnwrap(makePlan(rejectOverseasUDP: false, policyGroups: [group]).routing()["rules"] as? [[String: Any]])
+        XCTAssertTrue(relaxedRules.contains {
+            ($0["domain"] as? [String]) == ["full:api.exit.example.org", "domain:exit.example.org", "exitkw"]
+                && $0["network"] == nil
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.exit
+        })
+        XCTAssertTrue(relaxedRules.contains {
+            ($0["ip"] as? [String]) == ["203.0.113.0/24"]
+                && $0["network"] == nil
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.exit
+        })
+    }
+
+    func testPolicyGroupDirectTargetRoutingAndDomesticDNS() throws {
+        let directGroup = SplitExitPolicyGroup(
+            name: "Direct Services",
+            target: .direct,
+            domains: ["direct.example.cn"],
+            fullDomains: ["exact.direct.example.cn"],
+            keywords: ["directkw"],
+            geoSites: ["apple"],
+            cidrs: ["198.51.100.10/32"]
+        )
+        let exitGroup = SplitExitPolicyGroup(
+            name: "Exit Services",
+            target: .exit,
+            domains: ["exit-only.example.com"]
+        )
+        let plan = makePlan(policyGroups: [directGroup, exitGroup])
+        let rules = try XCTUnwrap(plan.routing()["rules"] as? [[String: Any]])
+
+        XCTAssertTrue(rules.contains {
+            ($0["domain"] as? [String]) == ["full:exact.direct.example.cn", "domain:direct.example.cn", "directkw", "geosite:apple"]
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.direct
+        })
+        XCTAssertTrue(rules.contains {
+            ($0["ip"] as? [String]) == ["198.51.100.10/32"]
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.direct
+        })
+
+        let servers = try XCTUnwrap(plan.dns()["servers"] as? [Any])
+        XCTAssertEqual(servers.first as? String, "fakedns")
+        let domestic = try XCTUnwrap(servers.dropFirst().first as? [String: Any])
+        let domesticDomains = try XCTUnwrap(domestic["domains"] as? [String])
+        XCTAssertTrue(domesticDomains.contains("full:exact.direct.example.cn"))
+        XCTAssertTrue(domesticDomains.contains("domain:direct.example.cn"))
+        XCTAssertTrue(domesticDomains.contains("directkw"))
+        XCTAssertTrue(domesticDomains.contains("geosite:apple"))
+        XCTAssertFalse(domesticDomains.contains("domain:exit-only.example.com"))
+    }
+
+    func testPolicyGroupRejectTargetBlocksDomainsAndCIDRs() throws {
+        let rejectGroup = SplitExitPolicyGroup(
+            name: "Blocklist",
+            target: .reject,
+            domains: ["tracker.example.com"],
+            cidrs: ["192.0.2.0/24"]
+        )
+        let rules = try XCTUnwrap(makePlan(policyGroups: [rejectGroup]).routing()["rules"] as? [[String: Any]])
+        XCTAssertTrue(rules.contains {
+            ($0["domain"] as? [String]) == ["domain:tracker.example.com"]
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.reject
+        })
+        XCTAssertTrue(rules.contains {
+            ($0["ip"] as? [String]) == ["192.0.2.0/24"]
+                && ($0["outboundTag"] as? String) == SplitExitPlan.Tag.reject
+        })
+    }
+
+    func testDisabledAndEmptyPolicyGroupsAreOmitted() throws {
+        let disabled = SplitExitPolicyGroup(
+            name: "Disabled",
+            target: .direct,
+            domains: ["disabled.example.com"],
+            isEnabled: false
+        )
+        let empty = SplitExitPolicyGroup(name: "Empty", target: .exit)
+        let plan = makePlan(policyGroups: [disabled, empty])
+        let json = try plan.composeJSON()
+        XCTAssertFalse(json.contains("disabled.example.com"))
+
+        let rules = try XCTUnwrap(plan.routing()["rules"] as? [[String: Any]])
+        let directRules = rules.filter { $0["outboundTag"] as? String == SplitExitPlan.Tag.direct }
+        XCTAssertEqual(directRules.count, 4)
+    }
+
+    func testPolicyGroupEmitsSeparateDomainAndIPRulesForORSemantics() throws {
+        let mixed = SplitExitPolicyGroup(
+            name: "Mixed",
+            target: .direct,
+            domains: ["mixed.example.cn"],
+            cidrs: ["198.51.100.0/24"]
+        )
+        let rules = try XCTUnwrap(makePlan(policyGroups: [mixed]).routing()["rules"] as? [[String: Any]])
+        for rule in rules {
+            XCTAssertFalse(rule["domain"] != nil && rule["ip"] != nil && (rule["inboundTag"] == nil),
+                           "policyGroup 规则不能把 domain 与 ip 混在同一条 dict 里（那会变成 AND 语义）")
+        }
+    }
+
+    func testPolicyGroupFiltersUnsupportedGeoSiteAndInvalidCIDR() throws {
+        let messy = SplitExitPolicyGroup(
+            name: "Messy",
+            target: .direct,
+            domains: ["+.Clean.Example.CN.", "bad domain"],
+            fullDomains: ["Host.Example.CN."],
+            keywords: ["validkw", "has.dot", "bad kw"],
+            geoSites: ["Apple", "geosite:google", "nonexistent-category-xyz", "!cn"],
+            cidrs: ["198.51.100.1", "999.999.999.999/24", "not-a-cidr"]
+        )
+        let rules = try XCTUnwrap(makePlan(policyGroups: [messy]).routing()["rules"] as? [[String: Any]])
+        let domainRule = try XCTUnwrap(rules.first {
+            ($0["domain"] as? [String])?.contains("domain:clean.example.cn") == true
+        })
+        XCTAssertEqual(
+            domainRule["domain"] as? [String],
+            ["full:host.example.cn", "domain:clean.example.cn", "validkw", "geosite:apple", "geosite:google"]
+        )
+        let ipRule = try XCTUnwrap(rules.first {
+            ($0["ip"] as? [String])?.contains("198.51.100.1/32") == true
+        })
+        XCTAssertEqual(ipRule["ip"] as? [String], ["198.51.100.1/32"])
     }
 
     func testFinalRuleGoesToExitAndUDPIsRejected() throws {
@@ -178,8 +344,8 @@ final class SplitExitPlanTests: XCTestCase {
     func testNoRuleTargetsDirectByAccident() throws {
         let rules = try XCTUnwrap(makePlan().routing()["rules"] as? [[String: Any]])
         let directRules = rules.filter { $0["outboundTag"] as? String == SplitExitPlan.Tag.direct }
-        // 允许直连的只有：DNS 上游（2 条）、局域网、B 站、微信、国内域名、国内 IP
-        XCTAssertEqual(directRules.count, 6, "多出来的直连规则意味着有流量绕过了海外出口")
+        // 允许直连的只有：DNS 上游、局域网、国内域名、国内 IP（policyGroups 为空时共 4 条）
+        XCTAssertEqual(directRules.count, 4, "多出来的直连规则意味着有流量绕过了海外出口")
     }
 
     // MARK: - 注入名单

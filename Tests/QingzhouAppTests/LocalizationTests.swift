@@ -162,13 +162,18 @@ final class LocalizationTests: XCTestCase {
         }
 
         // 2) 静态扫描 M2 UI/辅助源码里的无插值中文字符串字面量（排除注释与语言原生自称）
+        let settingsDir = repoRoot.appendingPathComponent("Sources/QingzhouApp/Settings")
+        let settingsSubfiles = (try? FileManager.default.contentsOfDirectory(atPath: settingsDir.path))?
+            .filter { $0.hasSuffix(".swift") }
+            .sorted()
+            .map { "Sources/QingzhouApp/Settings/\($0)" } ?? []
         let scannedFiles = [
             "Sources/QingzhouApp/SplitExitListsView.swift",
             "Sources/QingzhouApp/RulesView.swift",
             "Sources/QingzhouApp/SettingsView.swift",
             "Sources/QingzhouApp/SplitExitListsUpdater.swift",
             "Sources/QingzhouApp/Localization.swift",
-        ]
+        ] + settingsSubfiles
         let intentionalNonTranslated: Set<String> = ["简体中文", "繁體中文", "日本語"]
         let literalRegex = try NSRegularExpression(pattern: #""([^"\\]*(?:\\.[^"\\]*)*)""#)
         let hanRegex = try NSRegularExpression(pattern: #"\p{Han}"#)

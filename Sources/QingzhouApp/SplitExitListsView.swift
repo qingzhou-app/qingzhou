@@ -57,8 +57,13 @@ struct SplitExitListsView: View {
                             .textSelection(.enabled)
                     }
                     if lists.sourceDomainCount > 0 {
+                        let effectiveSource = max(lists.domains.count, lists.sourceDomainCount - lists.deduplicatedDomainCount)
                         LabeledContent("域名",
-                                       value: L("\(lists.domains.count) / 源 \(lists.sourceDomainCount)"))
+                                       value: L("\(lists.domains.count) / 源 \(effectiveSource)"))
+                        if lists.deduplicatedDomainCount > 0 {
+                            LabeledContent("geosite:cn 已去重",
+                                           value: String(lists.deduplicatedDomainCount))
+                        }
                         LabeledContent("网段",
                                        value: L("\(lists.cidrs.count) / 源 \(lists.sourceCIDRCount)"))
                     }

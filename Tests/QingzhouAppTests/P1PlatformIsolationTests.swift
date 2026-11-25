@@ -49,32 +49,52 @@ final class P1PlatformIsolationTests: XCTestCase {
         return (macOSProtectedLines.joined(separator: "\n"), nonMacOSLines.joined(separator: "\n"))
     }
 
+    private func swiftFiles(in relativeDir: String, matchingPrefix prefix: String? = nil) throws -> [String] {
+        let dirURL = repoRoot.appendingPathComponent(relativeDir)
+        let entries = try FileManager.default.contentsOfDirectory(atPath: dirURL.path).sorted()
+        return entries.compactMap { name in
+            guard name.hasSuffix(".swift") else { return nil }
+            if let prefix, !name.hasPrefix(prefix) { return nil }
+            return "\(relativeDir)/\(name)"
+        }
+    }
+
     func testSettingsViewGuardsMacOSOnlySplitExitAndGuardUI() throws {
-        let path = repoRoot.appendingPathComponent("Sources/QingzhouApp/SettingsView.swift")
-        let source = try String(contentsOf: path, encoding: .utf8)
-        let (macOSBody, nonMacOSBody) = splitMacOSAndNonMacOSSlices(source: source)
+        let settingsFiles = ["Sources/QingzhouApp/SettingsView.swift"]
+            + (try swiftFiles(in: "Sources/QingzhouApp/Settings"))
+        var combinedSource = ""
+        var combinedMacOS = ""
 
-        XCTAssertFalse(nonMacOSBody.contains("splitExitSection"), "splitExitSection 必须在 #if os(macOS) 内")
-        XCTAssertFalse(nonMacOSBody.contains("guardSection"), "guardSection 必须在 #if os(macOS) 内")
-        XCTAssertFalse(nonMacOSBody.contains("refreshGuardStatus"), "refreshGuardStatus 必须在 #if os(macOS) 内")
-        XCTAssertFalse(nonMacOSBody.contains("showListsSheet"), "showListsSheet 必须在 #if os(macOS) 内")
-        XCTAssertFalse(nonMacOSBody.contains("sudo "), "iOS 可见代码禁止出现 sudo 命令")
-        XCTAssertFalse(nonMacOSBody.contains("qingzhou-guard"), "iOS 可见代码禁止出现 qingzhou-guard")
+        for rel in settingsFiles {
+            let source = try String(contentsOf: repoRoot.appendingPathComponent(rel), encoding: .utf8)
+            let (macOSBody, nonMacOSBody) = splitMacOSAndNonMacOSSlices(source: source)
+            combinedSource += "\n" + source
+            combinedMacOS += "\n" + macOSBody
 
-        XCTAssertTrue(macOSBody.contains("private var splitExitSection"))
-        XCTAssertTrue(macOSBody.contains("private var guardSection"))
-        XCTAssertTrue(macOSBody.contains("sudo sh Tools/qingzhou-guard/install.sh"))
-        XCTAssertFalse(source.contains("/Library/Application Support/qingzhou-guard/install.sh"),
+            XCTAssertFalse(nonMacOSBody.contains("splitExitSection"), "\(rel): splitExitSection 必须在 #if os(macOS) 内")
+            XCTAssertFalse(nonMacOSBody.contains("SettingsSplitExitSection"), "\(rel): SettingsSplitExitSection 必须在 #if os(macOS) 内")
+            XCTAssertFalse(nonMacOSBody.contains("guardSection"), "\(rel): guardSection 必须在 #if os(macOS) 内")
+            XCTAssertFalse(nonMacOSBody.contains("SettingsGuardSection"), "\(rel): SettingsGuardSection 必须在 #if os(macOS) 内")
+            XCTAssertFalse(nonMacOSBody.contains("refreshGuardStatus"), "\(rel): refreshGuardStatus 必须在 #if os(macOS) 内")
+            XCTAssertFalse(nonMacOSBody.contains("showListsSheet"), "\(rel): showListsSheet 必须在 #if os(macOS) 内")
+            XCTAssertFalse(nonMacOSBody.contains("sudo "), "\(rel): iOS 可见代码禁止出现 sudo 命令")
+            XCTAssertFalse(nonMacOSBody.contains("qingzhou-guard"), "\(rel): iOS 可见代码禁止出现 qingzhou-guard")
+        }
+
+        XCTAssertTrue(combinedMacOS.contains("struct SettingsSplitExitSection"))
+        XCTAssertTrue(combinedMacOS.contains("struct SettingsGuardSection"))
+        XCTAssertTrue(combinedMacOS.contains("sudo sh Tools/qingzhou-guard/install.sh"))
+        XCTAssertFalse(combinedSource.contains("/Library/Application Support/qingzhou-guard/install.sh"),
                        "安装前不存在 /Library/Application Support/qingzhou-guard/install.sh")
-        XCTAssertFalse(source.contains("UIPasteboard"), "macOS-only guard 辅助函数不应保留 iOS UIPasteboard 分支")
-        XCTAssertFalse(source.contains("guard 每 10 秒读一次"), "应已更新为 10809 回环 TCP 控制端口说明")
+        XCTAssertFalse(combinedSource.contains("UIPasteboard"), "macOS-only guard 辅助函数不应保留 iOS UIPasteboard 分支")
+        XCTAssertFalse(combinedSource.contains("guard 每 10 秒读一次"), "应已更新为 10809 回环 TCP 控制端口说明")
     }
 
     func testAppStateAndHelpersGuardSplitExitAndFollowExitRegionForIOS() throws {
         // 即使 iCloud 同步把 macOS 的 splitExitEnabled / followExitRegion / guardRelayEnabled 带到 iOS，
         // iOS 侧所有读取与执行路径也必须处于 #if os(macOS) 守卫内，不得阻断 startTunnel、下载名单或篡改语言/时区。
-        let guardedFiles = [
-            "Sources/QingzhouApp/AppState.swift",
+        let appStateFiles = try swiftFiles(in: "Sources/QingzhouApp", matchingPrefix: "AppState")
+        let guardedFiles = appStateFiles + [
             "Sources/QingzhouApp/NetworkInfoService.swift",
             "Sources/QingzhouApp/SplitExitListsUpdater.swift",
         ]
@@ -82,6 +102,7 @@ final class P1PlatformIsolationTests: XCTestCase {
             "settings.splitExitEnabled",
             "settings.followExitRegion",
             "settings.guardRelayEnabled",
+            "settings.splitExitPolicyGroups",
             "requestSystemTimeZone(",
             "refreshSplitExitLists(",
         ]
@@ -107,7 +128,9 @@ final class P1PlatformIsolationTests: XCTestCase {
         }
 
         // 验证 AppState 核心计算属性自带 #if os(macOS) ... #else 安全返回值
-        let appStateSource = try String(contentsOf: repoRoot.appendingPathComponent("Sources/QingzhouApp/AppState.swift"), encoding: .utf8)
+        let appStateSource = try appStateFiles
+            .map { try String(contentsOf: repoRoot.appendingPathComponent($0), encoding: .utf8) }
+            .joined(separator: "\n")
         for signature in [
             "public var splitExitBlockedReason: String?",
             "public var isFollowingExitRegion: Bool",
@@ -116,7 +139,7 @@ final class P1PlatformIsolationTests: XCTestCase {
             "var activeSplitExit: (exit: Node, hop: Node)?",
         ] {
             guard let range = appStateSource.range(of: signature) else {
-                XCTFail("Missing signature \(signature) in AppState.swift")
+                XCTFail("Missing signature \(signature) in AppState*.swift")
                 continue
             }
             let snippet = String(appStateSource[range.lowerBound...].prefix(450))
@@ -159,9 +182,12 @@ final class P1PlatformIsolationTests: XCTestCase {
     }
 
     func testPacketTunnelProviderSplitExitPassesBlockQUICAndDropsRedundantPrefix() throws {
-        let path = repoRoot.appendingPathComponent("Apps/Tunnel-Shared/PacketTunnelProvider.swift")
-        let source = try String(contentsOf: path, encoding: .utf8)
+        let ptpFiles = try swiftFiles(in: "Apps/Tunnel-Shared", matchingPrefix: "PacketTunnelProvider")
+        let source = try ptpFiles
+            .map { try String(contentsOf: repoRoot.appendingPathComponent($0), encoding: .utf8) }
+            .joined(separator: "\n")
         XCTAssertTrue(source.contains("blockQUIC: self.blockQUIC"))
+        XCTAssertTrue(source.contains("policyGroups: splitExitPolicyGroups.withLock"))
         XCTAssertFalse(source.contains("lists.domains.prefix(SplitExitListsLimits"))
         XCTAssertFalse(source.contains("lists.domainKeywords.prefix(SplitExitListsLimits"))
         XCTAssertFalse(source.contains("lists.cidrs.prefix(SplitExitListsLimits"))

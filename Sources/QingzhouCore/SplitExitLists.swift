@@ -12,6 +12,31 @@
 
 import Foundation
 
+public struct SplitExitListMetrics: Codable, Sendable, Equatable {
+    public var rawDomainCount: Int
+    public var deduplicatedByGeoSiteCNCount: Int
+    public var postDeduplicationDomainCount: Int
+    public var finalDomainCount: Int
+    public var rawCIDRCount: Int
+    public var finalCIDRCount: Int
+
+    public init(
+        rawDomainCount: Int,
+        deduplicatedByGeoSiteCNCount: Int,
+        postDeduplicationDomainCount: Int,
+        finalDomainCount: Int,
+        rawCIDRCount: Int,
+        finalCIDRCount: Int
+    ) {
+        self.rawDomainCount = rawDomainCount
+        self.deduplicatedByGeoSiteCNCount = deduplicatedByGeoSiteCNCount
+        self.postDeduplicationDomainCount = postDeduplicationDomainCount
+        self.finalDomainCount = finalDomainCount
+        self.rawCIDRCount = rawCIDRCount
+        self.finalCIDRCount = finalCIDRCount
+    }
+}
+
 public struct SplitExitLists: Codable, Sendable, Equatable {
     public var domains: [String]
     /// 不含点的条目（`DOMAIN-KEYWORD,wechat` 这种）。xray 里裸串就是子串匹配，
@@ -19,9 +44,11 @@ public struct SplitExitLists: Codable, Sendable, Equatable {
     /// 几乎匹配不到任何东西）。
     public var domainKeywords: [String]
     public var cidrs: [String]
-    /// 源文件里的总条数（截断前）。UI 用它显示「30000/110251」，避免用户以为全量都生效了。
+    /// 源文件里的总条数（去重与截断前）。
     public var sourceDomainCount: Int
     public var sourceCIDRCount: Int
+    /// 采样前被内置 `geosite:cn` 去重移除的域名条数。
+    public var deduplicatedDomainCount: Int
     /// 最近一次成功更新的时间。nil = 从未成功过（当前是内置兜底）。
     public var fetchedAt: Date?
     /// 数据来源 URL（审计与展示用）。
@@ -29,19 +56,21 @@ public struct SplitExitLists: Codable, Sendable, Equatable {
 
     public init(domains: [String] = [], domainKeywords: [String] = [], cidrs: [String] = [],
                 sourceDomainCount: Int = 0, sourceCIDRCount: Int = 0,
+                deduplicatedDomainCount: Int = 0,
                 fetchedAt: Date? = nil, sources: [String] = []) {
         self.domains = domains
         self.domainKeywords = domainKeywords
         self.cidrs = cidrs
         self.sourceDomainCount = sourceDomainCount
         self.sourceCIDRCount = sourceCIDRCount
+        self.deduplicatedDomainCount = deduplicatedDomainCount
         self.fetchedAt = fetchedAt
         self.sources = sources
     }
 
-    /// 旧存档没有 source 计数字段，解码时给 0（老文件本来也没截断，显示为 0 即可）。
+    /// 旧存档没有 source / deduplicated 计数字段，解码时给 0（老文件本来也没截断，显示为 0 即可）。
     enum CodingKeys: String, CodingKey {
-        case domains, domainKeywords, cidrs, sourceDomainCount, sourceCIDRCount, fetchedAt, sources
+        case domains, domainKeywords, cidrs, sourceDomainCount, sourceCIDRCount, deduplicatedDomainCount, fetchedAt, sources
     }
 
     public init(from decoder: Decoder) throws {
@@ -51,6 +80,7 @@ public struct SplitExitLists: Codable, Sendable, Equatable {
         cidrs = try c.decodeIfPresent([String].self, forKey: .cidrs) ?? []
         sourceDomainCount = try c.decodeIfPresent(Int.self, forKey: .sourceDomainCount) ?? 0
         sourceCIDRCount = try c.decodeIfPresent(Int.self, forKey: .sourceCIDRCount) ?? 0
+        deduplicatedDomainCount = try c.decodeIfPresent(Int.self, forKey: .deduplicatedDomainCount) ?? 0
         fetchedAt = try c.decodeIfPresent(Date.self, forKey: .fetchedAt)
         sources = try c.decodeIfPresent([String].self, forKey: .sources) ?? []
     }
@@ -208,7 +238,7 @@ public enum SplitExitListParser {
     }
 
     /// CIDR 归一：用 inet_pton 真解析，不靠正则猜；补默认前缀长度。
-    static func normalizeCIDR(_ raw: String) -> String? {
+    public static func normalizeCIDR(_ raw: String) -> String? {
         let v = raw.trimmingCharacters(in: .whitespaces)
         let parts = v.split(separator: "/", omittingEmptySubsequences: false)
         guard parts.count <= 2, let addr = parts.first, !addr.isEmpty else { return nil }

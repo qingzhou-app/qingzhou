@@ -10,15 +10,14 @@
 //   普通节点，且 App 层有自动择优与 failover（AppState）会换节点。本需求要的是
 //   「手选、挂了就断」。语义不同就得是独立的配置构造路径，不能靠关开关去近似。
 //
-// 规则顺序（first-match，从上到下即优先级，与需求逐条对应）：
-//   1. Claude 自家域名 / 含 claude、anthropic 关键字的域名 → 海外出口
+// 规则顺序（first-match，从上到下即优先级）：
+//   1. 用户启用的分流策略组（`policyGroups`，按配置顺序：`.exit` / `.direct` / `.reject`）
 //   2. 局域网与保留地址（含 100.64.0.0/10）→ 直连
-//   3. B 站、微信 → 直连
-//   4. GEOSITE geolocation-!cn（海外域名分类）→ 海外出口
+//   3. GEOSITE geolocation-!cn（海外域名分类）→ 海外出口
 //      ⚠️ 必须排在国内名单之前：国内名单里混着 googletagmanager / doubleclick 这类
 //      海外公司域名，先被国内名单吃掉就会「用国内 IP 访问海外服务」。
-//   5. 国内域名名单 / 国内 IP 名单 → 直连
-//   6. 其余全部 → 海外出口（UDP 无出口可用 → 拒绝，不回退直连）
+//   4. 国内域名名单 / 国内 IP 名单 → 直连
+//   5. 其余全部 → 海外出口（UDP 无出口可用 → 拒绝，不回退直连）
 //
 // DNS：
 //   - 所有查询进代理（fake-ip），不返回 IPv6 地址（queryStrategy UseIPv4 + 只有 IPv4 假 IP 池）
@@ -116,6 +115,8 @@ public struct SplitExitPlan {
     public var rejectOverseasUDP: Bool
     /// 断网开关的 root 中继。nil = 代理直接出网（没有断网开关时的行为）。
     public var relay: RelayEndpoint?
+    /// 用户自定义分流策略组（按配置顺序 first-match，优先于保留网段、geolocation-!cn 与国内名单）。
+    public var policyGroups: [SplitExitPolicyGroup]
     /// 海外 DoH 解析器。必须能通过 TCP 443 走到（出口不支持 UDP）。
     public var overseasResolvers: [String]
     /// 国内解析器（明文 UDP，走直连）。
@@ -128,6 +129,7 @@ public struct SplitExitPlan {
         blockQUIC: Bool = true,
         rejectOverseasUDP: Bool = true,
         relay: RelayEndpoint? = nil,
+        policyGroups: [SplitExitPolicyGroup] = [],
         overseasResolvers: [String] = ["https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"],
         domesticResolvers: [String] = ["223.5.5.5", "119.29.29.29"]
     ) {
@@ -137,33 +139,10 @@ public struct SplitExitPlan {
         self.blockQUIC = blockQUIC
         self.rejectOverseasUDP = rejectOverseasUDP
         self.relay = relay
+        self.policyGroups = policyGroups
         self.overseasResolvers = overseasResolvers
         self.domesticResolvers = domesticResolvers
     }
-
-    /// Claude 自家域名。用户要求「及其他域名中含有 claude、anthropic 等关键字的」，
-    /// 因此同时给精确域名与关键字（xray 里裸串就是子串匹配）。
-    static let claudeDomains: [String] = [
-        "claude.ai", "claude.com", "anthropic.com",
-        "claudeusercontent.com", "claudemcpclient.com"
-    ]
-    static let claudeKeywords: [String] = ["claude", "anthropic"]
-
-    /// B 站。`mirrorakam` 是视频分片域名（如 `upos-sz-mirrorakam.akamaized.net`），
-    /// 它与主域不同后缀，DOMAIN-SUFFIX 匹配不到，只能按关键字。
-    static let bilibiliDomains: [String] = [
-        "bilibili.com", "biliapi.net", "biliapi.com", "bilivideo.com",
-        "bilivideo.cn", "hdslb.com", "b23.tv", "acgvideo.com"
-    ]
-    static let bilibiliKeywords: [String] = ["mirrorakam"]
-
-    /// 微信。内置 geosite.dat **没有** `wechat` 分类（已实测 1469 个分类里不存在），
-    /// 只能用 `tencent` 分类 + 显式域名兜住。
-    static let wechatDomains: [String] = [
-        "weixin.qq.com", "wechat.com", "weixin.com", "wx.qq.com",
-        "servicewechat.com", "weixinbridge.com", "wechatpay.com",
-        "qpic.cn", "gtimg.cn", "qlogo.cn"
-    ]
 
     /// 局域网 / 保留地址。100.64.0.0/10 是运营商级 NAT 段（Tailscale 等也用它），
     /// 需求点名要直连；geoip:private 不一定覆盖它，所以显式写死。
@@ -172,6 +151,69 @@ public struct SplitExitPlan {
         "169.254.0.0/16", "100.64.0.0/10",
         "::1/128", "fc00::/7", "fe80::/10"
     ]
+
+    /// 校验、归一并按稳定顺序去重策略组条目，避免非法域名/CIDR/未知 geosite 导致 xray 启动失败。
+    static func resolvedEntries(for group: SplitExitPolicyGroup) -> (domains: [String], cidrs: [String]) {
+        guard group.isEnabled else { return ([], []) }
+
+        var domains: [String] = []
+        var seenDomains = Set<String>()
+        func appendDomain(_ entry: String) {
+            if seenDomains.insert(entry).inserted {
+                domains.append(entry)
+            }
+        }
+
+        func sanitizedToken(_ raw: String, stripWildcardPrefix: Bool) -> String? {
+            var v = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if stripWildcardPrefix {
+                if v.hasPrefix("+.") || v.hasPrefix("*.") {
+                    v.removeFirst(2)
+                }
+            }
+            while v.hasSuffix(".") {
+                v.removeLast()
+            }
+            guard !v.isEmpty else { return nil }
+            let forbidden = CharacterSet(charactersIn: " ,/\\:@\"'*").union(.whitespacesAndNewlines)
+            guard v.rangeOfCharacter(from: forbidden) == nil else { return nil }
+            return v
+        }
+
+        for raw in group.fullDomains {
+            if let v = sanitizedToken(raw, stripWildcardPrefix: false) {
+                appendDomain("full:\(v)")
+            }
+        }
+        for raw in group.domains {
+            if let v = sanitizedToken(raw, stripWildcardPrefix: true) {
+                appendDomain("domain:\(v)")
+            }
+        }
+        for raw in group.keywords {
+            if let v = sanitizedToken(raw, stripWildcardPrefix: false), !v.contains(".") {
+                appendDomain(v)
+            }
+        }
+        for raw in group.geoSites {
+            var v = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if v.hasPrefix("geosite:") {
+                v = String(v.dropFirst("geosite:".count))
+            }
+            guard !v.isEmpty, GeoDataBundle.supportsGeoSite(v) else { continue }
+            appendDomain("geosite:\(v)")
+        }
+
+        var cidrs: [String] = []
+        var seenCIDRs = Set<String>()
+        for raw in group.cidrs {
+            if let c = SplitExitListParser.normalizeCIDR(raw), seenCIDRs.insert(c).inserted {
+                cidrs.append(c)
+            }
+        }
+
+        return (domains, cidrs)
+    }
 
     // MARK: - Outbounds
 
@@ -280,29 +322,52 @@ public struct SplitExitPlan {
             rules.append(["type": "field", "network": "udp", "port": 443, "outboundTag": Tag.reject])
         }
 
-        // 3) Claude 自家域名与关键字 → 海外出口
-        rules.append(["type": "field",
-                      "domain": Self.claudeDomains.map { "full:\($0)" }
-                        + Self.claudeDomains.map { "domain:\($0)" }
-                        + Self.claudeKeywords,
-                      "outboundTag": Tag.exit])
+        // 3) 用户自定义分流策略组（按配置顺序 first-match，优先于保留网段、geolocation-!cn 与国内名单）
+        for group in policyGroups where group.isEnabled {
+            let resolved = Self.resolvedEntries(for: group)
+            switch group.target {
+            case .exit:
+                if !resolved.domains.isEmpty {
+                    if rejectOverseasUDP {
+                        rules.append(["type": "field", "domain": resolved.domains,
+                                      "network": "tcp", "outboundTag": Tag.exit])
+                        rules.append(["type": "field", "domain": resolved.domains,
+                                      "network": "udp", "outboundTag": Tag.reject])
+                    } else {
+                        rules.append(["type": "field", "domain": resolved.domains, "outboundTag": Tag.exit])
+                    }
+                }
+                if !resolved.cidrs.isEmpty {
+                    if rejectOverseasUDP {
+                        rules.append(["type": "field", "ip": resolved.cidrs,
+                                      "network": "tcp", "outboundTag": Tag.exit])
+                        rules.append(["type": "field", "ip": resolved.cidrs,
+                                      "network": "udp", "outboundTag": Tag.reject])
+                    } else {
+                        rules.append(["type": "field", "ip": resolved.cidrs, "outboundTag": Tag.exit])
+                    }
+                }
+            case .direct:
+                if !resolved.domains.isEmpty {
+                    rules.append(["type": "field", "domain": resolved.domains, "outboundTag": Tag.direct])
+                }
+                if !resolved.cidrs.isEmpty {
+                    rules.append(["type": "field", "ip": resolved.cidrs, "outboundTag": Tag.direct])
+                }
+            case .reject:
+                if !resolved.domains.isEmpty {
+                    rules.append(["type": "field", "domain": resolved.domains, "outboundTag": Tag.reject])
+                }
+                if !resolved.cidrs.isEmpty {
+                    rules.append(["type": "field", "ip": resolved.cidrs, "outboundTag": Tag.reject])
+                }
+            }
+        }
 
         // 4) 局域网 / 保留地址直连（含 100.64.0.0/10）
         rules.append(["type": "field", "ip": Self.reservedCIDRs, "outboundTag": Tag.direct])
 
-        // 5) B 站 / 微信 → 直连
-        rules.append(["type": "field",
-                      "domain": ["geosite:bilibili"]
-                        + Self.bilibiliDomains.map { "domain:\($0)" }
-                        + Self.bilibiliKeywords,
-                      "outboundTag": Tag.direct])
-        rules.append(["type": "field",
-                      "domain": ["geosite:tencent"]
-                        + Self.wechatDomains.map { "full:\($0)" }
-                        + Self.wechatDomains.map { "domain:\($0)" },
-                      "outboundTag": Tag.direct])
-
-        // 6) 海外域名分类 → 海外出口。必须在国内名单之前。
+        // 5) 海外域名分类 → 海外出口。必须在国内名单之前。
         //    UDP 单独拒：出口没有可用 UDP，明确拒绝而不是让它漏到直连。
         rules.append(["type": "field", "domain": ["geosite:geolocation-!cn"],
                       "network": "tcp", "outboundTag": Tag.exit])
@@ -341,10 +406,13 @@ public struct SplitExitPlan {
         for host in [exitNode.host, hopNode.host] where !Self.isIPLiteral(host) {
             nodeHosts.append("full:\(host.lowercased())")
         }
-        // 国内域名也走国内 DNS，拿国内边缘 IP。
+        // 国内域名与直连策略组域名走国内 DNS，拿国内边缘 IP。
         var domesticMatch = ["geosite:cn"] + nodeHosts
         domesticMatch += lists.cnDomains.map { "domain:\($0)" }
         domesticMatch += lists.cnDomainKeywords
+        for group in policyGroups where group.isEnabled && group.target == .direct {
+            domesticMatch += Self.resolvedEntries(for: group).domains
+        }
 
         var servers: [Any] = ["fakedns"]
         for resolver in domesticResolvers {

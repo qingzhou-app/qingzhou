@@ -19097,6 +19097,29 @@
           }
         }
       }
+    },
+    "geosite:cn 已去重": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deduplicated by geosite:cn"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "geosite:cn で重複除外"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "geosite:cn 已去重"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

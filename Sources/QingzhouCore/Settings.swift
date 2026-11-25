@@ -116,6 +116,8 @@ public struct Settings: Codable, Sendable {
     /// 这样 pf 才能「只放行 root」，而普通程序（含 xray 本身）的出站被拒时不会误伤代理。
     /// ⚠️ 只在分流模式下生效；普通模式没有串接，开了也没用（界面会提示）。
     public var guardRelayEnabled: Bool
+    /// 分流方案自定义策略组（按数组顺序 first-match 生效；默认空）。
+    public var splitExitPolicyGroups: [SplitExitPolicyGroup]
 
     public init(
         proxyMode: ProxyMode = .rule,
@@ -147,7 +149,8 @@ public struct Settings: Codable, Sendable {
         splitExitExitNodeID: UUID? = nil,
         splitExitHopNodeID: UUID? = nil,
         followExitRegion: Bool = false,
-        guardRelayEnabled: Bool = false
+        guardRelayEnabled: Bool = false,
+        splitExitPolicyGroups: [SplitExitPolicyGroup] = []
     ) {
         self.proxyMode = proxyMode
         self.autoSelectTrigger = autoSelectTrigger
@@ -179,6 +182,7 @@ public struct Settings: Codable, Sendable {
         self.splitExitHopNodeID = splitExitHopNodeID
         self.followExitRegion = followExitRegion
         self.guardRelayEnabled = guardRelayEnabled
+        self.splitExitPolicyGroups = splitExitPolicyGroups
     }
 
     /// 旧版没有这些 interval 字段；解码时给个默认值。
@@ -203,6 +207,7 @@ public struct Settings: Codable, Sendable {
         case splitExitEnabled, splitExitExitNodeID, splitExitHopNodeID
         case followExitRegion
         case guardRelayEnabled
+        case splitExitPolicyGroups
     }
 
     public init(from decoder: Decoder) throws {
@@ -246,5 +251,6 @@ public struct Settings: Codable, Sendable {
         self.splitExitHopNodeID = try c.decodeIfPresent(UUID.self, forKey: .splitExitHopNodeID)
         self.followExitRegion = try c.decodeIfPresent(Bool.self, forKey: .followExitRegion) ?? false
         self.guardRelayEnabled = try c.decodeIfPresent(Bool.self, forKey: .guardRelayEnabled) ?? false
+        self.splitExitPolicyGroups = (try? c.decodeIfPresent([SplitExitPolicyGroup].self, forKey: .splitExitPolicyGroups)) ?? []
     }
 }

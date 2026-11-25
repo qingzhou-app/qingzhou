@@ -46,6 +46,14 @@ public actor SplitExitListsUpdater {
         public var lists: SplitExitLists?
         public var error: String?
         public var usedCache: Bool
+        public var metrics: SplitExitListMetrics?
+
+        public init(lists: SplitExitLists?, error: String?, usedCache: Bool, metrics: SplitExitListMetrics? = nil) {
+            self.lists = lists
+            self.error = error
+            self.usedCache = usedCache
+            self.metrics = metrics
+        }
     }
 
     /// Loyalsoldier 的 `release` 分支是构建产物分支，直接给可用的 txt；
@@ -59,15 +67,18 @@ public actor SplitExitListsUpdater {
     private let logger: Logger?
     private let sources: [URL]
     private let store: SplitExitListsStore
+    private let geoSiteCNMatcher: GeoSiteCNMatcher
 
     public init(client: HTTPClient = URLSessionHTTPClient(),
                 logger: Logger? = nil,
                 sources: [URL] = SplitExitListsUpdater.defaultSources,
-                store: SplitExitListsStore = AppGroupSplitExitListsStore()) {
+                store: SplitExitListsStore = AppGroupSplitExitListsStore(),
+                geoSiteCNMatcher: GeoSiteCNMatcher = .bundled) {
         self.client = client
         self.logger = logger
         self.sources = sources
         self.store = store
+        self.geoSiteCNMatcher = geoSiteCNMatcher
     }
 
     /// 默认位置上的缓存（给 UI 在没触发刷新时先显示）。
@@ -128,18 +139,32 @@ public actor SplitExitListsUpdater {
             return Outcome(lists: cached, error: message, usedCache: cached != nil)
         }
 
-        // 截断到注入上限：源文件 direct.txt 有 11 万条，整份塞给扩展会顶到
-        // NE 的 50 MiB jetsam 上限。截断后的真实条数记进 source*，UI 上显示
-        // 「30000/110251」——不让用户误以为全量都生效了。
+        // 先剔除已被内置 `geosite:cn` 覆盖的域名，再对剩余条目按内存预算抽样。
         let rawDomainCount = domains.count + keywords.count
         let rawCIDRCount = cidrs.count
+        let preDedupCount = domains.count
+        domains = domains.filter { !geoSiteCNMatcher.isCovered($0) }
+        let dedupRemovedCount = preDedupCount - domains.count
+        let postDedupDomainCount = domains.count + keywords.count
+
         domains = SplitExitListSampler.sample(domains, limit: SplitExitListsLimits.domains)
         keywords = SplitExitListSampler.sample(keywords, limit: SplitExitListsLimits.keywords)
         cidrs = SplitExitListSampler.sample(cidrs, limit: SplitExitListsLimits.cidrs)
+        let finalDomainCount = domains.count + keywords.count
+
+        let metrics = SplitExitListMetrics(
+            rawDomainCount: rawDomainCount,
+            deduplicatedByGeoSiteCNCount: dedupRemovedCount,
+            postDeduplicationDomainCount: postDedupDomainCount,
+            finalDomainCount: finalDomainCount,
+            rawCIDRCount: rawCIDRCount,
+            finalCIDRCount: cidrs.count
+        )
 
         let fresh = SplitExitLists(domains: domains, domainKeywords: keywords, cidrs: cidrs,
                                    sourceDomainCount: rawDomainCount,
                                    sourceCIDRCount: rawCIDRCount,
+                                   deduplicatedDomainCount: dedupRemovedCount,
                                    fetchedAt: Date(), sources: sources.map(\.absoluteString))
         do {
             try store.save(fresh)
@@ -152,8 +177,11 @@ public actor SplitExitListsUpdater {
               readBack.cidrs.count == cidrs.count else {
             return Outcome(lists: cached, error: L("写入后回读校验失败，已保留上一份"), usedCache: cached != nil)
         }
-        logger?.info("Split-exit lists updated: \(domains.count) domains / \(cidrs.count) cidrs", category: "rules")
-        return Outcome(lists: readBack, error: nil, usedCache: false)
+        logger?.info(
+            "Split-exit lists updated: raw=\(rawDomainCount) dedupedGeoSiteCN=\(dedupRemovedCount) postDedup=\(postDedupDomainCount) final=\(finalDomainCount) domains / \(cidrs.count) cidrs (rawCIDRs=\(rawCIDRCount))",
+            category: "rules"
+        )
+        return Outcome(lists: readBack, error: nil, usedCache: false, metrics: metrics)
     }
 }
 
@@ -165,6 +193,7 @@ extension AppState {
         splitExitListsStatus.cidrCount = lists.cidrs.count
         splitExitListsStatus.sourceDomainCount = lists.sourceDomainCount
         splitExitListsStatus.sourceCIDRCount = lists.sourceCIDRCount
+        splitExitListsStatus.deduplicatedDomainCount = lists.deduplicatedDomainCount
         splitExitListsStatus.updatedAt = lists.fetchedAt
     }
 
@@ -188,6 +217,7 @@ extension AppState {
             splitExitListsStatus.cidrCount = lists.cidrs.count
             splitExitListsStatus.sourceDomainCount = lists.sourceDomainCount
             splitExitListsStatus.sourceCIDRCount = lists.sourceCIDRCount
+            splitExitListsStatus.deduplicatedDomainCount = lists.deduplicatedDomainCount
             splitExitListsStatus.updatedAt = lists.fetchedAt
             // 分流运行中且名单变了 → 重连才会带上新名单（配置在扩展启动时构建一次）。
             if changed, outcome.error == nil, isVPNRunning, settings.splitExitEnabled {

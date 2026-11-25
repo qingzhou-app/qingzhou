@@ -120,7 +120,8 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         description: String = "VPN",
         splitExitExit: Node? = nil,
         splitExitHop: Node? = nil,
-        guardRelay: GuardRelayCredentials? = nil
+        guardRelay: GuardRelayCredentials? = nil,
+        splitExitPolicyGroups: [SplitExitPolicyGroup] = []
     ) async throws {
         guard mode == .direct || node != nil || splitExitExit != nil else { throw TunnelError.noCurrentNode }
         let node = mode == .direct ? nil : node
@@ -179,6 +180,19 @@ public final class VPNTunnelManager: ProxiedLatencyProbing {
         providerConfig["hopNodeJSON"] = splitExitActive ? encodeNode(splitExitHop) : ""
         // root 中继凭据（只传转发凭据，不传控制凭据）。同样**始终写**（空串表示不用），避免上一轮的凭据残留。
         providerConfig["guardRelayJSON"] = (splitExitActive ? guardRelay?.forwardingOnly.jsonString : nil) ?? ""
+        // 分流策略组：**始终写**（关闭或空时写空串），避免上一次配置的策略组残留。
+        let policyGroupsJSON: String
+        if splitExitActive, !splitExitPolicyGroups.isEmpty,
+           let data = try? JSONEncoder().encode(splitExitPolicyGroups),
+           let text = String(data: data, encoding: .utf8) {
+            if data.count > Self.inlineRulesLimit {
+                logger?.warn("splitExitPolicyGroupsJSON size \(data.count)B exceeds 200KB inline threshold", category: "tunnel")
+            }
+            policyGroupsJSON = text
+        } else {
+            policyGroupsJSON = ""
+        }
+        providerConfig["splitExitPolicyGroupsJSON"] = policyGroupsJSON
         // 用户规则：压缩内联（Data 是合法 plist 类型）；超大时写 App Group 文件传路径。
         switch makeRulesPayload(rules) {
         case .inline(let gz):  providerConfig["userRulesGZ"] = gz

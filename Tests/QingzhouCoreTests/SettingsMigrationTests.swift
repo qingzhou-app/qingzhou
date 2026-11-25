@@ -253,4 +253,68 @@ final class SettingsMigrationTests: XCTestCase {
             XCTAssertEqual(reloaded.quicPolicy, value)
         }
     }
+
+    // MARK: - splitExitPolicyGroups（分流自定义策略组）
+
+    func testDecodeWithoutSplitExitPolicyGroupsDefaultsToEmpty() throws {
+        XCTAssertTrue(try decode("{}").splitExitPolicyGroups.isEmpty)
+        let old = try decode("""
+        { "proxyMode": "rule", "splitExitEnabled": true }
+        """)
+        XCTAssertTrue(old.splitExitPolicyGroups.isEmpty)
+    }
+
+    func testSplitExitPolicyGroupsRoundtrip() throws {
+        let g1 = SplitExitPolicyGroup(
+            name: "AI Exit",
+            target: .exit,
+            domains: ["example.com"],
+            fullDomains: ["api.example.com"],
+            keywords: ["examplekw"],
+            geoSites: ["anthropic"],
+            cidrs: ["198.51.100.0/24"],
+            isEnabled: true
+        )
+        let g2 = SplitExitPolicyGroup(
+            name: "Domestic Streaming",
+            target: .direct,
+            domains: ["stream.example.cn"],
+            keywords: ["cdntag"],
+            geoSites: ["bilibili"],
+            isEnabled: false
+        )
+        let g3 = SplitExitPolicyGroup(
+            name: "Ads Block",
+            target: .reject,
+            geoSites: ["category-ads-all"],
+            cidrs: ["203.0.113.0/24"],
+            isEnabled: true
+        )
+        var s = Settings()
+        s.splitExitPolicyGroups = [g1, g2, g3]
+        let data = try JSONEncoder().encode(s)
+        let reloaded = try JSONDecoder().decode(Settings.self, from: data)
+        XCTAssertEqual(reloaded.splitExitPolicyGroups, [g1, g2, g3])
+    }
+
+    func testDecodeSplitExitPolicyGroupWithMissingOptionalArraysDefaultsToEmpty() throws {
+        let json = """
+        {
+          "splitExitPolicyGroups": [
+            { "target": "direct" }
+          ]
+        }
+        """
+        let s = try decode(json)
+        XCTAssertEqual(s.splitExitPolicyGroups.count, 1)
+        let group = s.splitExitPolicyGroups[0]
+        XCTAssertEqual(group.target, .direct)
+        XCTAssertEqual(group.name, "")
+        XCTAssertTrue(group.domains.isEmpty)
+        XCTAssertTrue(group.fullDomains.isEmpty)
+        XCTAssertTrue(group.keywords.isEmpty)
+        XCTAssertTrue(group.geoSites.isEmpty)
+        XCTAssertTrue(group.cidrs.isEmpty)
+        XCTAssertTrue(group.isEnabled)
+    }
 }

@@ -122,7 +122,7 @@ final class SplitExitListsTests: XCTestCase {
         let store = MemoryStore()
         let updater = SplitExitListsUpdater(
             client: StubClient(bodies: ["direct.txt": domainBody, "cncidr.txt": cidrBody]),
-            sources: sources(), store: store)
+            sources: sources(), store: store, geoSiteCNMatcher: .empty)
         let outcome = await updater.refresh()
         XCTAssertNil(outcome.error)
         XCTAssertEqual(outcome.lists?.domains.count, 2)
@@ -135,7 +135,7 @@ final class SplitExitListsTests: XCTestCase {
     /// 否则要么顶爆 NE 内存、要么让用户以为全量都生效了。
     func testOversizedListIsTruncatedAndSourceCounted() async {
         let many = (0..<(SplitExitListsLimits.domains + 500))
-            .map { "d\($0).example.cn" }
+            .map { "d\($0).example.org" }
             .joined(separator: "\n")
         let store = MemoryStore()
         let updater = SplitExitListsUpdater(
@@ -145,11 +145,74 @@ final class SplitExitListsTests: XCTestCase {
         XCTAssertNil(outcome.error)
         XCTAssertEqual(store.stored?.domains.count, SplitExitListsLimits.domains)
         XCTAssertEqual(store.stored?.sourceDomainCount, SplitExitListsLimits.domains + 500)
+        XCTAssertEqual(store.stored?.deduplicatedDomainCount, 0)
         // 等距抽样：必须覆盖到名单尾部，而不是只留前 3 万条
         let last = store.stored?.domains.last ?? ""
         let lastIndex = Int(last.dropFirst().prefix(while: { $0.isNumber })) ?? -1
         XCTAssertGreaterThan(lastIndex, SplitExitListsLimits.domains,
                              "抽样应覆盖到源名单尾部（实际最后一条：\(last)）")
+    }
+
+    func testDeduplicatesGeoSiteCNDomainsBeforeSampling() async {
+        let nonCNCount = SplitExitListsLimits.domains - 10
+        var lines = [
+            "DOMAIN-SUFFIX,qq.com",
+            "DOMAIN-SUFFIX,sub.baidu.com",
+            "DOMAIN-SUFFIX,foo.cn",
+            "DOMAIN,time.izatcloud.net",
+            "DOMAIN,upos-sz-mihayo.akamaized.net",
+        ]
+        for i in 0..<nonCNCount {
+            lines.append("DOMAIN-SUFFIX,custom\(i).example.org")
+        }
+        let store = MemoryStore()
+        let updater = SplitExitListsUpdater(
+            client: StubClient(bodies: ["direct.txt": lines.joined(separator: "\n"), "cncidr.txt": cidrBody]),
+            sources: sources(), store: store
+        )
+        let outcome = await updater.refresh()
+        XCTAssertNil(outcome.error)
+        XCTAssertEqual(outcome.metrics?.rawDomainCount, 5 + nonCNCount)
+        XCTAssertEqual(outcome.metrics?.deduplicatedByGeoSiteCNCount, 5)
+        XCTAssertEqual(outcome.metrics?.postDeduplicationDomainCount, nonCNCount)
+        XCTAssertEqual(outcome.metrics?.finalDomainCount, nonCNCount)
+        XCTAssertEqual(outcome.lists?.deduplicatedDomainCount, 5)
+        XCTAssertEqual(outcome.lists?.domains.count, nonCNCount)
+        XCTAssertFalse(outcome.lists?.domains.contains("qq.com") == true)
+        XCTAssertTrue(outcome.lists?.domains.contains("custom0.example.org") == true)
+    }
+
+    func testAllDomainsCoveredByGeoSiteCNDoesNotFailRefresh() async {
+        let store = MemoryStore()
+        let updater = SplitExitListsUpdater(
+            client: StubClient(bodies: ["direct.txt": domainBody, "cncidr.txt": cidrBody]),
+            sources: sources(), store: store
+        )
+        let outcome = await updater.refresh()
+        XCTAssertNil(outcome.error)
+        XCTAssertEqual(outcome.metrics?.rawDomainCount, 2)
+        XCTAssertEqual(outcome.metrics?.deduplicatedByGeoSiteCNCount, 2)
+        XCTAssertEqual(outcome.metrics?.postDeduplicationDomainCount, 0)
+        XCTAssertEqual(outcome.metrics?.finalDomainCount, 0)
+        XCTAssertEqual(outcome.lists?.domains, [])
+        XCTAssertEqual(outcome.lists?.deduplicatedDomainCount, 2)
+        XCTAssertEqual(outcome.lists?.cidrs.count, 2)
+    }
+
+    func testSplitExitListsBackwardCompatDecodingWithoutDeduplicatedCount() throws {
+        let legacyJSON = """
+        {
+          "domains": ["custom.example.org"],
+          "domainKeywords": [],
+          "cidrs": ["1.0.1.0/24"],
+          "sourceDomainCount": 1,
+          "sourceCIDRCount": 1,
+          "sources": ["https://example.com/direct.txt"]
+        }
+        """
+        let decoded = try XCTUnwrap(SplitExitListsFile.decode(Data(legacyJSON.utf8)))
+        XCTAssertEqual(decoded.domains, ["custom.example.org"])
+        XCTAssertEqual(decoded.deduplicatedDomainCount, 0)
     }
 
     /// 一份拉失败 → 整份不更新，旧名单原样保留。
