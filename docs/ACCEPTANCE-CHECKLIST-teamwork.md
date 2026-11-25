@@ -127,20 +127,51 @@ open Qingzhou.xcodeproj
 
 ---
 
-## 6. 远端 `git push` 命令（需你确认后手动执行）
+## 6. 远端 `git push` 与临时存档 tag 后续清理（需你确认后手动执行）
 
 > **再次确认**：`master/teamwork` 尚未推送到远端。请先检查状态、完成上述至少第 1–2 节与必要真机验证后，再自行决定是否推送。
+>
+> ⚠️ **切勿运行 `git push --tags`**：本地存有 4 个临时本地 `archive/*` 标签（仅用于暂存 2026-07 未合入历史提交）。远端推送命令**仅推送 `master/teamwork`**（以及验收通过后可选的 `main`），避免将临时本地标签推送到远端。
+
+### 6.1 远端 `git push` 命令
 
 ```sh
 # 1) 检查工作区干净度与提交历史
 git status
 git log --oneline -n 10
 
-# 2) 推送集成分支 master/teamwork 到远端并建立跟踪
+# 2) 仅推送集成分支 master/teamwork 到远端并建立跟踪（严禁附加 --tags）
 git push -u origin master/teamwork
 
-# 3) （可选）若验收全部通过、决定将 master/teamwork 合入 main：
+# 3) （可选）若验收全部通过、决定将 master/teamwork 合入 main（同样严禁附加 --tags）：
 # git checkout main
 # git merge --ff-only master/teamwork   # 若需保留合并节点可改用 git merge --no-ff master/teamwork
 # git push origin main
+```
+
+### 6.2 临时本地 `archive/*` 标签后续复查与清理 TODO
+
+清理旧 worktree 时，2026-07 的 4 个未合入历史提交已暂存为本地临时 `archive/*` 标签。请后续择机复查内容（合入/摘取或直接丢弃）并删除标签，避免长期滞留：
+
+- [ ] 复查并处置 `archive/2026-07-02-roadmap-research`（`fbdb7f77`）
+- [ ] 复查并处置 `archive/2026-07-03-ai-spike`（`baccd23d`）
+- [ ] 复查并处置 `archive/2026-07-03-first-run-guide`（`c28c021a`）
+- [ ] 复查并处置 `archive/2026-07-03-sni-sniffer`（`35cc92f0`）
+- [ ] 确认上述 4 个临时标签全部处理完毕并执行本地删除（`git tag -l 'archive/*'` 返回为空）
+
+参考检查与清理命令：
+
+```sh
+# 查看单个临时标签的提交信息与文件变更统计
+git show --stat archive/2026-07-02-roadmap-research
+git show --stat archive/2026-07-03-ai-spike
+git show --stat archive/2026-07-03-first-run-guide
+git show --stat archive/2026-07-03-sni-sniffer
+
+# 确认无需保留或已合入/摘取后，删除临时本地标签
+git tag -d \
+  archive/2026-07-02-roadmap-research \
+  archive/2026-07-03-ai-spike \
+  archive/2026-07-03-first-run-guide \
+  archive/2026-07-03-sni-sniffer
 ```
